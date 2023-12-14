@@ -2,7 +2,6 @@ import os
 import time
 
 from genealogical_graph import *
-from path_matching.path_processed_graph import *
 from divide_and_conquer.graph_matcher import GraphMather
 from divide_and_conquer.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 
