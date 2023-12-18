@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from divide_and_conquer.graph_matcher import GraphMather
+from divide_and_conquer.graph_matcher import GraphMather, MatcherLogger
 from divide_and_conquer.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from divide_and_conquer.subtree_matcher import SubtreeMatcher
 from genealogical_graph import CoalescentTree
@@ -15,7 +15,8 @@ pedigree_extension = ".pedigree"
 
 def test_pedigree_coalescent_tree_alignment(pedigree: PotentialMrcaProcessedGraph,
                                             coalescent_tree: CoalescentTree):
-    graph_matcher: GraphMather = GraphMather(pedigree, coalescent_tree)
+    logger = MatcherLogger()
+    graph_matcher: GraphMather = GraphMather(pedigree, coalescent_tree, logger)
     alignments = graph_matcher.find_mapping()
     test_identity_is_present(coalescent_tree=coalescent_tree, alignments=alignments)
     test_all_found_alignments_are_correct(pedigree=pedigree, coalescent_tree=coalescent_tree, alignments=alignments)
@@ -89,9 +90,11 @@ def test_identity_present_for_clade(coalescent_tree: CoalescentTree,
     # Otherwise, check that the children subtrees also have an identity mapping
     identity_present = False
     children_identity_alignment = {x: x for x in coalescent_tree.children_map[coalescent_tree_root]}
+    correct_children_set = set(coalescent_tree.children_map[coalescent_tree_root])
     for alignment in root_identity_alignments:
         alignment: SubtreeMatcher
-        if alignment.subtree_matchers == children_identity_alignment:
+        children_set = set(alignment.subtree_matchers.values())
+        if children_set == correct_children_set:
             identity_present = True
             break
     if not identity_present:

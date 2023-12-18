@@ -2,6 +2,8 @@ import itertools
 
 from graph import Graph
 
+print_enabled = True
+
 
 class PotentialMrcaProcessedGraph(Graph):
 
@@ -15,6 +17,7 @@ class PotentialMrcaProcessedGraph(Graph):
         self.vertex_to_ancestor_map: {int: {int: [int]}} = dict()
         self.initialize_vertex_to_level_map()
         self.initialize_potential_mrca_map()
+        self.inference_cache = dict()
 
     def initialize_vertex_to_level_map(self):
         if self.probands is None:
@@ -71,19 +74,12 @@ class PotentialMrcaProcessedGraph(Graph):
         pass
 
     def verify_pmrca_for_vertex_pair(self, first_vertex: int, second_vertex: int, potential_mrca: int):
-        access_vertices_union = set.union(*[self.vertex_to_ancestor_map[first_vertex],
-                                            self.vertex_to_ancestor_map[second_vertex]])
-        if len(access_vertices_union) == 1:
-            return None
-        return access_vertices_union
-        # TODO: Replace with is and compare the speed
-        # return not (len(self.vertex_to_ancestor_map[first_vertex][potential_mrca]) == 1 and
-        #             self.vertex_to_ancestor_map[first_vertex][potential_mrca] ==
-        #             self.vertex_to_ancestor_map[second_vertex][potential_mrca])
+        return not (len(self.vertex_to_ancestor_map[first_vertex][potential_mrca]) == 1 and
+                    self.vertex_to_ancestor_map[first_vertex][potential_mrca] ==
+                    self.vertex_to_ancestor_map[second_vertex][potential_mrca])
 
-    def verify_pmrca_for_vertex_triple(self, first_vertex: int, second_vertex: int, third_vertex: int,
-                                       potential_mrca: int):
-        # TODO: Replace with is and compare the speed
+    def extend_pair_to_triple(self, first_vertex: int, second_vertex: int, third_vertex: int,
+                              potential_mrca: int):
         first_vertex_access = self.vertex_to_ancestor_map[first_vertex][potential_mrca]
         second_vertex_access = self.vertex_to_ancestor_map[second_vertex][potential_mrca]
         third_vertex_access = self.vertex_to_ancestor_map[third_vertex][potential_mrca]
@@ -103,8 +99,7 @@ class PotentialMrcaProcessedGraph(Graph):
     def verify_additional_constraints(self, partially_assigned_vertices: [int], next_vertex: int, potential_mrca: int):
         if len(partially_assigned_vertices) == 2:
             [first_vertex, second_vertex] = partially_assigned_vertices
-            return self.verify_pmrca_for_vertex_triple(first_vertex, second_vertex, next_vertex, potential_mrca)
-        # TODO: Implement
+            return self.extend_pair_to_triple(first_vertex, second_vertex, next_vertex, potential_mrca)
         raise Exception("Unimplemented")
 
     def apply_additional_constraints_for_partial_result(self, coalescent_vertex_to_candidates: {int: [int]},
@@ -133,65 +128,172 @@ class PotentialMrcaProcessedGraph(Graph):
                 ancestor in vertex_ancestors]
 
     def get_single_vertex_verified_subset_tuple(self, vertex: int, vertex_ancestors):
-        return [((vertex,), self.get_single_vertex_subsets(vertex, vertex_ancestors))]
+        return (vertex,), self.get_single_vertex_subsets(vertex, vertex_ancestors)
+
+    def filter_common_ancestors_for_vertex_pair(self, first_candidate, second_candidate):
+        candidate_tuple = tuple(sorted([first_candidate, second_candidate]))
+        if candidate_tuple in self.inference_cache:
+            return self.inference_cache[candidate_tuple]
+        verified_ancestors = []
+        if first_candidate not in self.parents_map or second_candidate not in self.parents_map:
+            return verified_ancestors
+        while self.parents_map[first_candidate] == self.parents_map[second_candidate]:
+            verified_ancestors.extend(self.parents_map[first_candidate])
+            [first_candidate, second_candidate] = self.parents_map[first_candidate]
+            if first_candidate not in self.parents_map or second_candidate not in self.parents_map:
+                return verified_ancestors
+        first_ancestors = self.vertex_to_ancestor_map[first_candidate]
+        second_ancestors = self.vertex_to_ancestor_map[second_candidate]
+        if len(second_ancestors) > len(first_ancestors):
+            first_ancestors, second_ancestors = second_ancestors, first_ancestors
+        for ancestor in first_ancestors:
+            if (ancestor in second_ancestors and
+                    self.verify_pmrca_for_vertex_pair(first_candidate, second_candidate,
+                                                      ancestor)):
+                verified_ancestors.append(ancestor)
+        self.inference_cache[candidate_tuple] = verified_ancestors
+        return verified_ancestors
+
+    def get_pmracs_for_vertex_pair(self, first: int, second: int, coalescent_vertex_to_candidates: {int: [int]}):
+        result = []
+        first_vertex_candidates = coalescent_vertex_to_candidates[first]
+        second_vertex_candidates = coalescent_vertex_to_candidates[second]
+        if len(first_vertex_candidates) > len(second_vertex_candidates):
+            first_vertex_candidates, second_vertex_candidates = second_vertex_candidates, first_vertex_candidates
+        for first_vertex_candidate in first_vertex_candidates:
+            for second_vertex_candidate in second_vertex_candidates:
+                verified_ancestors = self.filter_common_ancestors_for_vertex_pair(
+                    first_vertex_candidate,
+                    second_vertex_candidate)
+                if verified_ancestors:
+                    result.append(((first_vertex_candidate, second_vertex_candidate), verified_ancestors))
+        return result
+
+    def get_pmracs_for_vertex_triple(self, first: int, second: int, third: int,
+                                     coalescent_vertex_to_candidates: {int: [int]}):
+        result = []
+        first_vertex_candidates = coalescent_vertex_to_candidates[first]
+        second_vertex_candidates = coalescent_vertex_to_candidates[second]
+        third_vertex_candidates = coalescent_vertex_to_candidates[third]
+        for first_vertex_candidate in first_vertex_candidates:
+            for second_vertex_candidate in second_vertex_candidates:
+                verified_ancestors = self.filter_common_ancestors_for_vertex_pair(first_vertex_candidate,
+                                                                                  second_vertex_candidate)
+                if not verified_ancestors:
+                    continue
+                for third_vertex_candidate in third_vertex_candidates:
+
+                    triple_candidate_tuple = tuple(sorted([first_vertex_candidate, second_vertex_candidate,
+                                                           third_vertex_candidate]))
+                    if triple_candidate_tuple in self.inference_cache:
+                        fully_verified_ancestors = self.inference_cache[triple_candidate_tuple]
+                    else:
+                        third_vertex_ancestors = self.vertex_to_ancestor_map[third_vertex_candidate]
+                        fully_verified_ancestors = []
+                        for verified_ancestor in verified_ancestors:
+                            if (verified_ancestor in third_vertex_ancestors and
+                                    self.extend_pair_to_triple(first_vertex_candidate, second_vertex_candidate,
+                                                               third_vertex_candidate, verified_ancestor)):
+                                fully_verified_ancestors.append(verified_ancestor)
+                        self.inference_cache[triple_candidate_tuple] = fully_verified_ancestors
+                    if fully_verified_ancestors:
+                        result.append(((first_vertex_candidate, second_vertex_candidate, third_vertex_candidate),
+                                       fully_verified_ancestors
+                                       ))
+        return result
+
+    def get_pmracs_for_vertices(self, vertices_coalescent_ids: [int],
+                                coalescent_vertex_to_candidates: {int: [int]}):
+        vertices_length = len(vertices_coalescent_ids)
+        if vertices_length == 2:
+            result = self.get_pmracs_for_vertex_pair(vertices_coalescent_ids[0], vertices_coalescent_ids[1],
+                                                     coalescent_vertex_to_candidates)
+        elif vertices_length == 3:
+            result = self.get_pmracs_for_vertex_triple(vertices_coalescent_ids[0], vertices_coalescent_ids[1],
+                                                       vertices_coalescent_ids[2], coalescent_vertex_to_candidates)
+        else:
+            result = self.get_pmracs_for_vertices_with_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
+        # for assignment in result:
+        #     (assigned_children, verified_candidates_list) = assignment
+        #     self.inference_cache[assigned_children] = verified_candidates_list
+        return result
 
     # Returns all the potential common ancestors for the specified vertices
     # Note that not all the potential common ancestors are MRCAs
-    def get_pmracs_for_vertices(self, vertices_coalescent_ids: [int], coalescent_vertex_to_candidates: {int: [int]}):
+    def get_pmracs_for_vertices_with_memory(self, vertices_coalescent_ids: [int],
+                                            coalescent_vertex_to_candidates: {int: [int]}):
         vertices_length = len(vertices_coalescent_ids)
         # partial_result elements are lists whose elements
         # have the format: (partial_assignment: tuple, [(candidate, [(preimage_length, image)])])
         alignment_result = []
-        sorted(vertices_coalescent_ids,
-               key=lambda child: len(
-                   coalescent_vertex_to_candidates[child].keys()), reverse=True)
+        vertices_coalescent_ids = sorted(vertices_coalescent_ids,
+                                         key=lambda child: len(
+                                             coalescent_vertex_to_candidates[child].keys()), reverse=True)
+
         first_candidates = coalescent_vertex_to_candidates[vertices_coalescent_ids[0]]
+        partial_result = []
         for first_candidate in first_candidates:
             # Filtering out the pedigree candidates who have fewer children than the number of children of the vertex
             # in the coalescent tree for which we are making the inference
-            first_candidate_ancestors = {x for x in self.get_vertex_ancestors(first_candidate)
-                                         if len(self.children_map[x]) >= vertices_length}
-            first_vertex_result = self.get_single_vertex_verified_subset_tuple(first_candidate,
-                                                                               first_candidate_ancestors)
-            partial_result = first_vertex_result
-            for next_coalescent_id in vertices_coalescent_ids[1:]:
-                next_result = []
-                for next_candidate in coalescent_vertex_to_candidates[next_coalescent_id]:
-                    next_candidate_ancestors = set(self.get_vertex_ancestors(next_candidate))
-                    for verified_children_partial_assignment in partial_result:
-                        (assigned_children, verified_candidates_list) = verified_children_partial_assignment
-                        next_verified_candidates_list = []
-                        for verified_candidate_tuple in verified_candidates_list:
-                            (verified_candidate, verified_subsets) = verified_candidate_tuple
-                            if verified_candidate not in next_candidate_ancestors:
-                                continue
-                            is_correct_assignment = True
-                            verified_candidate_access = self.vertex_to_ancestor_map[next_candidate][verified_candidate]
-                            new_subsets = []
-                            for verified_subset_tuple in verified_subsets:
-                                (preimage_size, image) = verified_subset_tuple
-                                image: set
-                                new_image = image.union(verified_candidate_access)
-                                if len(new_image) < preimage_size + 1:
-                                    is_correct_assignment = False
-                                    break
-                                new_subsets.append((preimage_size + 1, new_image))
-                            if not is_correct_assignment:
-                                continue
-                            new_subsets.extend(verified_subsets)
-                            new_subsets.append((1, set(self.vertex_to_ancestor_map[next_candidate][verified_candidate])))
-                            next_verified_candidates_list.append((verified_candidate, new_subsets))
-                            # next_result.append((extended_assigned_children, new_subsets))
-                        if next_verified_candidates_list:
-                            extended_assigned_children = assigned_children + (next_candidate,)
-                            next_result.append((extended_assigned_children, next_verified_candidates_list))
-                partial_result = next_result
-            alignment_result.extend(partial_result)
+            first_candidate_ancestors = [x for x in self.get_vertex_ancestors(first_candidate)
+                                         if len(self.children_map[x]) >= vertices_length]
+            # first_candidate_ancestors = self.get_vertex_ancestors(first_candidate)
+            if first_candidate_ancestors:
+                partial_result.append(self.get_single_vertex_verified_subset_tuple(first_candidate,
+                                                                                   first_candidate_ancestors))
+        for next_coalescent_id in vertices_coalescent_ids[1:]:
+            next_result = []
+            if print_enabled:
+                print(f"Partial result: {len(partial_result)}")
+                print(f"Candidates for the next vertex: {len(coalescent_vertex_to_candidates[next_coalescent_id])}")
+                print(f"The whole search space is {len(partial_result) *
+                                                   len(coalescent_vertex_to_candidates[next_coalescent_id])}")
+            for next_candidate in coalescent_vertex_to_candidates[next_coalescent_id]:
+                next_candidate_ancestors = self.get_vertex_ancestors(next_candidate)
+                for verified_children_partial_assignment in partial_result:
+                    (assigned_children, verified_candidates_list) = verified_children_partial_assignment
+                    # assigned_children_list = list(assigned_children)
+                    # assigned_children_list.append(next_candidate)
+                    # candidates_tuple = tuple(sorted(assigned_children_list))
+                    # if candidates_tuple in self.inference_cache:
+                    #     print("HIT")
+                    next_verified_candidates_list = []
+                    for verified_candidate_tuple in verified_candidates_list:
+                        (verified_candidate, verified_subsets) = verified_candidate_tuple
+                        if verified_candidate not in next_candidate_ancestors:
+                            continue
+                        is_correct_assignment = True
+                        verified_candidate_access = self.vertex_to_ancestor_map[next_candidate][verified_candidate]
+                        new_subsets = []
+                        for verified_subset_tuple in verified_subsets:
+                            (preimage_size, image) = verified_subset_tuple
+                            image: set
+                            new_image = image.union(verified_candidate_access)
+                            if len(new_image) < preimage_size + 1:
+                                is_correct_assignment = False
+                                break
+                            new_subsets.append((preimage_size + 1, new_image))
+                        if not is_correct_assignment:
+                            continue
+                        new_subsets.extend(verified_subsets)
+                        new_subsets.append(
+                            (1, set(self.vertex_to_ancestor_map[next_candidate][verified_candidate])))
+                        next_verified_candidates_list.append((verified_candidate, new_subsets))
+                        # next_result.append((extended_assigned_children, new_subsets))
+                    if next_verified_candidates_list:
+                        extended_assigned_children = assigned_children + (next_candidate,)
+                        next_result.append((extended_assigned_children, next_verified_candidates_list))
+            if print_enabled:
+                print(f"The resulting number of correct assignments is: {len(next_result)}")
+            partial_result = next_result
+        alignment_result.extend(partial_result)
         result = []
         for assignment in alignment_result:
             (assigned_children, verified_candidates_list) = assignment
             candidates = [verified_candidate_tuple[0] for verified_candidate_tuple in verified_candidates_list]
             result.append((assigned_children, candidates))
+        if not result:
+            raise Exception("No valid assignments found")
         return result
 
     def get_vertex_ancestors(self, vertex: int):
