@@ -134,7 +134,8 @@ class GraphMather:
         #     print(f"{child}: {len(vertex_subtree_dict[child])}")
         if print_enabled:
             print("####################")
-            print(f"Inference for {focal_vertex}, there are {len(focal_vertex_children)} children")
+            print(f"Inference for {focal_vertex} ({self.pedigree.vertex_to_level_map[focal_vertex]}),"
+                  f" there are {len(focal_vertex_children)} children")
             for child in focal_vertex_children:
                 print(f"{child}: {len(child_candidate_subtree_matchers_matrix[child])}")
         inference_start = time.time()
