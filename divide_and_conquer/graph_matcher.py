@@ -1,10 +1,10 @@
-from divide_and_conquer.subtree_matcher import *
-
-import time
 import datetime
 import os
+import time
 
-logs_enabled = False
+from divide_and_conquer.subtree_matcher import *
+
+logs_enabled = True
 logs_default_directory_name = "logs"
 
 print_enabled = True
@@ -115,10 +115,9 @@ class GraphMather:
             # This usually leads to a much bigger search space that we wouldn't have gotten with normal coalescent tree
             # Therefore, we will cheat here
             [child] = focal_vertex_children
-            child_potential_pedigree_values = {x.root_pedigree for x in vertex_subtree_dict[child]}
-            result = [SubtreeMatcher(root_coalescent_tree=focal_vertex, root_pedigree=focal_vertex,
-                                     subtrees_matchers={child: x})
-                      for x in child_potential_pedigree_values]
+            # The correct one
+            result = [SubtreeMatcher(root_coalescent_tree=focal_vertex, root_pedigree=x.root_pedigree,
+                                     subtrees_matchers={child: x.root_pedigree}) for x in vertex_subtree_dict[child]]
             return result
         child_candidate_subtree_matchers_matrix = {child: dict() for child in focal_vertex_children}
         child_candidate_subtree_matchers_matrix: {int: {int: [SubtreeMatcher]}}

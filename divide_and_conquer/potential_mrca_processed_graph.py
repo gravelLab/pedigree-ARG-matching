@@ -2,7 +2,7 @@ import itertools
 
 from graph import Graph
 
-print_enabled = False
+print_enabled = True
 
 
 class PotentialMrcaProcessedGraph(Graph):
@@ -17,7 +17,7 @@ class PotentialMrcaProcessedGraph(Graph):
         self.vertex_to_ancestor_map: {int: {int: [int]}} = dict()
         self.initialize_vertex_to_level_map()
         self.initialize_potential_mrca_map()
-        self.inference_cache = dict()
+        # self.inference_cache = dict()
 
     def initialize_vertex_to_level_map(self):
         if self.probands is None:
@@ -140,9 +140,6 @@ class PotentialMrcaProcessedGraph(Graph):
         return (vertex,), self.get_single_vertex_subsets(vertex, vertex_ancestors)
 
     def filter_common_ancestors_for_vertex_pair(self, first_candidate, second_candidate):
-        candidate_tuple = tuple(sorted([first_candidate, second_candidate]))
-        if candidate_tuple in self.inference_cache:
-            return self.inference_cache[candidate_tuple]
         verified_ancestors = []
         if first_candidate not in self.parents_map or second_candidate not in self.parents_map:
             return verified_ancestors
@@ -153,8 +150,6 @@ class PotentialMrcaProcessedGraph(Graph):
                 return verified_ancestors
         first_ancestors = self.vertex_to_ancestor_map[first_candidate]
         second_ancestors = self.vertex_to_ancestor_map[second_candidate]
-        if first_candidate in second_ancestors or second_candidate in first_ancestors:
-            return verified_ancestors
         if len(second_ancestors) > len(first_ancestors):
             first_ancestors, second_ancestors = second_ancestors, first_ancestors
         for ancestor in first_ancestors:
@@ -162,7 +157,6 @@ class PotentialMrcaProcessedGraph(Graph):
                     self.verify_pmrca_for_vertex_pair(first_candidate, second_candidate,
                                                       ancestor)):
                 verified_ancestors.append(ancestor)
-        self.inference_cache[candidate_tuple] = verified_ancestors
         return verified_ancestors
 
     def get_pmracs_for_vertex_pair(self, first: int, second: int, coalescent_vertex_to_candidates: {int: [int]}):
@@ -200,29 +194,16 @@ class PotentialMrcaProcessedGraph(Graph):
                     third_vertex_ancestors = self.vertex_to_ancestor_map[third_vertex_candidate]
                     if not third_vertex_ancestors:
                         continue
-                    if (first_vertex_candidate in third_vertex_ancestors or
-                            second_vertex_candidate in third_vertex_ancestors):
-                        continue
-                    if (third_vertex_candidate in first_vertex_ancestors or
-                            third_vertex_candidate in second_vertex_ancestors):
-                        continue
-                    fully_verified_ancestors = []
                     if (self.parents_map[first_vertex_candidate] == self.parents_map[second_vertex_candidate] ==
                             self.parents_map[third_vertex_candidate]):
                         fully_verified_ancestors = self.parents_map[first_vertex_candidate]
                     else:
-                        triple_candidate_tuple = tuple(sorted([first_vertex_candidate, second_vertex_candidate,
-                                                               third_vertex_candidate]))
-                        if triple_candidate_tuple in self.inference_cache:
-                            fully_verified_ancestors = self.inference_cache[triple_candidate_tuple]
-                        else:
-                            fully_verified_ancestors = []
-                            for verified_ancestor in verified_ancestors:
-                                if (verified_ancestor in third_vertex_ancestors and
-                                        self.extend_pair_to_triple(first_vertex_candidate, second_vertex_candidate,
-                                                                   third_vertex_candidate, verified_ancestor)):
-                                    fully_verified_ancestors.append(verified_ancestor)
-                            self.inference_cache[triple_candidate_tuple] = fully_verified_ancestors
+                        fully_verified_ancestors = []
+                        for verified_ancestor in verified_ancestors:
+                            if (verified_ancestor in third_vertex_ancestors and
+                                    self.extend_pair_to_triple(first_vertex_candidate, second_vertex_candidate,
+                                                               third_vertex_candidate, verified_ancestor)):
+                                fully_verified_ancestors.append(verified_ancestor)
                     if fully_verified_ancestors:
                         result.append(((first_vertex_candidate, second_vertex_candidate, third_vertex_candidate),
                                        fully_verified_ancestors
@@ -253,11 +234,6 @@ class PotentialMrcaProcessedGraph(Graph):
                 for first_third_partial_result in first_third_dict[first_candidate]:
                     ((__, third_candidate), verified_ancestors_third) = first_third_partial_result
                     assert first_candidate == __
-                    third_candidate_ancestors = self.vertex_to_ancestor_map[third_candidate]
-                    # Verify that the second candidate is not an ancestor of the third one and vice versa.
-                    # This conditions has been already verified for the pairs with the first candidate
-                    if third_candidate in second_candidate_ancestors or second_candidate in third_candidate_ancestors:
-                        continue
                     resulting_ancestors = verified_ancestors_second
                     # If the second and the third candidates happen to have the same parents, we can restrict
                     # the candidates space that should be searched. Specifically, the resulting pmracs
@@ -325,7 +301,6 @@ class PotentialMrcaProcessedGraph(Graph):
             # in the coalescent tree for which we are making the inference
             first_candidate_ancestors = [x for x in self.get_vertex_ancestors(first_candidate)
                                          if len(self.children_map[x]) >= vertices_length]
-            # first_candidate_ancestors = self.get_vertex_ancestors(first_candidate)
             if first_candidate_ancestors:
                 partial_result.append(self.get_single_vertex_verified_subset_tuple(first_candidate,
                                                                                    first_candidate_ancestors))
@@ -339,33 +314,9 @@ class PotentialMrcaProcessedGraph(Graph):
             for next_candidate in coalescent_vertex_to_candidates[next_coalescent_id]:
                 next_candidate_ancestors = self.get_vertex_ancestors(next_candidate)
                 for verified_children_partial_assignment in partial_result:
-                    correct = True
                     (assigned_children, verified_candidates_list) = verified_children_partial_assignment
-                    for assigned_child in assigned_children:
-                        if assigned_child in next_candidate_ancestors:
-                            correct = False
-                        if next_candidate in self.vertex_to_ancestor_map[assigned_child]:
-                            correct = False
-                    if not correct:
-                        continue
-                    # assigned_children_list = list(assigned_children)
-                    # assigned_children_list.append(next_candidate)
-                    # candidates_tuple = tuple(sorted(assigned_children_list))
-                    # if candidates_tuple in self.inference_cache:
-                    #     print("HIT")
                     next_verified_candidates_list = []
                     extended_assigned_children = assigned_children + (next_candidate,)
-                    # try:
-                    #     total_parents = set().union(*[self.parents_map[x] for x in extended_assigned_children])
-                    #     if len(total_parents) < len(extended_assigned_children):
-                    #         print(f"Eliminated {extended_assigned_children}, joined parents: {total_parents}")
-                    #         common_parents = set().intersection(*[self.parents_map[x]
-                    #                                               for x in extended_assigned_children])
-                    #
-                    #         continue
-                    # except KeyError:
-                    #     # A candidate has no ancestors
-                    #     continue
                     for verified_candidate_tuple in verified_candidates_list:
                         (verified_candidate, verified_subsets) = verified_candidate_tuple
                         if verified_candidate not in next_candidate_ancestors:
