@@ -1,3 +1,11 @@
+"""!
+@file main.py
+@brief The main script that asks the user to specify a testing directory for the script. The testing directory
+must be located under the "pedigrees" folder and the user should only specify the name of the subdirectory.
+The testing directory must contain one file with the extension ".pedigree" and the rest of the files must be the
+coalescent trees with which the mentioned pedigree is to be aligned.
+"""
+
 import os
 import time
 
@@ -39,16 +47,3 @@ for file in os.listdir(current_directory):
     total_alignment_time += end_alignment - start_alignment
     count += 1
 print(f"Average inference time {total_alignment_time / count} seconds")
-# genealogical_graph = GenealogicalGraph(pedigree=pedigree)
-
-# path_aware_genealogical_graph = PathAwareGenealogicalGraph(pedigree=pedigree)
-# print(f"Number of levels: {len(path_aware_genealogical_graph.levels)}")
-# descendant_cache = DescendantMemoryCache()
-# descendant_cache = DescendantNoMemoryCache(path_aware_genealogical_graph)
-# path_aware_genealogical_graph.set_descendant_writer(descendant_cache)
-
-# path_aware_genealogical_graph.initialize_genealogical_graph_from_probands()
-# path_processed_graph = PathProcessedGraph(path_aware_genealogical_graph)
-# path_processed_graph.get_graph_from_genealogical_graph(path_aware_genealogical_graph)
-
-# count = genealogical_graph.calculate_vertices_in_descendant_writer()

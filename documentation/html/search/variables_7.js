@@ -1,0 +1,10 @@
+var searchData=
+[
+  ['parents_5fmap_0',['parents_map',['../classpedigree-_a_r_g-matching_1_1genealogical__graph_1_1_genealogical_graph.html#a195b04406cec467b194967db17bfdc77',1,'pedigree-ARG-matching.genealogical_graph.GenealogicalGraph.parents_map'],['../classpedigree-_a_r_g-matching_1_1graph_1_1_graph.html#a1688482a463715ab13acd089a4b1fbe0',1,'pedigree-ARG-matching.graph.Graph.parents_map']]],
+  ['pedigree_1',['pedigree',['../classgraph__matcher_1_1_graph_mather.html#a86e3e7664581596f7a04128e9eb75dd9',1,'graph_matcher.GraphMather.pedigree'],['../classpotential__mrca__processed__graph_1_1_potential_mrca_processed_graph.html#aff88679a326b8653ee970f006c5d7dd8',1,'potential_mrca_processed_graph.PotentialMrcaProcessedGraph.pedigree'],['../namespacepedigree-_a_r_g-matching_1_1main.html#adbf105719ca3ff259d58dcc5457e347d',1,'pedigree-ARG-matching.main.pedigree']]],
+  ['pedigree_5fextension_2',['pedigree_extension',['../namespacetest__matching.html#a27e953d0cf0765db97737858942ec55b',1,'test_matching']]],
+  ['pedigrees_5fmain_5ffolder_5fname_3',['pedigrees_main_folder_name',['../namespacetest__matching.html#af9d5216b35b88eb10cbe3a9e65248955',1,'test_matching']]],
+  ['potential_5fmrca_5fgraph_4',['potential_mrca_graph',['../namespacepedigree-_a_r_g-matching_1_1main.html#a60666fcb64e197ce3462ad8959644982',1,'pedigree-ARG-matching::main']]],
+  ['print_5fenabled_5',['print_enabled',['../namespacegraph__matcher.html#a1cc44469af09f9d3a8db1be8968de034',1,'graph_matcher.print_enabled'],['../namespacepotential__mrca__processed__graph.html#a75ed3f0c6230130ae4caec7fb72b7e1a',1,'potential_mrca_processed_graph.print_enabled']]],
+  ['probands_6',['probands',['../classpotential__mrca__processed__graph_1_1_potential_mrca_processed_graph.html#a333e6d965a835b36bc687f4853433884',1,'potential_mrca_processed_graph.PotentialMrcaProcessedGraph.probands'],['../classpedigree-_a_r_g-matching_1_1genealogical__graph_1_1_genealogical_graph.html#a9008f97b44d367c1b6c6c476f4d49f2d',1,'pedigree-ARG-matching.genealogical_graph.GenealogicalGraph.probands']]]
+];

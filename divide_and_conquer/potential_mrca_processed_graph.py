@@ -1,3 +1,9 @@
+"""!
+@file potential_mrca_processed_graph.py
+@brief Brief description here
+"""
+
+
 import itertools
 
 from graph import Graph
@@ -6,7 +12,14 @@ print_enabled = True
 
 
 class PotentialMrcaProcessedGraph(Graph):
-
+    """
+    This class represents a preprocessed pedigree graph. Apart from having the usual parents and children mappings,
+    it also contains the following information about the pedigree:
+        1) The assignments of every vertex to its level. The vertex level is defined to be the length of longest
+        path from a proband vertex to the vertex being considered.
+        2) A dictionary of dictionaries (a matrix) that maps a vertex u to a dictionary whose keys the u's ancestors
+        and the values are the "access vertices" through which u can reach the particular ancestor.
+    """
     def __init__(self, pedigree: Graph, probands: [int] = None):
         super().__init__(children_map=pedigree.children_map, parents_map=pedigree.parents_map,
                          vertices_number=pedigree.vertices_number, sink_vertices=pedigree.sink_vertices)
@@ -38,10 +51,25 @@ class PotentialMrcaProcessedGraph(Graph):
             self.vertex_to_ancestor_map[vertex] = dict()
 
     def initialize_potential_mrca_map(self):
+        """!
+        @brief This method preprocesses the pedigree and stores the so called "access-to-ancestor" matrix which is
+        used during the alignment process. This matrix maps a pair (descendant, ancestor) to the list of the ancestor's
+        children vertices through which the descendant can reach the ancestor.
+         """
         ancestor_to_vertex_map = {vertex: dict() for vertex in self.vertex_to_level_map.keys()}
         tuple_reuse_map = dict()
 
         def append_child(child_value: int, children_tuple=None):
+            """!
+            @brief This is a helper function that appends the child_value to the passed children_tuple.
+            The main problem within this preprocessing is that different descendants of the same ancestor vertex
+            can climb to this ancestor through the same children. Therefore, in this case, we should reuse the same
+            children tuple (through which those descendants climb to the ancestor)
+            to save a significant amount of memory.
+            @param child_value: A new integer to be appended to the tuple.
+            @param children_tuple: The tuple to which the value should be appended.
+            @return: The resulting tuple where child_value is added as the last element of the new tuple.
+            """
             if children_tuple is None:
                 children_tuple = tuple()
             new_tuple = children_tuple + (child_value,)
@@ -73,29 +101,59 @@ class PotentialMrcaProcessedGraph(Graph):
             descendant_map.clear()
         pass
 
-    def verify_pmrca_for_vertex_pair(self, first_vertex: int, second_vertex: int, potential_mrca: int):
-        return not (len(self.vertex_to_ancestor_map[first_vertex][potential_mrca]) == 1 and
-                    self.vertex_to_ancestor_map[first_vertex][potential_mrca] ==
-                    self.vertex_to_ancestor_map[second_vertex][potential_mrca])
+    def verify_pmrca_for_vertex_pair(self, first_vertex: int, second_vertex: int, common_ancestor: int):
+        """!
+        @brief This function verifies that the given vertex is a potential mrca for the given pair of vertices.
+        @param first_vertex The first vertex from the pair.
+        @param second_vertex The second vertex from the pair.
+        @param common_ancestor A common ancestor of the given pair of vertices that is being verified.
+        @return True if the given vertex is potential mrca for the given pair of vertices, False otherwise.
+        """
+        return not (len(self.vertex_to_ancestor_map[first_vertex][common_ancestor]) == 1 and
+                    self.vertex_to_ancestor_map[first_vertex][common_ancestor] ==
+                    self.vertex_to_ancestor_map[second_vertex][common_ancestor])
 
     def triplet_condition_holds(self, first_vertex: int, second_vertex: int, third_vertex: int,
-                                potential_mrca: int):
-        first_vertex_access = self.vertex_to_ancestor_map[first_vertex][potential_mrca]
-        second_vertex_access = self.vertex_to_ancestor_map[second_vertex][potential_mrca]
+                                potential_mrca_candidate: int):
+        """!
+        @brief This function verifies that the potential mrca candidate satisfies all the conditions involving the
+        third vertex. More specifically, it verifies that the
+        <a href="https://en.wikipedia.org/wiki/Hall%27s_marriage_theorem">Hall's condition</a> is satisfied for the
+        triplet (first_vertex, second_vertex, third_vertex).
+        @param first_vertex: The first vertex from the triplet.
+        @param second_vertex: The second vertex from the triplet.
+        @param third_vertex: The third vertex from the triplet.
+        @param potential_mrca_candidate: A common ancestor of the given triplet of vertices that satisfies the
+        Hall's condition for the (first_vertex, second_vertex) pair.
+        @return True if potential mrca candidate is indeed a potential mrca, False otherwise.
+        """
+        first_vertex_access = self.vertex_to_ancestor_map[first_vertex][potential_mrca_candidate]
+        second_vertex_access = self.vertex_to_ancestor_map[second_vertex][potential_mrca_candidate]
         current_access = set(first_vertex_access).union(second_vertex_access)
         if len(current_access) > 2:
             return True
-        third_vertex_access = self.vertex_to_ancestor_map[third_vertex][potential_mrca]
+        third_vertex_access = self.vertex_to_ancestor_map[third_vertex][potential_mrca_candidate]
         for access_vertex in third_vertex_access:
             if access_vertex not in current_access:
                 return True
         return False
 
     def extend_pair_to_triple(self, first_vertex: int, second_vertex: int, third_vertex: int,
-                              potential_mrca: int):
-        first_vertex_access = self.vertex_to_ancestor_map[first_vertex][potential_mrca]
-        second_vertex_access = self.vertex_to_ancestor_map[second_vertex][potential_mrca]
-        third_vertex_access = self.vertex_to_ancestor_map[third_vertex][potential_mrca]
+                              potential_mrca_candidate: int):
+        """!
+        @brief This function verifies that the Hall condition holds for all the sets involving the third vertex.
+        Before verifying the actual constraint, this function tries to check for the most common scenarios and avoid
+        unnecessary set calculations.
+        @param first_vertex The first vertex from the triplet.
+        @param second_vertex The second vertex from the triplet.
+        @param third_vertex The third vertex from the triplet.
+        @param potential_mrca_candidate A common ancestor of the given triplet of vertices that satisfies the
+        Hall's condition for the (first_vertex, second_vertex) pair.
+        @return True if potential mrca candidate is indeed a potential mrca, False otherwise.
+        """
+        first_vertex_access = self.vertex_to_ancestor_map[first_vertex][potential_mrca_candidate]
+        second_vertex_access = self.vertex_to_ancestor_map[second_vertex][potential_mrca_candidate]
+        third_vertex_access = self.vertex_to_ancestor_map[third_vertex][potential_mrca_candidate]
         if first_vertex_access == second_vertex_access == third_vertex_access:
             return False
         if len(third_vertex_access) == 1:
@@ -103,9 +161,16 @@ class PotentialMrcaProcessedGraph(Graph):
                 return False
             if third_vertex_access == second_vertex_access:
                 return False
-        return self.triplet_condition_holds(first_vertex, second_vertex, third_vertex, potential_mrca)
+        return self.triplet_condition_holds(first_vertex, second_vertex, third_vertex, potential_mrca_candidate)
 
     def verify_additional_constraints(self, partially_assigned_vertices: [int], next_vertex: int, potential_mrca: int):
+        """!
+        @brief
+        @param partially_assigned_vertices:
+        @param next_vertex:
+        @param potential_mrca:
+        @return
+        """
         if len(partially_assigned_vertices) == 2:
             [first_vertex, second_vertex] = partially_assigned_vertices
             return self.extend_pair_to_triple(first_vertex, second_vertex, next_vertex, potential_mrca)
@@ -115,6 +180,14 @@ class PotentialMrcaProcessedGraph(Graph):
                                                         partially_assigned_vertices: [int], potential_mrcas: [int],
                                                         next_vertex: int,
                                                         ):
+        """!
+        @brief
+        @param coalescent_vertex_to_candidates:
+        @param partially_assigned_vertices:
+        @param potential_mrcas:
+        @param next_vertex:
+        @return:
+        """
         next_vertex_candidates = coalescent_vertex_to_candidates[next_vertex]
         next_vertex_result = []
         for candidate in next_vertex_candidates:
@@ -133,13 +206,32 @@ class PotentialMrcaProcessedGraph(Graph):
         return next_vertex_result
 
     def get_single_vertex_subsets(self, vertex: int, vertex_ancestors):
+        """!
+        @brief A helper function returning the partial sub-assignment result for the specified vertex with the
+        given ancestors.
+        @param vertex
+        @param vertex_ancestors
+        @return The sub-assignment tuple for a single vertex used by the alignment algorithm
+        """
         return [(ancestor, [(1, set(self.vertex_to_ancestor_map[vertex][ancestor]))]) for
                 ancestor in vertex_ancestors]
 
     def get_single_vertex_verified_subset_tuple(self, vertex: int, vertex_ancestors):
+        """!
+        @brief
+        @param vertex:
+        @param vertex_ancestors:
+        @return:
+        """
         return (vertex,), self.get_single_vertex_subsets(vertex, vertex_ancestors)
 
     def filter_common_ancestors_for_vertex_pair(self, first_candidate, second_candidate):
+        """!
+        @brief
+        @param first_candidate:
+        @param second_candidate:
+        @return:
+        """
         verified_ancestors = []
         if first_candidate not in self.parents_map or second_candidate not in self.parents_map:
             return verified_ancestors
@@ -160,6 +252,13 @@ class PotentialMrcaProcessedGraph(Graph):
         return verified_ancestors
 
     def get_pmracs_for_vertex_pair(self, first: int, second: int, coalescent_vertex_to_candidates: {int: [int]}):
+        """!
+        @brief
+        @param first:
+        @param second:
+        @param coalescent_vertex_to_candidates:
+        @return
+        """
         result = []
         first_vertex_candidates = coalescent_vertex_to_candidates[first]
         second_vertex_candidates = coalescent_vertex_to_candidates[second]
@@ -176,6 +275,14 @@ class PotentialMrcaProcessedGraph(Graph):
 
     def get_pmracs_for_vertex_triple_dfs(self, first: int, second: int, third: int,
                                          coalescent_vertex_to_candidates: {int: [int]}):
+        """!
+        @brief
+        @param first:
+        @param second:
+        @param third:
+        @param coalescent_vertex_to_candidates:
+        @return:
+        """
         result = []
         first_vertex_candidates = coalescent_vertex_to_candidates[first]
         second_vertex_candidates = coalescent_vertex_to_candidates[second]
@@ -212,6 +319,14 @@ class PotentialMrcaProcessedGraph(Graph):
 
     def get_pmracs_for_vertex_triple_iterative(self, first: int, second: int, third: int,
                                                coalescent_vertex_to_candidates: {int: [int]}):
+        """!
+        @brief
+        @param first:
+        @param second:
+        @param third:
+        @param coalescent_vertex_to_candidates:
+        @return:
+        """
         first_second_pair_result = self.get_pmracs_for_vertex_pair(first, second, coalescent_vertex_to_candidates)
         first_third_pair_result = self.get_pmracs_for_vertex_pair(first, third, coalescent_vertex_to_candidates)
         first_second_dict = dict()
@@ -265,6 +380,14 @@ class PotentialMrcaProcessedGraph(Graph):
 
     def get_pmracs_for_vertices(self, vertices_coalescent_ids: [int],
                                 coalescent_vertex_to_candidates: {int: [int]}):
+        """!
+        @brief This function calculates the potential most recent common ancestor (pmrca) for the given vertices.
+        TODO: Give the definition of a pmrca taking into account various optimizations that have been implemented
+        @param vertices_coalescent_ids The ids for the coalescent vertices.
+        @param coalescent_vertex_to_candidates: A dictionary mapping an id of a coalescent vertex to the list of
+        ids of pedigree vertices that can be assigned to this coalescent vertex.
+        @return All the valid pmracs for the given vertices.
+        """
         vertices_length = len(vertices_coalescent_ids)
         vertices_coalescent_ids = sorted(vertices_coalescent_ids,
                                          key=lambda child: len(
@@ -290,6 +413,10 @@ class PotentialMrcaProcessedGraph(Graph):
     # Note that not all the potential common ancestors are MRCAs
     def get_pmracs_for_vertices_with_memory(self, vertices_coalescent_ids: [int],
                                             coalescent_vertex_to_candidates: {int: [int]}):
+        """!
+        @brief Calculates the pmracs for the given vertices in an iterative manner storing the calculations done
+        during the verification of the previous sub-assignment.
+        """
         vertices_length = len(vertices_coalescent_ids)
         # partial_result elements are lists whose elements
         # have the format: (partial_assignment: tuple, [(candidate, [(preimage_length, image)])])
@@ -355,4 +482,7 @@ class PotentialMrcaProcessedGraph(Graph):
         return result
 
     def get_vertex_ancestors(self, vertex: int):
+        """!
+        @brief Returns the vertex's ancestors.
+        """
         return self.vertex_to_ancestor_map[vertex].keys()

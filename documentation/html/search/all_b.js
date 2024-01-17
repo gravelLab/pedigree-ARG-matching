@@ -1,0 +1,9 @@
+var searchData=
+[
+  ['record_5fchild_5fdescendants_0',['record_child_descendants',['../classpedigree-_a_r_g-matching_1_1descendant__cache_1_1_descendant_cache.html#acbf63343b916b2320adab9b0ddb1edb0',1,'pedigree-ARG-matching.descendant_cache.DescendantCache.record_child_descendants()'],['../classpedigree-_a_r_g-matching_1_1descendant__memory__cache_1_1_descendant_memory_cache.html#ad22a6fdda1164fdab69d7b2488e22de4',1,'pedigree-ARG-matching.descendant_memory_cache.DescendantMemoryCache.record_child_descendants()']]],
+  ['record_5fdescendants_1',['record_descendants',['../classpedigree-_a_r_g-matching_1_1descendant__cache_1_1_descendant_cache.html#a4f91acb5cb9b6b9b9f04bb34939e0c58',1,'pedigree-ARG-matching::descendant_cache::DescendantCache']]],
+  ['record_5fproband_2',['record_proband',['../classpedigree-_a_r_g-matching_1_1descendant__cache_1_1_descendant_cache.html#a14eb57b354a9890138631dcab5b61ad4',1,'pedigree-ARG-matching.descendant_cache.DescendantCache.record_proband()'],['../classpedigree-_a_r_g-matching_1_1descendant__memory__cache_1_1_descendant_memory_cache.html#a32d1f17282ab83aef3fb113a88c73221',1,'pedigree-ARG-matching.descendant_memory_cache.DescendantMemoryCache.record_proband()']]],
+  ['remove_5fvertex_3',['remove_vertex',['../classpedigree-_a_r_g-matching_1_1genealogical__graph_1_1_genealogical_graph.html#ae94054b111e179989b5ecef1a97365b1',1,'pedigree-ARG-matching.genealogical_graph.GenealogicalGraph.remove_vertex()'],['../classpedigree-_a_r_g-matching_1_1graph_1_1_graph.html#ab9a3bbd74d5dd6effe0f6e6e8d1507b1',1,'pedigree-ARG-matching.graph.Graph.remove_vertex()']]],
+  ['root_5fcoalescent_5ftree_4',['root_coalescent_tree',['../classsubtree__matcher_1_1_subtree_matcher.html#a669556eb3df6317d956d260eaf913ad6',1,'subtree_matcher::SubtreeMatcher']]],
+  ['root_5fpedigree_5',['root_pedigree',['../classsubtree__matcher_1_1_subtree_matcher.html#a923b25a6397f2b72df9815d88fad0913',1,'subtree_matcher::SubtreeMatcher']]]
+];

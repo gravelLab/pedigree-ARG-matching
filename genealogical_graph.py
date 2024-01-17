@@ -1,5 +1,11 @@
+"""!
+@file genealogical_graph.py
+@brief This file contains the realization of the genealogical graph that assigns the vertices to their genealogical
+levels and provides a level-by-level framework for preprocessing the graph and the utility class for processing
+coalescent trees.
+"""
+
 import itertools
-import sys
 
 from descendant_cache import DescendantCache
 from descendant_memory_cache import DescendantMemoryCache
@@ -7,6 +13,16 @@ from graph import *
 
 
 class GenealogicalGraph(Graph):
+    """!
+    This class represents a genealogical graph that inherits from the /ref graph::Graph class and additionally
+    assigns all the vertices within the graph to their levels. The level of a vertex is defined recursively as follows:
+    1) All the proband individuals are assigned to level 0.
+    2) If the maximal level among a vertex's children is n, then the vertex's level is n + 1.
+    In other words, the level of a vertex is the length of the longest path from a proband to this vertex in a graph.
+    Notice that this definition assumes that the probands cannot be ancestor one to another!
+    (TODO: Consider checking this scenario)
+    """
+
     def __init__(self, pedigree: Graph = None, probands: [int] = None, initialize_levels: bool = True):
         self.descendant_writer = None
         if pedigree is None:
@@ -23,6 +39,10 @@ class GenealogicalGraph(Graph):
             self.initialize_vertex_to_level_map()
 
     def initialize_vertex_to_level_map(self):
+        """!
+        @brief Assigns the vertices to the level. Refer to the docstring for this class to understand how a level of
+        a vertex is defined.
+        """
         if self.probands is None:
             self.probands = {x for x in self.parents_map if x not in self.children_map}
         current_level = 1
@@ -40,10 +60,17 @@ class GenealogicalGraph(Graph):
             self.levels[level].append(vertex)
 
     def get_proband_descendants(self, vertex_id: int):
+        """!
+        @param vertex_id The vertex for which the proband descendants should be found.
+        @return The descendants of the given vertex which are the probands.
+        """
         # TODO: Cache the list of probands
         return [x for x in self.get_vertex_descendants(vertex_id) if x in self.get_probands()]
 
     def set_descendant_writer(self, descendant_writer: DescendantCache):
+        """!
+        @brief The descendant writer to be set.
+        """
         if self.descendant_writer is not None:
             raise Exception("Overriding the descendant writer is forbidden!")
         self.descendant_writer = descendant_writer
@@ -59,6 +86,7 @@ class GenealogicalGraph(Graph):
     #     return graph
 
     def process_proband_vertex(self, proband_label: int):
+
         # Default behaviour
         self.descendant_writer.record_proband(proband_label)
         # Additional processing
@@ -102,31 +130,29 @@ class GenealogicalGraph(Graph):
         return self
 
     def get_vertices_for_given_level(self, level):
+        """!
+        @bried Returns the vertices belonging to the specified level.
+        @param level The level to be used.
+        """
         return self.levels[level]
 
     def get_top_level_vertices(self):
+        """!
+        @brief Returns the vertices at the top level of the graph.
+        """
         return self.levels[-1]
 
     def get_probands(self):
+        """!
+        @brief Returns the graph's probands.
+        """
         return self.probands
 
-    def calculate_vertices_in_descendant_writer(self):
-        integersMemory = 0
-        setMemory = 0
-        count = 0
-        for vertex in self.vertex_to_level_map.keys():
-            descendants = self.descendant_writer.get_vertex_descendants(vertex)
-            if descendants is not None:
-                count += len(descendants)
-                setMemory += sys.getsizeof(descendants)
-                for descendant in descendants:
-                    integersMemory += sys.getsizeof(descendant)
-        print(f"Integers occupy {integersMemory / (1024 * 1024)} MB of memory")
-        print(f"Average integer take {integersMemory / count}")
-        print(f"Total set memory: {setMemory}")
-        return count
-
     def remove_vertex(self, vertex: int):
+        """!
+        @brief Removes the vertex from the graph.
+        @param vertex The vertex to be removed.
+        """
         super().remove_vertex(vertex)
         # Vertex usually must belong to this map, this can only happen if we try to remove the same vertex twice
         if vertex in self.vertex_to_level_map:
@@ -137,37 +163,22 @@ class GenealogicalGraph(Graph):
 
 
 class CoalescentTree(GenealogicalGraph):
+    """!
+    This is a helper class that is responsible for working with coalescent trees. Apart from the functionality
+    of the GenealogicalGraph, it calculates the connected components (clades) of the graph.
+    """
 
     def __init__(self, pedigree: Graph):
         super().__init__(pedigree=pedigree)
         self.descendant_writer = DescendantMemoryCache()
         self.initialize_genealogical_graph_from_probands()
-        self.proband_descendants = dict()
-        for vertex in self.children_map.keys():
-            vertex_proband_descendants = [x for x in self.get_vertex_descendants(vertex) if x in self.probands]
-            self.proband_descendants.update({vertex: vertex_proband_descendants})
-        self.verify_correctness()
+        self.find_clades()
 
-    def remove_non_coalescing_nodes(self):
-        modified_children_map = dict(self.children_map)
-        for vertex, children in modified_children_map.items():
-            vertex: int
-            if len(children) == 0:
-                raise Exception("Invalid children map")
-            if len(children) == 1:
-                # Remove the whole subgraph
-                vertices = self.get_connected_component_for_vertex(vertex)
-                for connected_component_vertex in vertices:
-                    self.remove_vertex(connected_component_vertex)
-
-    def get_excluded_proband_descendants(self, parent_vertex: int, child_vertex: int):
-        children = list(self.children_map[parent_vertex])
-        children: [int]
-        children.remove(child_vertex)
-        for x in children:
-            if x not in self.proband_descendants:
-                raise Exception(F"Vertex {x} is not in the proband descendants map!")
-        return list(itertools.chain.from_iterable([self.proband_descendants[x] for x in children]))
+    def find_clades(self):
+        """!
+        TODO: Add a method that stores the clades in the coalescent tree after adding the vertices set to Graph.
+        """
+        pass
 
     @staticmethod
     def get_coalescent_tree_from_file(filename):
@@ -181,11 +192,6 @@ class CoalescentTree(GenealogicalGraph):
         result = CoalescentTree(pedigree=pedigree)
         return result
 
-    def verify_correctness(self):
-        pass
-        # for level in self.levels[1:]:
-        #     for vertex in level:
-        #         assert len(self.get_proband_descendants(vertex)) > 1
 
     # @staticmethod
     # def get_coalescent_tree(tree: Tree, probands=None):

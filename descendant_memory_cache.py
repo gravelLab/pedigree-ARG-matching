@@ -1,7 +1,16 @@
+"""!
+@file descendant_memory_cache.py
+@brief The file contains the basic implementation of the descendant cache that stores all the information in RAM.
+"""
+
+
 from descendant_cache import DescendantCache
 
 
 class DescendantMemoryCache(DescendantCache):
+    """
+    The basic implementation of the descendant memory cache storing all the data in RAM.
+    """
 
     def get_dictionary(self):
         return self.vertex_descendant_map

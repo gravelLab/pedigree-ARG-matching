@@ -1,8 +1,20 @@
-from divide_and_conquer.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
-from genealogical_graph import CoalescentTree
+"""!
+@file subtree_matcher.py
+@brief Brief description here
+"""
 
 
 class SubtreeMatcher:
+    """
+    This class represents a matching between a subtree of a coalescent tree in the ARG and the pedigree.
+
+    Attributes:
+        root_coalescent_tree (int): Represents the vertex id of the root of the coalescent tree
+        root_pedigree (int): Represents the vertex if of the pedigree vertex to which root_coalescent_tree
+         is mapped.
+        subtree_matchers (dict): A dictionary representing the assignments to the children vertices which make
+        root_pedigree a valid assignment to root_coalescent_tree
+    """
 
     def __init__(self, root_coalescent_tree: int, root_pedigree: int,
                  subtrees_matchers: dict = None):

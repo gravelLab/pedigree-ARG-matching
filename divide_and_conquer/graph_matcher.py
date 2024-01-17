@@ -1,8 +1,15 @@
+"""!
+@file graph_matcher.py
+@brief Brief description here
+"""
+
 import datetime
 import os
 import time
 
 from divide_and_conquer.subtree_matcher import *
+from genealogical_graph import CoalescentTree
+from potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 
 logs_enabled = True
 logs_default_directory_name = "logs"
@@ -81,6 +88,18 @@ class MatcherLogger:
 
 
 class GraphMather:
+    """!
+    This class runs the divide-and-conquer alignment algorithm on the given preprocessed pedigree and the coalescent
+    tree.
+
+    Attributes:
+        processed_graph (PotentialMrcaProcessedGraph): The preprocessed pedigree graph that stores the "access vertices"
+        through which a descendant vertex can reach the ancestor vertex.
+        coalescent_tree (CoalescentTree): The coalescent tree with which the processed_graph is to be aligned.
+        logger (MatcherLogger): The logger instance to log steps of the algorithm
+        initial_mapping (dict): The initial mapping between the proband vertices in the processed pedigree to
+        the vertices in the coalescent tree.
+    """
 
     def __init__(self, processed_graph: PotentialMrcaProcessedGraph, coalescent_tree: CoalescentTree,
                  logger: MatcherLogger, initial_mapping: dict = None):
@@ -92,6 +111,13 @@ class GraphMather:
         self.logger = logger
 
     def find_mapping(self):
+        """!
+        @brief   This method finds all the valid mapping between the given processed pedigree and
+                 every sub-clade within the coalescent tree
+        @return  Dictionary that maps every vertex in the coalescent tree to the list of valid alignments for
+                 the sub-clade where the chosen vertex is the root.
+                 The alignments are represented as a list of SubtreeMatcher objects
+        """
         coalescent_tree_vertex_to_subtrees = dict()
         for vertex in self.coalescent_tree.levels[0]:
             coalescent_tree_vertex_to_subtrees[vertex] = get_subtree_matcher_for_coalescent_tree_proband(
@@ -104,8 +130,14 @@ class GraphMather:
         # root_assignments = [coalescent_tree_vertex_to_subtrees[x] for x in self.coalescent_tree.levels[-1]]
         return coalescent_tree_vertex_to_subtrees
 
-    def get_subtrees_from_children(self, focal_vertex: int,
-                                   vertex_subtree_dict: {int: [SubtreeMatcher]}):
+    def get_subtrees_from_children(self, focal_vertex: int, vertex_subtree_dict: {int: [SubtreeMatcher]}):
+        """!
+        @brief This method finds all the valid alignments for the sub-clade where the given focal_vertex is the root.
+        @param focal_vertex The root of the sub-clase for which the inference is to be performed
+        @param vertex_subtree_dict The dictionary containing all the valid alignment for the focal vertex
+        @return The list of all the valid sub-clade alignments for the specified focal vertex. The resulting
+                list consists of \link SubtreeMatcher subtree_matcher.SubtreeMatcher \endlink objects
+        """
         focal_vertex_children: [int] = self.coalescent_tree.children_map[focal_vertex]
         if len(focal_vertex_children) == 0:
             raise Exception("Isolated vertex in the coalescent tree")
@@ -160,4 +192,9 @@ class GraphMather:
 
 
 def get_subtree_matcher_for_coalescent_tree_proband(proband: int, proband_pedigree_id: int):
+    """
+    @brief Helper function returning the valid sub-alignments for a proband (which simply one identity alignment).
+    @param proband The id of the proband in the coalescent tree
+    @param proband_pedigree_id The id of the corresponding vertex in the pedigree
+    """
     return [SubtreeMatcher(root_coalescent_tree=proband, root_pedigree=proband_pedigree_id)]
