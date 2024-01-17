@@ -391,7 +391,7 @@ class PotentialMrcaProcessedGraph(Graph):
         vertices_length = len(vertices_coalescent_ids)
         vertices_coalescent_ids = sorted(vertices_coalescent_ids,
                                          key=lambda child: len(
-                                             coalescent_vertex_to_candidates[child].keys()), reverse=False)
+                                             coalescent_vertex_to_candidates[child]), reverse=False)
         if vertices_length == 2:
             result = self.get_pmracs_for_vertex_pair(vertices_coalescent_ids[0], vertices_coalescent_ids[1],
                                                      coalescent_vertex_to_candidates)

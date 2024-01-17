@@ -1,6 +1,6 @@
 """!
 @file graph_matcher.py
-@brief Brief description here
+@brief This file contains the GraphMatcher class which performs the divide-and-conquer alignment algorithm.
 """
 
 import datetime
@@ -9,7 +9,7 @@ import time
 
 from divide_and_conquer.subtree_matcher import *
 from genealogical_graph import CoalescentTree
-from potential_mrca_processed_graph import PotentialMrcaProcessedGraph
+from divide_and_conquer.potential_mrca_processed_graph import *
 
 logs_enabled = True
 logs_default_directory_name = "logs"
@@ -121,7 +121,7 @@ class GraphMather:
         coalescent_tree_vertex_to_subtrees = dict()
         for vertex in self.coalescent_tree.levels[0]:
             coalescent_tree_vertex_to_subtrees[vertex] = get_subtree_matcher_for_coalescent_tree_proband(
-                vertex, self.initial_mapping[vertex])
+                                                            vertex, self.initial_mapping[vertex])
         for level in self.coalescent_tree.levels[1:]:
             for vertex in level:
                 vertex_subtrees = self.get_subtrees_from_children(vertex,
@@ -133,7 +133,7 @@ class GraphMather:
     def get_subtrees_from_children(self, focal_vertex: int, vertex_subtree_dict: {int: [SubtreeMatcher]}):
         """!
         @brief This method finds all the valid alignments for the sub-clade where the given focal_vertex is the root.
-        @param focal_vertex The root of the sub-clase for which the inference is to be performed
+        @param focal_vertex The root of the sub-clade for which the inference is to be performed
         @param vertex_subtree_dict The dictionary containing all the valid alignment for the focal vertex
         @return The list of all the valid sub-clade alignments for the specified focal vertex. The resulting
                 list consists of \link SubtreeMatcher subtree_matcher.SubtreeMatcher \endlink objects
@@ -142,24 +142,13 @@ class GraphMather:
         if len(focal_vertex_children) == 0:
             raise Exception("Isolated vertex in the coalescent tree")
         if len(focal_vertex_children) == 1:
-            # This situation must never happen with real coalescent trees. We could have just 'squashed' the paths
-            # consisting of vertices having just one child, but we will lose some information this way.
-            # This usually leads to a much bigger search space that we wouldn't have gotten with normal coalescent tree
-            # Therefore, we will cheat here
             [child] = focal_vertex_children
-            # The correct one
+
             result = [SubtreeMatcher(root_coalescent_tree=focal_vertex, root_pedigree=x.root_pedigree,
                                      subtrees_matchers={child: x.root_pedigree}) for x in vertex_subtree_dict[child]]
             return result
-        child_candidate_subtree_matchers_matrix = {child: dict() for child in focal_vertex_children}
-        child_candidate_subtree_matchers_matrix: {int: {int: [SubtreeMatcher]}}
-        for child in focal_vertex_children:
-            for subtree_matcher in vertex_subtree_dict[child]:
-                subtree_matcher: SubtreeMatcher
-                child_candidate = subtree_matcher.root_pedigree
-                if child_candidate not in child_candidate_subtree_matchers_matrix[child]:
-                    child_candidate_subtree_matchers_matrix[child][child_candidate] = list()
-                child_candidate_subtree_matchers_matrix[child][child_candidate].append(subtree_matcher)
+        child_candidate_subtree_matchers_matrix = {child: [x.root_pedigree for x in vertex_subtree_dict[child]]
+                                                   for child in focal_vertex_children}
         # print(f"Doing the inference for the vertex {focal_vertex} which has {len(focal_vertex_children)}")
         # for child in focal_vertex_children:
         #     print(f"{child}: {len(vertex_subtree_dict[child])}")
@@ -180,15 +169,24 @@ class GraphMather:
         time_taken = inference_end - inference_start
         self.logger.log_vertex_inference_time(self.coalescent_tree, time_taken, focal_vertex, focal_vertex_children,
                                               child_candidate_subtree_matchers_matrix, inference_result)
-        result = []
+        result_list = []
+        subtree_matcher_dictionary = dict()
         for single_result in inference_result:
             (assigned_children, focal_vertex_candidates) = single_result
             assert len(assigned_children) == len(focal_vertex_children)
             children_dictionary = dict()
             for index in range(len(assigned_children)):
                 children_dictionary[focal_vertex_children[index]] = assigned_children[index]
-            result.extend([SubtreeMatcher(focal_vertex, x, children_dictionary) for x in focal_vertex_candidates])
-        return result
+            for focal_vertex_candidate in focal_vertex_candidates:
+                if focal_vertex_candidate in subtree_matcher_dictionary:
+                    subtree_matcher = subtree_matcher_dictionary[focal_vertex_candidate]
+                    subtree_matcher: SubtreeMatcher
+                    subtree_matcher.subtree_matchers.append(children_dictionary)
+                else:
+                    subtree_matcher = SubtreeMatcher(focal_vertex, focal_vertex_candidate, [children_dictionary])
+                    result_list.append(subtree_matcher)
+                    subtree_matcher_dictionary[focal_vertex_candidate] = subtree_matcher
+        return result_list
 
 
 def get_subtree_matcher_for_coalescent_tree_proband(proband: int, proband_pedigree_id: int):

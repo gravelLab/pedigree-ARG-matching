@@ -10,14 +10,14 @@ class SubtreeMatcher:
 
     Attributes:
         root_coalescent_tree (int): Represents the vertex id of the root of the coalescent tree
-        root_pedigree (int): Represents the vertex if of the pedigree vertex to which root_coalescent_tree
-         is mapped.
-        subtree_matchers (dict): A dictionary representing the assignments to the children vertices which make
+        root_pedigree (int): Represents the vertex in the pedigree to which root_coalescent_tree
+        can be mapped.
+        subtree_matchers ([dict]): The dictionaries representing the assignments to the children vertices which make
         root_pedigree a valid assignment to root_coalescent_tree
     """
 
     def __init__(self, root_coalescent_tree: int, root_pedigree: int,
-                 subtrees_matchers: dict = None):
+                 subtrees_matchers: [dict] = None):
         self.root_coalescent_tree = root_coalescent_tree
         self.root_pedigree = root_pedigree
         self.subtree_matchers = subtrees_matchers
