@@ -407,7 +407,7 @@ class PotentialMrcaProcessedGraph(Graph):
         #     self.inference_cache[assigned_children] = verified_candidates_list
         if not result:
             raise Exception("Failed")
-        return result
+        return vertices_coalescent_ids, result
 
     # Returns all the potential common ancestors for the specified vertices
     # Note that not all the potential common ancestors are MRCAs
@@ -436,8 +436,7 @@ class PotentialMrcaProcessedGraph(Graph):
             if print_enabled:
                 print(f"Partial result: {len(partial_result)}")
                 print(f"Candidates for the next vertex: {len(coalescent_vertex_to_candidates[next_coalescent_id])}")
-                print(f"The whole search space is {len(partial_result) *
-                                                   len(coalescent_vertex_to_candidates[next_coalescent_id])}")
+                print(f"The whole search space is {len(partial_result) * len(coalescent_vertex_to_candidates[next_coalescent_id])}")
             for next_candidate in coalescent_vertex_to_candidates[next_coalescent_id]:
                 next_candidate_ancestors = self.get_vertex_ancestors(next_candidate)
                 for verified_children_partial_assignment in partial_result:

@@ -121,7 +121,7 @@ class GraphMather:
         coalescent_tree_vertex_to_subtrees = dict()
         for vertex in self.coalescent_tree.levels[0]:
             coalescent_tree_vertex_to_subtrees[vertex] = get_subtree_matcher_for_coalescent_tree_proband(
-                                                            vertex, self.initial_mapping[vertex])
+                vertex, self.initial_mapping[vertex])
         for level in self.coalescent_tree.levels[1:]:
             for vertex in level:
                 vertex_subtrees = self.get_subtrees_from_children(vertex,
@@ -145,13 +145,10 @@ class GraphMather:
             [child] = focal_vertex_children
 
             result = [SubtreeMatcher(root_coalescent_tree=focal_vertex, root_pedigree=x.root_pedigree,
-                                     subtrees_matchers={child: x.root_pedigree}) for x in vertex_subtree_dict[child]]
+                                     subtrees_matchers=[{child: x}]) for x in vertex_subtree_dict[child]]
             return result
         child_candidate_subtree_matchers_matrix = {child: [x.root_pedigree for x in vertex_subtree_dict[child]]
                                                    for child in focal_vertex_children}
-        # print(f"Doing the inference for the vertex {focal_vertex} which has {len(focal_vertex_children)}")
-        # for child in focal_vertex_children:
-        #     print(f"{child}: {len(vertex_subtree_dict[child])}")
         if print_enabled:
             print("####################")
             print(f"Inference for {focal_vertex} ({self.pedigree.vertex_to_level_map[focal_vertex]}),"
@@ -159,7 +156,7 @@ class GraphMather:
             for child in focal_vertex_children:
                 print(f"{child}: {len(child_candidate_subtree_matchers_matrix[child])}")
         inference_start = time.time()
-        inference_result = self.pedigree.get_pmracs_for_vertices(
+        (children_order, inference_result) = self.pedigree.get_pmracs_for_vertices(
             coalescent_vertex_to_candidates=child_candidate_subtree_matchers_matrix,
             vertices_coalescent_ids=focal_vertex_children
         )
@@ -170,22 +167,28 @@ class GraphMather:
         self.logger.log_vertex_inference_time(self.coalescent_tree, time_taken, focal_vertex, focal_vertex_children,
                                               child_candidate_subtree_matchers_matrix, inference_result)
         result_list = []
-        subtree_matcher_dictionary = dict()
+        candidate_subtree_matcher_dictionary = dict()
         for single_result in inference_result:
             (assigned_children, focal_vertex_candidates) = single_result
-            assert len(assigned_children) == len(focal_vertex_children)
+            assert len(children_order) == len(assigned_children) == len(focal_vertex_children)
             children_dictionary = dict()
             for index in range(len(assigned_children)):
-                children_dictionary[focal_vertex_children[index]] = assigned_children[index]
+                child_coalescent_id = children_order[index]
+                child_assigned_pedigree_id = assigned_children[index]
+                assigned_child_matchers = [x for x in vertex_subtree_dict[child_coalescent_id]
+                                           if x.root_pedigree == child_assigned_pedigree_id]
+                assert (len(assigned_child_matchers) == 1)
+                assigned_child_matcher = assigned_child_matchers[0]
+                children_dictionary[child_coalescent_id] = assigned_child_matcher
             for focal_vertex_candidate in focal_vertex_candidates:
-                if focal_vertex_candidate in subtree_matcher_dictionary:
-                    subtree_matcher = subtree_matcher_dictionary[focal_vertex_candidate]
+                if focal_vertex_candidate in candidate_subtree_matcher_dictionary:
+                    subtree_matcher = candidate_subtree_matcher_dictionary[focal_vertex_candidate]
                     subtree_matcher: SubtreeMatcher
-                    subtree_matcher.subtree_matchers.append(children_dictionary)
+                    subtree_matcher.children_assignments.append(children_dictionary)
                 else:
                     subtree_matcher = SubtreeMatcher(focal_vertex, focal_vertex_candidate, [children_dictionary])
                     result_list.append(subtree_matcher)
-                    subtree_matcher_dictionary[focal_vertex_candidate] = subtree_matcher
+                    candidate_subtree_matcher_dictionary[focal_vertex_candidate] = subtree_matcher
         return result_list
 
 

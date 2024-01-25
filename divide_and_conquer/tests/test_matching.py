@@ -59,9 +59,9 @@ def test_alignments_correct_for_clade(coalescent_tree: CoalescentTree, pedigree:
     if len(coalescent_tree_root_children) > 1:
         for alignment in alignments[coalescent_tree_root]:
             alignment: SubtreeMatcher
-            if alignment.subtree_matchers is None:
+            if alignment.children_assignments is None:
                 return
-            children_vertices = list(alignment.subtree_matchers.values())
+            children_vertices = list(alignment.children_assignments.values())
             children_vertices_pmracs = find_pmrcas_for_vertices(pedigree, children_vertices)
             if alignment.root_pedigree not in children_vertices_pmracs:
                 raise Exception("Assigned coalescent vertex is not a MRCA for the children assignments")
@@ -93,7 +93,7 @@ def test_identity_present_for_clade(coalescent_tree: CoalescentTree,
     correct_children_set = set(coalescent_tree.children_map[coalescent_tree_root])
     for alignment in root_identity_alignments:
         alignment: SubtreeMatcher
-        children_set = set(alignment.subtree_matchers.values())
+        children_set = set(alignment.children_assignments.values())
         if children_set == correct_children_set:
             identity_present = True
             break

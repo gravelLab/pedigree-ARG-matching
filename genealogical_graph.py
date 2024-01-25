@@ -19,8 +19,6 @@ class GenealogicalGraph(Graph):
     1) All the proband individuals are assigned to level 0.
     2) If the maximal level among a vertex's children is n, then the vertex's level is n + 1.
     In other words, the level of a vertex is the length of the longest path from a proband to this vertex in a graph.
-    Notice that this definition assumes that the probands cannot be ancestor one to another!
-    (TODO: Consider checking this scenario)
     """
 
     def __init__(self, pedigree: Graph = None, probands: [int] = None, initialize_levels: bool = True):
