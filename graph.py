@@ -4,6 +4,8 @@
 and building the parents and children maps.
 """
 
+from tskit import Tree
+
 
 class Graph:
     """!
@@ -84,20 +86,15 @@ class Graph:
         if missing_parent_notation is None:
             missing_parent_notation = ("-1", '.')
         (child, mother, father) = list(map(lambda name: str(name), line.strip('\n').split(separation_symbol)))[:3]
-        if mother in missing_parent_notation or father in missing_parent_notation:
-            return
-        (child, mother, father) = (int(child), int(mother), int(father))
-        child_maternal = 2 * child
-        child_paternal = child_maternal + 1
-        self.add_child(2 * mother, child_maternal)
-        self.add_child(2 * mother + 1, child_maternal)
-        self.add_child(2 * father, child_paternal)
-        self.add_child(2 * father + 1, child_paternal)
-        # Every non-founder appears only once in the pedigree as a child
-        assert child_maternal not in self.parents_map
-        assert child_paternal not in self.parents_map
-        self.parents_map[child_maternal] = [2 * mother, 2 * mother + 1]
-        self.parents_map[child_paternal] = [2 * father, 2 * father + 1]
+        child_ploid = 2 * int(child)
+        for parent in (mother, father):
+            if parent not in missing_parent_notation:
+                parent = int(parent)
+                self.add_child(2 * parent, child_ploid)
+                self.add_child(2 * parent + 1, child_ploid)
+                assert child_ploid not in self.parents_map
+                self.parents_map[child_ploid] = [2 * parent, 2 * parent + 1]
+            child_ploid += 1
 
     def get_sink_vertices(self):
         """!
@@ -136,10 +133,10 @@ class Graph:
         file.close()
         return pedigree
 
-    # @staticmethod
-    # def get_graph_from_tree(tree: Tree):
-    #     graph = Graph()
-    #     graph.parents_map = tree.parent_dict
-    #     for (child, parent) in tree.parent_dict.items():
-    #         graph.add_child(parent=parent, child=child)
-    #     return graph
+    @staticmethod
+    def get_graph_from_tree(tree: Tree):
+        graph = Graph()
+        graph.parents_map = tree.parent_dict
+        for (child, parent) in tree.parent_dict.items():
+            graph.add_child(parent=parent, child=child)
+        return graph

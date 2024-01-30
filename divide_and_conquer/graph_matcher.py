@@ -151,7 +151,7 @@ class GraphMather:
                                                    for child in focal_vertex_children}
         if print_enabled:
             print("####################")
-            print(f"Inference for {focal_vertex} ({self.pedigree.vertex_to_level_map[focal_vertex]}),"
+            print(f"Inference for {focal_vertex} ({self.coalescent_tree.vertex_to_level_map[focal_vertex]}),"
                   f" there are {len(focal_vertex_children)} children")
             for child in focal_vertex_children:
                 print(f"{child}: {len(child_candidate_subtree_matchers_matrix[child])}")
@@ -160,12 +160,14 @@ class GraphMather:
             coalescent_vertex_to_candidates=child_candidate_subtree_matchers_matrix,
             vertices_coalescent_ids=focal_vertex_children
         )
-        if print_enabled:
-            print("####################")
         inference_end = time.time()
         time_taken = inference_end - inference_start
+        if print_enabled:
+            print(f"Inference time: {time_taken}")
+            print("####################")
         self.logger.log_vertex_inference_time(self.coalescent_tree, time_taken, focal_vertex, focal_vertex_children,
                                               child_candidate_subtree_matchers_matrix, inference_result)
+
         result_list = []
         candidate_subtree_matcher_dictionary = dict()
         for single_result in inference_result:

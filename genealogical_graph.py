@@ -10,7 +10,7 @@ import itertools
 from descendant_cache import DescendantCache
 from descendant_memory_cache import DescendantMemoryCache
 from graph import *
-
+from tskit import Tree
 
 class GenealogicalGraph(Graph):
     """!
@@ -73,15 +73,15 @@ class GenealogicalGraph(Graph):
             raise Exception("Overriding the descendant writer is forbidden!")
         self.descendant_writer = descendant_writer
 
-    # @staticmethod
-    # def get_graph_from_tree(tree: Tree, probands=None):
-    #     pedigree = Graph.get_graph_from_tree(tree)
-    #     reformatted_parent_dict = dict()
-    #     for key, value in pedigree.parents_map.items():
-    #         reformatted_parent_dict[key] = [value]
-    #     pedigree.parents_map = reformatted_parent_dict
-    #     graph = GenealogicalGraph(pedigree)
-    #     return graph
+    @staticmethod
+    def get_graph_from_tree(tree: Tree, probands=None):
+        pedigree = Graph.get_graph_from_tree(tree)
+        reformatted_parent_dict = dict()
+        for key, value in pedigree.parents_map.items():
+            reformatted_parent_dict[key] = [value]
+        pedigree.parents_map = reformatted_parent_dict
+        graph = GenealogicalGraph(pedigree)
+        return graph
 
     def process_proband_vertex(self, proband_label: int):
 
@@ -190,8 +190,7 @@ class CoalescentTree(GenealogicalGraph):
         result = CoalescentTree(pedigree=pedigree)
         return result
 
-
-    # @staticmethod
-    # def get_coalescent_tree(tree: Tree, probands=None):
-    #     genealogical_graph = GenealogicalGraph.get_graph_from_tree(tree, probands)
-    #     return CoalescentTree(genealogical_graph)
+    @staticmethod
+    def get_coalescent_tree(tree: Tree, probands=None):
+        genealogical_graph = GenealogicalGraph.get_graph_from_tree(tree, probands)
+        return CoalescentTree(genealogical_graph)
