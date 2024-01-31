@@ -71,7 +71,7 @@ def save_alignment_result_to_files(alignment_result: {int: [SubtreeMatcher]}, co
         os.chdir(directory_name)
         counter = 0
         subtree_matchers = alignment_result[top_level_vertex]
-        for subtree_matcher in subtree_matchers:
+        for subtree_matcher in subtree_matchers.values():
             alignments = subtree_matcher.get_all_subtree_alignments()
             for alignment in alignments:
                 alignment_filename = f"alignment_{counter}"
