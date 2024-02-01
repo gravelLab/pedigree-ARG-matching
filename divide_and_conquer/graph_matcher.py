@@ -128,6 +128,26 @@ class GraphMather:
                     vertex,
                     coalescent_tree_vertex_to_subtrees)
         # root_assignments = [coalescent_tree_vertex_to_subtrees[x] for x in self.coalescent_tree.levels[-1]]
+        for level in self.coalescent_tree.levels[1:]:
+            for root_vertex in level:
+                if len(self.coalescent_tree.children_map[root_vertex]) < 2:
+                    continue
+                invalid_candidates = []
+                for root_matcher in coalescent_tree_vertex_to_subtrees[root_vertex].values():
+                    root_matcher: SubtreeMatcher
+                    assert root_matcher.root_coalescent_tree == root_vertex
+                    valid_children_assignments = []
+                    for children_assignment in root_matcher.children_assignments:
+                        if any(x.children_assignments == [] for x in children_assignment.values()):
+                            continue
+                        children_values = [x.root_pedigree for x in children_assignment.values()]
+                        if self.pedigree.verify_mrca_for_vertices(root_matcher.root_pedigree, children_values):
+                            valid_children_assignments.append(children_assignment)
+                    if not valid_children_assignments:
+                        invalid_candidates.append(root_matcher.root_pedigree)
+                    root_matcher.children_assignments = valid_children_assignments
+                for invalid_candidate in invalid_candidates:
+                    coalescent_tree_vertex_to_subtrees[root_vertex].pop(invalid_candidate)
         return coalescent_tree_vertex_to_subtrees
 
     def get_subtrees_from_children(self, focal_vertex: int, vertex_subtree_dict: {int: {int: SubtreeMatcher}}):

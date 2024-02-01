@@ -3,10 +3,12 @@
 @brief Brief description here
 """
 
-
 import itertools
 
+import networkx
+
 from graph import Graph
+from networkx import flow
 
 print_enabled = True
 
@@ -20,6 +22,7 @@ class PotentialMrcaProcessedGraph(Graph):
         2) A dictionary of dictionaries (a matrix) that maps a vertex u to a dictionary whose keys the u's ancestors
         and the values are the "access vertices" through which u can reach the particular ancestor.
     """
+
     def __init__(self, pedigree: Graph, probands: [int] = None):
         super().__init__(children_map=pedigree.children_map, parents_map=pedigree.parents_map,
                          vertices_number=pedigree.vertices_number, sink_vertices=pedigree.sink_vertices)
@@ -436,7 +439,8 @@ class PotentialMrcaProcessedGraph(Graph):
             if print_enabled:
                 print(f"Partial result: {len(partial_result)}")
                 print(f"Candidates for the next vertex: {len(coalescent_vertex_to_candidates[next_coalescent_id])}")
-                print(f"The whole search space is {len(partial_result) * len(coalescent_vertex_to_candidates[next_coalescent_id])}")
+                print(
+                    f"The whole search space is {len(partial_result) * len(coalescent_vertex_to_candidates[next_coalescent_id])}")
             for next_candidate in coalescent_vertex_to_candidates[next_coalescent_id]:
                 next_candidate_ancestors = self.get_vertex_ancestors(next_candidate)
                 for verified_children_partial_assignment in partial_result:
@@ -479,6 +483,34 @@ class PotentialMrcaProcessedGraph(Graph):
         if not result:
             raise Exception("No valid assignments found")
         return result
+
+    def verify_mrca_for_vertices(self, mrca: int, descendant_vertices: [int]):
+        # A speed-up for the case with two vertices:
+        if len(descendant_vertices) == 2 and \
+                self.vertex_to_ancestor_map[descendant_vertices[0]][mrca] != \
+                self.vertex_to_ancestor_map[descendant_vertices[1]][mrca]:
+            return True
+        network_graph = networkx.DiGraph()
+        source_vertex_label = "s"
+        for descendant in descendant_vertices:
+            network_graph.add_edge(source_vertex_label, descendant, capacity=1)
+            descendant_mrca_access_vertices = self.vertex_to_ancestor_map[descendant][mrca]
+            network_graph.add_edges_from([(x, mrca) for x in descendant_mrca_access_vertices], capacity=1)
+            # for access_vertex in descendant_mrca_access_vertices:
+            #     network_graph.add_edge(access_vertex, mrca, capacity=1)
+            current_level_vertices = descendant_mrca_access_vertices
+            while descendant not in current_level_vertices:
+                next_level_vertices = set()
+                for vertex in current_level_vertices:
+                    neighbors = self.vertex_to_ancestor_map[descendant][vertex]
+                    for neighbor in neighbors:
+                        vertex_access_label = f"{vertex}'"
+                        network_graph.add_edge(vertex_access_label, vertex, capacity=1)
+                        network_graph.add_edge(neighbor, vertex_access_label, capacity=1)
+                    next_level_vertices.update(neighbors)
+                current_level_vertices = next_level_vertices
+        return networkx.maximum_flow_value(flowG=network_graph, _s=source_vertex_label, _t=mrca) == len(
+            descendant_vertices)
 
     def get_vertex_ancestors(self, vertex: int):
         """!
