@@ -48,12 +48,27 @@ def save_statistics_to_file(alignment_result: {int: [SubtreeMatcher]}, coalescen
     # Calculating the rest of the data
     coalescing_events = len([x for x in clade if x in coalescent_tree.children_map
                              and len(coalescent_tree.children_map[x]) > 1])
+    proband_vertices = [x for x in clade if coalescent_tree.vertex_to_level_map[x] == 0]
     coalescent_vertex_pedigree_candidates_number = {x: len(alignment_result[x]) for x in clade}
     # Printing the results to the file
     statistics_file = open(filename, 'w')
     statistics_file.write(f"The root of the clade: {clade_root}\n")
     statistics_file.write(f"There are {len(clade)} vertices in the clade\n")
+    statistics_file.write(f"There are {len(proband_vertices)} probands in the clade\n")
     statistics_file.write(f"There are {coalescing_events} coalescing events in the clade\n")
+    statistics_file.write("##############################\n")
+    statistics_file.write("Number of coalescing events grouped by the children number:\n")
+    coalescing_number_to_events_number = dict()
+    for vertex in clade:
+        if vertex not in coalescent_tree.children_map:
+            continue
+        children_number = len(coalescent_tree.children_map[vertex])
+        previous_counter = coalescing_number_to_events_number.get(children_number, 0)
+        coalescing_number_to_events_number[children_number] = previous_counter + 1
+    coalescing_numbers = sorted(coalescing_number_to_events_number.keys())
+    for coalescing_number in coalescing_numbers:
+        statistics_file.write(f"{coalescing_number}: {coalescing_number_to_events_number[coalescing_number]}\n")
+    statistics_file.write("##############################\n")
     statistics_file.write(f"The total number of alignments is: {alignments_number}\n")
     statistics_file.write("##############################\n")
     statistics_file.write("The number of pedigree candidates for every vertex:\n")

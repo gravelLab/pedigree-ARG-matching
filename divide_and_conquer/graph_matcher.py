@@ -128,6 +128,8 @@ class GraphMather:
                     vertex,
                     coalescent_tree_vertex_to_subtrees)
         # root_assignments = [coalescent_tree_vertex_to_subtrees[x] for x in self.coalescent_tree.levels[-1]]
+        print("Filtering")
+        start_time = time.time()
         for level in self.coalescent_tree.levels[1:]:
             for root_vertex in level:
                 if len(self.coalescent_tree.children_map[root_vertex]) < 2:
@@ -148,6 +150,8 @@ class GraphMather:
                     root_matcher.children_assignments = valid_children_assignments
                 for invalid_candidate in invalid_candidates:
                     coalescent_tree_vertex_to_subtrees[root_vertex].pop(invalid_candidate)
+        end_time = time.time()
+        print(f"Time spent on filtering the results: {end_time - start_time}")
         return coalescent_tree_vertex_to_subtrees
 
     def get_subtrees_from_children(self, focal_vertex: int, vertex_subtree_dict: {int: {int: SubtreeMatcher}}):
