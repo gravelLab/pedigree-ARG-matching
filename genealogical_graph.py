@@ -12,6 +12,7 @@ from descendant_memory_cache import DescendantMemoryCache
 from graph import *
 from tskit import Tree
 
+
 class GenealogicalGraph(Graph):
     """!
     This class represents a genealogical graph that inherits from the /ref graph::Graph class and additionally
@@ -170,13 +171,19 @@ class CoalescentTree(GenealogicalGraph):
         super().__init__(pedigree=pedigree)
         self.descendant_writer = DescendantMemoryCache()
         self.initialize_genealogical_graph_from_probands()
-        self.find_clades()
 
-    def find_clades(self):
-        """!
-        TODO: Add a method that stores the clades in the coalescent tree after adding the vertices set to Graph.
-        """
-        pass
+    def get_largest_clade(self):
+        clades = self.get_connected_components()
+        largest_clade = max(clades, key=len)
+        return largest_clade
+
+    def get_subtree_from_vertices(self, vertices: [int]):
+        children_map_vertices = {key: self.children_map[key] for key in vertices}
+        parents_map_vertices = {key: self.parents_map[key] for key in vertices}
+        vertices_number = len(vertices)
+        pedigree = Graph(children_map=children_map_vertices, parents_map=parents_map_vertices,
+                         vertices_number=vertices_number)
+        return CoalescentTree(pedigree=pedigree)
 
     @staticmethod
     def get_coalescent_tree_from_file(filename):

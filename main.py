@@ -77,7 +77,16 @@ def save_statistics_to_file(alignment_result: {int: [SubtreeMatcher]}, coalescen
     statistics_file.close()
 
 
-def save_alignment_result_to_files(alignment_result: {int: [SubtreeMatcher]}, coalescent_tree: CoalescentTree):
+def save_general_statistics_coalescent_tree(coalescent_tree: CoalescentTree, coalescent_tree_filename: str):
+    statistics_file = open(coalescent_tree_filename, "w")
+    top_level_vertices = coalescent_tree.levels[-1]
+    statistics_file.write(f"There are {len(top_level_vertices)} clades in the coalescent tree\n")
+    statistics_file.close()
+
+
+def save_alignment_result_to_files(alignment_result: {int: [SubtreeMatcher]}, coalescent_tree: CoalescentTree,
+                                   coalescent_tree_filename: str):
+    save_general_statistics_coalescent_tree(coalescent_tree, coalescent_tree_filename)
     top_level_vertices = coalescent_tree.levels[-1]
     for top_level_vertex in top_level_vertices:
         # TODO: Draw an image?
@@ -141,6 +150,6 @@ for file in os.listdir(current_directory):
     count += 1
     os.chdir(result_directory_name)
     os.chdir(filename)
-    save_alignment_result_to_files(result, coalescent_tree)
+    save_alignment_result_to_files(result, coalescent_tree, filename)
     os.chdir("../..")
 print(f"Average inference time {total_alignment_time / count} seconds")

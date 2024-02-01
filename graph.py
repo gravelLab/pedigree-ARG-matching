@@ -22,7 +22,17 @@ class Graph:
         self.parents_map = parents_map
         self.vertices_number = vertices_number
         self.sink_vertices = sink_vertices
-        # TODO: Add the "vertices" set
+
+    def get_connected_components(self):
+        visited = set()
+        connected_components = []
+        for vertex in self.parents_map:
+            if vertex in visited:
+                continue
+            connected_component = self.get_connected_component_for_vertex(vertex)
+            visited.update(connected_component)
+            connected_components.append(connected_component)
+        return connected_components
 
     def get_connected_component_for_vertex(self, vertex: int):
         """!
@@ -30,20 +40,20 @@ class Graph:
         @param vertex The vertex for which the connected component should be calculated.
         @return The set of vertices that are in the same connected component as the passed vertex.
         """
-        result = {vertex}
-        previous_length = 0
-        new_length = 1
-        while previous_length != new_length:
-            new_result = set(result)
-            for connected_component_vertex in result:
-                if connected_component_vertex in self.children_map:
-                    new_result.update(self.children_map[connected_component_vertex])
-                if connected_component_vertex in self.parents_map:
-                    new_result.update(self.parents_map[connected_component_vertex])
-            previous_length = new_length
-            new_length = len(new_result)
-            result = new_result
-        return result
+        visited = set()
+        component = []
+
+        def dfs(source_vertex):
+            if source_vertex not in visited:
+                visited.add(source_vertex)
+                component.append(source_vertex)
+                for neighbour in self.parents_map.get(source_vertex, []):
+                    dfs(neighbour)
+                for neighbour in self.children_map.get(source_vertex, []):
+                    dfs(neighbour)
+
+        dfs(vertex)
+        return component
 
     def remove_vertex(self, vertex: int):
         """!
