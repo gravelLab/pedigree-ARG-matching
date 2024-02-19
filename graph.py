@@ -3,6 +3,7 @@
 @brief The file contains the realization of the basic Graph class that is responsible for parsing a pedigree file
 and building the parents and children maps.
 """
+import itertools
 
 from tskit import Tree
 
@@ -55,22 +56,47 @@ class Graph:
         dfs(vertex)
         return component
 
+    def get_ascending_genealogy_from_vertices(self, vertices: [int]):
+        result = set(vertices)
+        current_level_vertices = set(result)
+        while current_level_vertices:
+            next_level_vertices = set()
+            for vertex in current_level_vertices:
+                if vertex not in self.parents_map:
+                    continue
+                parents = self.parents_map[vertex]
+                result.update(parents)
+                next_level_vertices.update(parents)
+            current_level_vertices = next_level_vertices
+        return result
+
     def remove_vertex(self, vertex: int):
         """!
         @brief This function removes the vertex from the graph.
         @param vertex The vertex to be removed.
+        @return Returns whether the vertex was present in the graph
         """
         removed = False
-        if vertex in self.parents_map:
-            self.parents_map.pop(vertex)
-            removed = True
-        if vertex in self.children_map:
-            self.children_map.pop(vertex)
-            removed = True
+        complimentary_dictionaries = [(self.parents_map, self.children_map), (self.children_map, self.parents_map)]
+        for (first, second) in complimentary_dictionaries:
+            if vertex in first:
+                keys = first[vertex]
+                for key in keys:
+                    if key in second:
+                        second_values_list = second[key]
+                        try:
+                            second_values_list.remove(vertex)
+                        except ValueError:
+                            pass
+                        if not second_values_list:
+                            second.pop(key)
+                first.pop(vertex)
+                removed = True
         if removed:
             self.vertices_number -= 1
         if self.sink_vertices and vertex in self.sink_vertices:
             self.sink_vertices.remove(vertex)
+        return removed
 
     def add_child(self, parent: int, child: int):
         """!
@@ -104,7 +130,7 @@ class Graph:
                 self.add_child(2 * parent + 1, child_ploid)
                 assert child_ploid not in self.parents_map
                 self.parents_map[child_ploid] = [2 * parent, 2 * parent + 1]
-            child_ploid += 1
+                child_ploid += 1
 
     def get_sink_vertices(self):
         """!
@@ -119,7 +145,7 @@ class Graph:
         """!
         @brief Returns the vertices that don't have parents specified.
         """
-        return [x for x in self.children_map.keys() if x not in self.parents_map.keys()]
+        return [x for x in self.children_map if x not in self.parents_map]
 
     @staticmethod
     def get_pedigree_from_file(filename, missing_parent_notation=None, separation_symbol=' '):

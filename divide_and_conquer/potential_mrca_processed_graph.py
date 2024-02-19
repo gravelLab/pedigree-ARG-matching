@@ -10,7 +10,7 @@ import networkx
 from graph import Graph
 from networkx import flow
 
-print_enabled = True
+print_enabled = False
 
 
 class PotentialMrcaProcessedGraph(Graph):
@@ -494,23 +494,40 @@ class PotentialMrcaProcessedGraph(Graph):
         source_vertex_label = "s"
         for descendant in descendant_vertices:
             network_graph.add_edge(source_vertex_label, descendant, capacity=1)
-            descendant_mrca_access_vertices = self.vertex_to_ancestor_map[descendant][mrca]
-            network_graph.add_edges_from([(x, mrca) for x in descendant_mrca_access_vertices], capacity=1)
-            # for access_vertex in descendant_mrca_access_vertices:
-            #     network_graph.add_edge(access_vertex, mrca, capacity=1)
-            current_level_vertices = descendant_mrca_access_vertices
-            while descendant not in current_level_vertices:
+            self.add_edges_to_mrca_from_descendants(network_graph, mrca, descendant_vertices)
+        return networkx.maximum_flow_value(flowG=network_graph, _s=source_vertex_label, _t=mrca) == len(
+            descendant_vertices)
+
+    def add_edges_to_mrca_from_descendants(self, flow_network: networkx.DiGraph, mrca: int, descendant_vertices: [int]):
+        """
+        :param flow_network:
+        :param mrca:
+        :param descendant_vertices:
+        :return:
+        """
+        # TODO: Extract the whole inference logic into the graph matcher class to achieve correct separation of concerns
+        mrca_access_label = f"{mrca}'"
+        flow_network.add_edge(mrca_access_label, mrca, capacity=len(descendant_vertices))
+        for descendant in descendant_vertices:
+            # descendant_mrca_access_vertices = self.vertex_to_ancestor_map[descendant][mrca]
+            # flow_network.add_edges_from([(x, mrca_access_label) for x in descendant_mrca_access_vertices], capacity=1)
+            # current_level_vertices = descendant_mrca_access_vertices
+            current_level_vertices = [mrca]
+            while current_level_vertices:
                 next_level_vertices = set()
                 for vertex in current_level_vertices:
+                    if vertex == descendant:
+                        continue
                     neighbors = self.vertex_to_ancestor_map[descendant][vertex]
                     for neighbor in neighbors:
                         vertex_access_label = f"{vertex}'"
-                        network_graph.add_edge(vertex_access_label, vertex, capacity=1)
-                        network_graph.add_edge(neighbor, vertex_access_label, capacity=1)
+                        # We can potentially override the edge's capacity if vertex is the mrca in the
+                        # coalescent tree
+                        if not flow_network.has_edge(vertex_access_label, vertex):
+                            flow_network.add_edge(vertex_access_label, vertex, capacity=1)
+                        flow_network.add_edge(neighbor, vertex_access_label, capacity=1)
                     next_level_vertices.update(neighbors)
                 current_level_vertices = next_level_vertices
-        return networkx.maximum_flow_value(flowG=network_graph, _s=source_vertex_label, _t=mrca) == len(
-            descendant_vertices)
 
     def get_vertex_ancestors(self, vertex: int):
         """!

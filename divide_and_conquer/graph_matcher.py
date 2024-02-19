@@ -14,7 +14,7 @@ from divide_and_conquer.potential_mrca_processed_graph import *
 logs_enabled = True
 logs_default_directory_name = "logs"
 
-print_enabled = True
+print_enabled = False
 
 
 class MatcherLogger:
@@ -25,7 +25,8 @@ class MatcherLogger:
             log_filename = f"{logs_directory_name}/log_{int(time_in_milliseconds)}.txt"
             if not os.path.exists(logs_directory_name):
                 os.makedirs(logs_directory_name)
-            print(f"The filename is {log_filename}")
+            if print_enabled:
+                print(f"The filename is {log_filename}")
             self.file = open(log_filename, 'w')
 
     def log(self, line: str):
@@ -128,31 +129,72 @@ class GraphMather:
                     vertex,
                     coalescent_tree_vertex_to_subtrees)
         # root_assignments = [coalescent_tree_vertex_to_subtrees[x] for x in self.coalescent_tree.levels[-1]]
-        print("Filtering")
+        clades = sorted(self.coalescent_tree.get_connected_components(), reverse=True, key=len)[:10]
+        if print_enabled:
+            print("Filtering")
         start_time = time.time()
-        for level in self.coalescent_tree.levels[1:]:
-            for root_vertex in level:
-                if len(self.coalescent_tree.children_map[root_vertex]) < 2:
-                    continue
-                invalid_candidates = []
-                for root_matcher in coalescent_tree_vertex_to_subtrees[root_vertex].values():
-                    root_matcher: SubtreeMatcher
-                    assert root_matcher.root_coalescent_tree == root_vertex
-                    valid_children_assignments = []
-                    for children_assignment in root_matcher.children_assignments:
-                        if any(x.children_assignments == [] for x in children_assignment.values()):
-                            continue
-                        children_values = [x.root_pedigree for x in children_assignment.values()]
-                        if self.pedigree.verify_mrca_for_vertices(root_matcher.root_pedigree, children_values):
-                            valid_children_assignments.append(children_assignment)
-                    if not valid_children_assignments:
-                        invalid_candidates.append(root_matcher.root_pedigree)
-                    root_matcher.children_assignments = valid_children_assignments
-                for invalid_candidate in invalid_candidates:
-                    coalescent_tree_vertex_to_subtrees[root_vertex].pop(invalid_candidate)
+        result_dict = dict()
+        for clade in clades:
+            root_vertex = self.coalescent_tree.get_root_for_clade(clade)
+            lowest_non_unary_node = root_vertex
+            while len(self.coalescent_tree.children_map[lowest_non_unary_node]) == 1:
+                lowest_non_unary_node = self.coalescent_tree.children_map[lowest_non_unary_node][0]
+                if lowest_non_unary_node not in self.coalescent_tree.children_map:
+                    break
+            if lowest_non_unary_node not in self.coalescent_tree.children_map:
+                continue
+            clade_alignments = []
+            for root_matcher in coalescent_tree_vertex_to_subtrees[root_vertex].values():
+                root_matcher: SubtreeMatcher
+                alignments = root_matcher.get_all_subtree_alignments()
+                if print_enabled:
+                    print(f"There are {len(alignments)} alignments for the matcher, filtering the results")
+                validation_start = time.time()
+                valid_alignments = [x for x in alignments if
+                                    self.verify_valid_alignment(alignment=x, root_vertex=lowest_non_unary_node)]
+                clade_alignments.extend(valid_alignments)
+                validation_end = time.time()
+                time_taken = validation_end - validation_start
+                if print_enabled:
+                    print(f"There are {len(valid_alignments)} valid alignments")
+                    print(f"Time spent on validation: {time_taken}. Average time taken: {time_taken/len(alignments)}")
+            result_dict[root_vertex] = clade_alignments
         end_time = time.time()
-        print(f"Time spent on filtering the results: {end_time - start_time}")
-        return coalescent_tree_vertex_to_subtrees
+        if print_enabled:
+            print(f"Time spent on building and filtering the results: {end_time - start_time}")
+        return result_dict
+
+    def verify_valid_alignment(self, alignment: dict, root_vertex=None):
+        """!
+        @brief Verifies that the given alignment is correct
+        """
+        if root_vertex is None:
+            root_vertex = self.coalescent_tree.get_root_for_clade(alignment.keys())
+        network_graph = networkx.DiGraph()
+        source_vertex_label = "s"
+        target_vertex_label = "t"
+        # Adding the edge from the root to the sink vertex
+        children_number = len(self.coalescent_tree.children_map[root_vertex])
+        assert children_number > 0
+        root_vertex_pedigree = alignment[root_vertex]
+        network_graph.add_edge(root_vertex_pedigree, target_vertex_label,
+                               capacity=children_number)
+        proband_number = 0
+        for parent in alignment:
+            parent_pedigree = alignment[parent]
+            if parent not in self.coalescent_tree.children_map:
+                network_graph.add_edge(source_vertex_label, parent_pedigree, capacity=1)
+                proband_number += 1
+                continue
+            children = self.coalescent_tree.children_map[parent]
+            children_number = len(children)
+            assert children_number > 0
+            children_pedigree = [alignment[x] for x in children]
+            self.pedigree.add_edges_to_mrca_from_descendants(network_graph, parent_pedigree, children_pedigree)
+            if parent_pedigree != root_vertex_pedigree:
+                network_graph.add_edge(parent_pedigree, target_vertex_label, capacity=children_number - 1)
+        maximum_flow = networkx.maximum_flow_value(flowG=network_graph, _s=source_vertex_label, _t=target_vertex_label)
+        return maximum_flow == proband_number
 
     def get_subtrees_from_children(self, focal_vertex: int, vertex_subtree_dict: {int: {int: SubtreeMatcher}}):
         """!

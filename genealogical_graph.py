@@ -31,6 +31,8 @@ class GenealogicalGraph(Graph):
             self.children_map = pedigree.children_map
             self.sink_vertices = pedigree.sink_vertices
             self.vertices_number = pedigree.vertices_number
+        if probands is None:
+            probands = {x for x in self.parents_map if x not in self.children_map}
         self.probands = probands
         self.levels = []
         self.vertex_to_level_map = dict()
@@ -42,8 +44,7 @@ class GenealogicalGraph(Graph):
         @brief Assigns the vertices to the level. Refer to the docstring for this class to understand how a level of
         a vertex is defined.
         """
-        if self.probands is None:
-            self.probands = {x for x in self.parents_map if x not in self.children_map}
+        self.levels = []
         current_level = 1
         self.vertex_to_level_map = {x: 0 for x in self.probands}
         current_level_vertices = self.probands
@@ -147,18 +148,73 @@ class GenealogicalGraph(Graph):
         """
         return self.probands
 
-    def remove_vertex(self, vertex: int):
+    def remove_vertex(self, vertex: int, recalculate_levels: bool = True):
         """!
         @brief Removes the vertex from the graph.
         @param vertex The vertex to be removed.
+        @param recalculate_levels: Specified whether the levels are to be recalculated after successfully removing
+        the vertex from the graph
         """
-        super().remove_vertex(vertex)
+        removed = super().remove_vertex(vertex)
         # Vertex usually must belong to this map, this can only happen if we try to remove the same vertex twice
-        if vertex in self.vertex_to_level_map:
+        if removed:
             vertex_level = self.vertex_to_level_map[vertex]
             self.vertex_to_level_map.pop(vertex)
             level: [int] = self.levels[vertex_level]
             level.remove(vertex)
+            if vertex in self.probands:
+                self.probands.remove(vertex)
+            if recalculate_levels:
+                self.initialize_vertex_to_level_map()
+        return removed
+
+    def remove_vertices(self, vertices: [int], recalculate_levels: bool = True):
+        """!
+        @brief Removes the given vertices from the graph.
+        @param vertices The vertices to be removed.
+        @param recalculate_levels: Specified whether the levels are to be recalculated after removing the vertices
+        from the graph
+        """
+        for vertex in vertices:
+            self.remove_vertex(vertex, False)
+        if recalculate_levels:
+            self.initialize_vertex_to_level_map()
+
+    def get_ascending_genealogy_from_vertices_by_levels(self, vertices: [int]):
+        ascending_genealogy = self.get_ascending_genealogy_from_vertices(vertices)
+        return [[x for x in level if x in ascending_genealogy] for level in self.levels]
+
+    def write_levels_to_file(self, file, levels):
+        processed_ids = set()
+        for level in levels:
+            for vertex in level:
+                vertex_id = vertex // 2
+                if vertex_id in processed_ids:
+                    continue
+                else:
+                    processed_ids.add(vertex_id)
+                [first_parent_id, second_parent_id] = [-1, -1]
+                if vertex in self.parents_map:
+                    ploid_id = 2 * vertex_id
+                    if ploid_id in self.parents_map:
+                        [first_parent, _] = self.parents_map[ploid_id]
+                        first_parent_id = first_parent // 2
+                    ploid_id += 1
+                    if ploid_id in self.parents_map:
+                        [second_parent, _] = self.parents_map[ploid_id]
+                        second_parent_id = second_parent // 2
+                file.write(f"{vertex_id} {first_parent_id} {second_parent_id}\n")
+
+    def save_ascending_genealogy_to_file(self, filename: str, probands: [int]):
+        levels = self.get_ascending_genealogy_from_vertices_by_levels(probands)
+        file = open(filename, 'w')
+        self.write_levels_to_file(file, levels)
+        file.close()
+
+    def save_to_file(self, filename: str):
+        file = open(filename, 'w')
+        self.write_levels_to_file(file, self.levels)
+        file.close()
 
 
 class CoalescentTree(GenealogicalGraph):
@@ -172,25 +228,92 @@ class CoalescentTree(GenealogicalGraph):
         self.descendant_writer = DescendantMemoryCache()
         self.initialize_genealogical_graph_from_probands()
 
-    def get_largest_clade(self):
+    def get_largest_clade_by_size(self):
         clades = self.get_connected_components()
         largest_clade = max(clades, key=len)
         return largest_clade
 
+    def get_largest_clade_by_probands(self):
+        def intersection_size(clade):
+            return len(self.probands.intersection(clade))
+
+        clades = self.get_connected_components()
+        largest_clade = max(clades, key=lambda clade: intersection_size(clade))
+        return largest_clade
+
+    def get_root_for_clade(self, clade: [int]):
+        max_level_vertex = max(clade, key=lambda x: self.vertex_to_level_map[x])
+        max_level = self.vertex_to_level_map[max_level_vertex]
+        root_vertices = [x for x in clade if x in self.levels[max_level]]
+        if len(root_vertices) != 1:
+            raise Exception("Invalid clade value")
+        assert root_vertices[0] == max_level_vertex
+        return root_vertices[0]
+
     def get_subtree_from_vertices(self, vertices: [int]):
-        children_map_vertices = {key: self.children_map[key] for key in vertices}
-        parents_map_vertices = {key: self.parents_map[key] for key in vertices}
+        def narrow_function(map_to_narrow: dict):
+            return {key: map_to_narrow[key] for key in vertices if key in map_to_narrow}
+
+        children_map_vertices = narrow_function(self.children_map)
+        parents_map_vertices = narrow_function(self.parents_map)
         vertices_number = len(vertices)
         pedigree = Graph(children_map=children_map_vertices, parents_map=parents_map_vertices,
                          vertices_number=vertices_number)
         return CoalescentTree(pedigree=pedigree)
+
+    def remove_unary_nodes(self):
+        """
+        Removes all the unary nodes in the coalescent tree and recalculates the levels of the coalescent tree.
+        """
+        for level in self.levels[1:].__reversed__():
+            intermediate_nodes = []
+            for vertex in level:
+                # Since the first level is omitted, all the vertices processed here must have children
+                children = self.children_map[vertex]
+                if len(children) == 1:
+                    child = vertex
+                    while len(children) == 1:
+                        intermediate_nodes.append(child)
+                        [child] = children
+                        if child not in self.children_map:
+                            break
+                        children = self.children_map[child]
+                    if vertex in self.parents_map:
+                        [parent] = self.parents_map[vertex]
+                        self.children_map[parent].append(child)
+                        self.parents_map[child] = [parent]
+            self.remove_vertices(intermediate_nodes, False)
+        self.initialize_vertex_to_level_map()
+        assert not [x for x in self.children_map if len(self.children_map[x]) == 1]
+
+    # def save_to_file(self, filename: str):
+    #     file = open(filename, 'w')
+    #     self.write_levels_to_file(file, self.levels)
+    #     file.close()
+    #
+    # def save_ascending_genealogy_to_file(self, filename: str, probands: [int]):
+    #     levels = self.get_ascending_genealogy_from_vertices_by_levels(probands)
+    #     file = open(filename, 'w')
+    #     self.write_levels_to_file(filename, levels)
+    #     file.close()
+
+    def write_levels_to_file(self, file, levels):
+        for level in levels:
+            for vertex in level:
+                if vertex in self.parents_map:
+                    [parent] = self.parents_map[vertex]
+                    file.write(f"{vertex} {parent}\n")
 
     @staticmethod
     def get_coalescent_tree_from_file(filename):
         pedigree: Graph = Graph()
         file = open(filename)
         for line in file.readlines():
-            (child, parent) = list(map(lambda name: int(name), line.strip('\n').split(' ')))
+            try:
+                (child, parent) = list(map(lambda name: int(name), line.strip('\n').split(' ')))
+            except ValueError:
+                print(line)
+                raise Exception("Invalid line")
             pedigree.add_child(parent=parent, child=child)
             pedigree.parents_map[child] = [parent]
         file.close()

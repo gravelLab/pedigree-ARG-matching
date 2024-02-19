@@ -6,7 +6,7 @@ import msprime.ancestry
 from tskit import TreeSequence
 from genealogical_graph import CoalescentTree
 
-sequence_length = 4
+sequence_length = 1
 
 
 def generate_coalescent_tree(parsed_pedigree, tree_counter):
@@ -30,8 +30,8 @@ def generate_coalescent_tree(parsed_pedigree, tree_counter):
     return tree_counter
 
 
-population_size = 1001
-end_time = 16
+population_size = 10
+end_time = 5
 
 # Create a directory for the files
 directory_path = f"pedigrees/{population_size}_{end_time}"
