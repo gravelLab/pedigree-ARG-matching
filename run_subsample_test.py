@@ -7,15 +7,11 @@ os.chdir("pedigrees")
 simulation = get_directory_path("Specify the simulation directory in the pedigrees folder:")
 result_directory = input("Specify the name of the directory where the results will be saved:")
 os.chdir(simulation)
-subsample_directory_average_results = dict()
-dictionary_result_file = input("Specify the name of the resulting dictionary:")
-result_file = open(dictionary_result_file, 'w')
+result_filename = input("Specify the name of the resulting dictionary:")
+result_file = open(result_filename, 'w')
 for subsample_test_directory in sorted(os.listdir(), key=len):
     os.chdir(subsample_test_directory)
-    total_results = 0
-    total_samples = 0
     for separate_simulation in os.listdir():
-        total_samples += 1
         if os.path.exists(result_directory) and os.path.isdir(result_directory):
             shutil.rmtree(result_directory)
         print(f"Running the alignment on {subsample_test_directory}/{separate_simulation}")
@@ -31,18 +27,13 @@ for subsample_test_directory in sorted(os.listdir(), key=len):
         clade_root = clade_roots[0]
         os.chdir(clade_root)
         simulation_results = len(os.listdir()) - 1
+        result_file.write(f"{subsample_test_directory}: {simulation_results}\n")
+        result_file.flush()
+        print(f"{subsample_test_directory}: {simulation_results}")
         assert simulation_results > 1
-        total_results += simulation_results
         print(f"{simulation_results} alignments")
         os.chdir("../../../..")
         print("Done")
-    subsample_directory_average_results[subsample_test_directory] = total_results / total_samples
-    print(f"{subsample_test_directory}: {total_results / total_samples}")
-    result_file.write(f"{subsample_test_directory}: {total_results / total_samples}\n")
-    result_file.flush()
     os.chdir("..")
-
-for key, value in subsample_directory_average_results.items():
-    print(f"{key}: {value}")
 result_file.close()
 # save_dictionary_to_file(dictionary=subsample_directory_average_results, dictionary_filename=dictionary_result_file)

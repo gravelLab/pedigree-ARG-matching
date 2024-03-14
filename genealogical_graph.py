@@ -4,16 +4,18 @@
 levels and provides a level-by-level framework for preprocessing the graph and the utility class for processing
 coalescent trees.
 """
+from __future__ import annotations
+from tskit import TreeSequence
 
-import itertools
+import networkx as nx
+from matplotlib import pyplot as plt
 
 from descendant_cache import DescendantCache
 from descendant_memory_cache import DescendantMemoryCache
-from graph import *
-from tskit import Tree
+from simple_graph import *
 
 
-class GenealogicalGraph(Graph):
+class GenealogicalGraph(SimpleGraph):
     """!
     This class represents a genealogical graph that inherits from the /ref graph::Graph class and additionally
     assigns all the vertices within the graph to their levels. The level of a vertex is defined recursively as follows:
@@ -22,14 +24,12 @@ class GenealogicalGraph(Graph):
     In other words, the level of a vertex is the length of the longest path from a proband to this vertex in a graph.
     """
 
-    def __init__(self, pedigree: Graph = None, probands: [int] = None, initialize_levels: bool = True):
-        self.descendant_writer = None
+    def __init__(self, pedigree: SimpleGraph = None, probands: [int] = None, initialize_levels: bool = True):
         if pedigree is None:
             super().__init__()
         else:
             self.parents_map = pedigree.parents_map
             self.children_map = pedigree.children_map
-            self.sink_vertices = pedigree.sink_vertices
             self.vertices_number = pedigree.vertices_number
         if probands is None:
             probands = {x for x in self.parents_map if x not in self.children_map}
@@ -38,6 +38,7 @@ class GenealogicalGraph(Graph):
         self.vertex_to_level_map = dict()
         if initialize_levels:
             self.initialize_vertex_to_level_map()
+        self.descendant_writer = DescendantMemoryCache()
 
     def initialize_vertex_to_level_map(self):
         """!
@@ -64,7 +65,6 @@ class GenealogicalGraph(Graph):
         @param vertex_id The vertex for which the proband descendants should be found.
         @return The descendants of the given vertex which are the probands.
         """
-        # TODO: Cache the list of probands
         return [x for x in self.get_vertex_descendants(vertex_id) if x in self.get_probands()]
 
     def set_descendant_writer(self, descendant_writer: DescendantCache):
@@ -77,8 +77,8 @@ class GenealogicalGraph(Graph):
 
     @staticmethod
     def get_graph_from_tree(tree: Tree, probands=None):
-        pedigree = Graph.get_graph_from_tree(tree)
-        reformatted_parent_dict = dict()
+        pedigree = SimpleGraph.get_graph_from_tree(tree)
+        reformatted_parent_dict = defaultdict(list)
         for key, value in pedigree.parents_map.items():
             reformatted_parent_dict[key] = [value]
         pedigree.parents_map = reformatted_parent_dict
@@ -86,7 +86,6 @@ class GenealogicalGraph(Graph):
         return graph
 
     def process_proband_vertex(self, proband_label: int):
-
         # Default behaviour
         self.descendant_writer.record_proband(proband_label)
         # Additional processing
@@ -205,6 +204,20 @@ class GenealogicalGraph(Graph):
                         second_parent_id = second_parent // 2
                 file.write(f"{vertex_id} {first_parent_id} {second_parent_id}\n")
 
+    def draw_graph(self):
+        g = nx.DiGraph()
+        for level_index, level in enumerate(self.levels):
+            for vertex in level:
+                g.add_node(vertex, time=level_index)
+                vertex_parents = self.parents_map.get(vertex, [])
+                for parent in vertex_parents:
+                    g.add_edge(vertex, parent)
+        fig, ax = plt.subplots(figsize=(655, 655))
+        node_size = 1000
+        pos = nx.multipartite_layout(g, subset_key="time", align="horizontal")
+        nx.draw_networkx(g, pos, ax=ax, node_size=node_size, with_labels=True)
+        plt.savefig("small_graph.png")
+
     def save_ascending_genealogy_to_file(self, filename: str, probands: [int]):
         levels = self.get_ascending_genealogy_from_vertices_by_levels(probands)
         file = open(filename, 'w')
@@ -216,6 +229,54 @@ class GenealogicalGraph(Graph):
         self.write_levels_to_file(file, self.levels)
         file.close()
 
+    @staticmethod
+    def get_diploid_graph_from_file(filename: str, max_parent_number: int = 2,
+                                    missing_parent_notation=None, separation_symbol=' ',
+                                    skip_first_line: bool = False) -> GenealogicalGraph:
+        """!
+        @brief Utility function that can be used for getting a diploid genealogical graph from a file.
+        @param filename The filename from which the graph will be read.
+        @param max_parent_number The maximum number of parents an individual can posses.
+        The value must be either 1 or 2.
+        @param missing_parent_notation The list of text sequences representing that the given individual has no parents.
+        Refer to the documentation for SimpleGraph.get_graph_from_file
+        @param separation_symbol The separation sequence used in the file. Refer to the documentation for
+        SimpleGraph.get_graph_from_file
+        @param skip_first_line Specifies whether the first line in the file should be skipped. Can be useful if the
+        header does not start with a '#' symbol.
+        @returns The parsed graph.
+        """
+        pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filename=filename,
+                                                                        max_parent_number=max_parent_number,
+                                                                        missing_parent_notation=missing_parent_notation,
+                                                                        separation_symbol=separation_symbol,
+                                                                        skip_first_line=skip_first_line)
+        return GenealogicalGraph(pedigree=pedigree)
+
+    @staticmethod
+    def get_haploid_graph_from_file(filename: str, max_parent_number: int = 2,
+                                    missing_parent_notation=None, separation_symbol=' ',
+                                    skip_first_line: bool = False) -> GenealogicalGraph:
+        """!
+        @brief Utility function that can be used for getting a haploid genealogical graph from a file.
+        @param filename The filename from which the graph will be read.
+        @param max_parent_number The maximum number of parents an individual can posses.
+        The value must be either 1 or 2.
+        @param missing_parent_notation The list of text sequences representing that the given individual has no parents.
+        Refer to the documentation for SimpleGraph.get_graph_from_file
+        @param separation_symbol The separation sequence used in the file. Refer to the documentation for
+        SimpleGraph.get_graph_from_file
+        @param skip_first_line Specifies whether the first line in the file should be skipped. Can be useful if the
+        header does not start with a '#' symbol.
+        @returns The parsed graph.
+        """
+        pedigree: SimpleGraph = SimpleGraph.get_haploid_graph_from_file(filename=filename,
+                                                                        max_parent_number=max_parent_number,
+                                                                        missing_parent_notation=missing_parent_notation,
+                                                                        separation_symbol=separation_symbol,
+                                                                        skip_first_line=skip_first_line)
+        return GenealogicalGraph(pedigree=pedigree)
+
 
 class CoalescentTree(GenealogicalGraph):
     """!
@@ -223,7 +284,7 @@ class CoalescentTree(GenealogicalGraph):
     of the GenealogicalGraph, it calculates the connected components (clades) of the graph.
     """
 
-    def __init__(self, pedigree: Graph):
+    def __init__(self, pedigree: SimpleGraph):
         super().__init__(pedigree=pedigree)
         self.descendant_writer = DescendantMemoryCache()
         self.initialize_genealogical_graph_from_probands()
@@ -250,6 +311,11 @@ class CoalescentTree(GenealogicalGraph):
         assert root_vertices[0] == max_level_vertex
         return root_vertices[0]
 
+    def get_roots_for_clade(self, clade: [int]):
+        max_level_vertex = max(clade, key=lambda x: self.vertex_to_level_map[x])
+        max_level = self.vertex_to_level_map[max_level_vertex]
+        return [x for x in clade if x in self.levels[max_level]]
+
     def get_subtree_from_vertices(self, vertices: [int]):
         def narrow_function(map_to_narrow: dict):
             return {key: map_to_narrow[key] for key in vertices if key in map_to_narrow}
@@ -257,8 +323,9 @@ class CoalescentTree(GenealogicalGraph):
         children_map_vertices = narrow_function(self.children_map)
         parents_map_vertices = narrow_function(self.parents_map)
         vertices_number = len(vertices)
-        pedigree = Graph(children_map=children_map_vertices, parents_map=parents_map_vertices,
-                         vertices_number=vertices_number)
+        pedigree = SimpleGraph(children_map=defaultdict(list, children_map_vertices),
+                               parents_map=defaultdict(list, parents_map_vertices),
+                               vertices_number=vertices_number)
         return CoalescentTree(pedigree=pedigree)
 
     def remove_unary_nodes(self):
@@ -301,22 +368,18 @@ class CoalescentTree(GenealogicalGraph):
         for level in levels:
             for vertex in level:
                 if vertex in self.parents_map:
-                    [parent] = self.parents_map[vertex]
-                    file.write(f"{vertex} {parent}\n")
+                    parents = self.parents_map[vertex]
+                    file.write(f"{vertex} {' '.join(str(parent) for parent in parents)}\n")
 
     @staticmethod
-    def get_coalescent_tree_from_file(filename):
-        pedigree: Graph = Graph()
-        file = open(filename)
-        for line in file.readlines():
-            try:
-                (child, parent) = list(map(lambda name: int(name), line.strip('\n').split(' ')))
-            except ValueError:
-                print(line)
-                raise Exception("Invalid line")
-            pedigree.add_child(parent=parent, child=child)
-            pedigree.parents_map[child] = [parent]
-        file.close()
+    def get_coalescent_tree_from_file(filename: str, max_parent_number: int = 2,
+                                      missing_parent_notation=None, separation_symbol=' ',
+                                      skip_first_line: bool = False):
+        pedigree: SimpleGraph = SimpleGraph.get_haploid_graph_from_file(filename=filename,
+                                                                        max_parent_number=max_parent_number,
+                                                                        missing_parent_notation=missing_parent_notation,
+                                                                        separation_symbol=separation_symbol,
+                                                                        skip_first_line=skip_first_line)
         result = CoalescentTree(pedigree=pedigree)
         return result
 
@@ -324,3 +387,15 @@ class CoalescentTree(GenealogicalGraph):
     def get_coalescent_tree(tree: Tree, probands=None):
         genealogical_graph = GenealogicalGraph.get_graph_from_tree(tree, probands)
         return CoalescentTree(genealogical_graph)
+
+    @staticmethod
+    def get_arg(tree_sequence: TreeSequence):
+        first_tree = tree_sequence.first()
+        coalescent_tree = CoalescentTree.get_coalescent_tree(first_tree)
+        present_edges = {(key, value) for key, value in first_tree.parent_dict.items()}
+        for tree in tree_sequence.trees():
+            for (child, parent) in tree.parent_dict.items():
+                if not (child, parent) in present_edges:
+                    coalescent_tree.children_map[parent].append(child)
+                    coalescent_tree.parents_map[child].append(parent)
+        return coalescent_tree

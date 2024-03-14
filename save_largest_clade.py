@@ -1,5 +1,5 @@
 from utility import *
-from genealogical_graph import CoalescentTree, Graph, GenealogicalGraph
+from genealogical_graph import CoalescentTree, SimpleGraph, GenealogicalGraph
 
 
 def save_largest_clade_and_get_probands():
@@ -19,7 +19,7 @@ def save_largest_clade_and_get_probands():
 probands = save_largest_clade_and_get_probands()
 pedigree_filepath = get_file_path("Specify the path to the pedigree file:\n")
 print("Processing the graph")
-genealogical_graph = GenealogicalGraph(pedigree=Graph.get_pedigree_from_file(filename=pedigree_filepath),
+genealogical_graph = GenealogicalGraph(pedigree=SimpleGraph.get_pedigree_from_file(filename=pedigree_filepath),
                                        probands=probands)
 result_filepath = input("Specify the path to the resulting file for the ascending genealogy:\n")
 print("Saving the ascending genealogy")

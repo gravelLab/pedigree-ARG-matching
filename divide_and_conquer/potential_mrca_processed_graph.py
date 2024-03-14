@@ -2,18 +2,18 @@
 @file potential_mrca_processed_graph.py
 @brief Brief description here
 """
-
-import itertools
+import time
 
 import networkx
 
-from graph import Graph
-from networkx import flow
+from genealogical_graph import GenealogicalGraph, SimpleGraph
 
-print_enabled = False
+graph_build_time = 0
+last_threshold = 10
+print_enabled = True
 
 
-class PotentialMrcaProcessedGraph(Graph):
+class PotentialMrcaProcessedGraph(GenealogicalGraph):
     """
     This class represents a preprocessed pedigree graph. Apart from having the usual parents and children mappings,
     it also contains the following information about the pedigree:
@@ -23,35 +23,11 @@ class PotentialMrcaProcessedGraph(Graph):
         and the values are the "access vertices" through which u can reach the particular ancestor.
     """
 
-    def __init__(self, pedigree: Graph, probands: [int] = None):
-        super().__init__(children_map=pedigree.children_map, parents_map=pedigree.parents_map,
-                         vertices_number=pedigree.vertices_number, sink_vertices=pedigree.sink_vertices)
-        self.pedigree = pedigree
-        self.probands = probands
-        self.levels = list()
-        self.vertex_to_level_map = dict()
-        self.vertex_to_ancestor_map: {int: {int: [int]}} = dict()
-        self.initialize_vertex_to_level_map()
+    def __init__(self, pedigree: SimpleGraph, probands: [int] = None):
+        super().__init__(pedigree=pedigree, probands=probands)
+        self.vertex_to_ancestor_map: {int: {int: [int]}} = {key: dict() for key in self.vertex_to_level_map}
         self.initialize_potential_mrca_map()
         # self.inference_cache = dict()
-
-    def initialize_vertex_to_level_map(self):
-        if self.probands is None:
-            self.probands = {x for x in self.parents_map if x not in self.children_map}
-        current_level = 1
-        self.vertex_to_level_map = {x: 0 for x in self.probands}
-        current_level_vertices = self.probands
-        while current_level_vertices:
-            current_level_vertices = set(itertools.chain.from_iterable(
-                [self.parents_map[x] for x in current_level_vertices if x in self.parents_map])
-            )
-            for vertex in current_level_vertices:
-                self.vertex_to_level_map[vertex] = current_level
-            current_level += 1
-            self.levels.append(list())
-        for vertex, level in self.vertex_to_level_map.items():
-            self.levels[level].append(vertex)
-            self.vertex_to_ancestor_map[vertex] = dict()
 
     def initialize_potential_mrca_map(self):
         """!
@@ -405,12 +381,42 @@ class PotentialMrcaProcessedGraph(Graph):
                                                                  coalescent_vertex_to_candidates)
         else:
             result = self.get_pmracs_for_vertices_with_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
+        # result = self.get_mrcas_without_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         # for assignment in result:
         #     (assigned_children, verified_candidates_list) = assignment
         #     self.inference_cache[assigned_children] = verified_candidates_list
         if not result:
             raise Exception("Failed")
         return vertices_coalescent_ids, result
+
+    def get_mrcas_without_memory(self, vertices_coalescent_ids: [int], coalescent_vertex_to_candidates: {int: [int]}):
+        vertices_length = len(vertices_coalescent_ids)
+        first_candidates = coalescent_vertex_to_candidates[vertices_coalescent_ids[0]]
+        partial_result = []
+        for first_candidate in first_candidates:
+            # Filtering out the pedigree candidates who have fewer children than the number of children of the vertex
+            # in the coalescent tree for which we are making the inference
+            first_candidate_ancestors = [x for x in self.get_vertex_ancestors(first_candidate)
+                                         if len(self.children_map[x]) >= vertices_length]
+            if first_candidate_ancestors:
+                partial_result.append(([first_candidate], first_candidate_ancestors))
+        for next_coalescent_id in vertices_coalescent_ids[1:]:
+            next_result = []
+            for next_candidate in coalescent_vertex_to_candidates[next_coalescent_id]:
+                next_candidate_ancestors = self.get_vertex_ancestors(next_candidate)
+                for verified_children_partial_assignment in partial_result:
+                    (assigned_children, verified_candidates_list) = verified_children_partial_assignment
+                    new_assigned_children_list = assigned_children + [next_candidate]
+                    new_verified_candidates_list = []
+                    for candidate in verified_candidates_list:
+                        if candidate not in next_candidate_ancestors:
+                            continue
+                        if self.verify_mrca_for_vertices(candidate, new_assigned_children_list):
+                            new_verified_candidates_list.append(candidate)
+                    if new_verified_candidates_list:
+                        next_result.append((new_assigned_children_list, new_verified_candidates_list))
+            partial_result = next_result
+        return partial_result
 
     # Returns all the potential common ancestors for the specified vertices
     # Note that not all the potential common ancestors are MRCAs
@@ -485,6 +491,8 @@ class PotentialMrcaProcessedGraph(Graph):
         return result
 
     def verify_mrca_for_vertices(self, mrca: int, descendant_vertices: [int]):
+        global graph_build_time
+        global last_threshold
         # A speed-up for the case with two vertices:
         if len(descendant_vertices) == 2 and \
                 self.vertex_to_ancestor_map[descendant_vertices[0]][mrca] != \
@@ -494,7 +502,13 @@ class PotentialMrcaProcessedGraph(Graph):
         source_vertex_label = "s"
         for descendant in descendant_vertices:
             network_graph.add_edge(source_vertex_label, descendant, capacity=1)
+            start = time.time()
             self.add_edges_to_mrca_from_descendants(network_graph, mrca, descendant_vertices)
+            end = time.time()
+            graph_build_time += end - start
+            if graph_build_time > last_threshold:
+                print(f"Spent {graph_build_time} building graphs")
+                last_threshold = graph_build_time + 10
         return networkx.maximum_flow_value(flowG=network_graph, _s=source_vertex_label, _t=mrca) == len(
             descendant_vertices)
 
@@ -534,3 +548,10 @@ class PotentialMrcaProcessedGraph(Graph):
         @brief Returns the vertex's ancestors.
         """
         return self.vertex_to_ancestor_map[vertex].keys()
+
+    @staticmethod
+    def get_processed_graph_from_file(filename, missing_parent_notation=None, separation_symbol=' '):
+        pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filename,
+                                                                        missing_parent_notation=missing_parent_notation,
+                                                                        separation_symbol=separation_symbol)
+        return PotentialMrcaProcessedGraph(pedigree=pedigree)

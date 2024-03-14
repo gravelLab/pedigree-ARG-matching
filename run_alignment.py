@@ -1,25 +1,97 @@
-import os
+import math
+import sys
 import time
+from itertools import combinations
 
-from genealogical_graph import *
 from divide_and_conquer.graph_matcher import GraphMather, MatcherLogger, logs_default_directory_name
 from divide_and_conquer.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
+from genealogical_graph import *
 from utility import *
 
 print_enabled = False
 
 
-def save_dictionary_to_file(dictionary_filename: str, dictionary: dict):
+def get_assignment_likelihood(coalescent_tree: CoalescentTree, alignment: dict, pedigree: SimpleGraph):
+    def get_coalescent_vertex_mapped_level_difference(ancestor: int, descendant: int) -> int:
+        return pedigree.get_minimal_path_length(ancestor=alignment[ancestor], descendant=alignment[descendant])
+
+    total_length = 0
+    for parent, children in coalescent_tree.children_map.items():
+        if parent not in alignment:
+            # The vertex does not belong to this clade
+            continue
+        for child in children:
+            level_distance_approximation = get_coalescent_vertex_mapped_level_difference(ancestor=parent,
+                                                                                         descendant=child)
+            total_length += level_distance_approximation
+    return total_length
+
+
+def save_dictionary_to_file(coalescent_tree: CoalescentTree, pedigree: GenealogicalGraph,
+                            dictionary_filename: str, alignment: dict):
+    alignment_likelihood = get_assignment_likelihood(coalescent_tree, alignment, pedigree)
     dictionary_file = open(dictionary_filename, 'w')
-    for key, value in dictionary.items():
+    dictionary_file.write(f"Approximated alignment length: {alignment_likelihood}\n")
+    for key, value in alignment.items():
         dictionary_file.write(f"{key}: {value}\n")
     dictionary_file.close()
+    return alignment_likelihood
+
+
+def get_alignments_pair_similarity(first: dict, second: dict, probands: {int}):
+    # Ensure both dictionaries have the same number of elements
+    if len(first) != len(second):
+        raise ValueError("Both dictionaries must have the same number of elements.")
+    probands = set(probands).intersection(first)
+    # Calculate the number of shared values
+    shared_values = sum(1 for key in first if key not in probands and first[key] == second[key])
+
+    # Calculate the total size (number of elements)
+    total_size = len(first) - len(probands)
+
+    # Calculate the similarity using the formula
+    similarity = shared_values / total_size
+
+    return similarity
+
+
+def get_alignments_similarity(alignments: [dict], probands):
+    total_similarity = 0
+    for dict1, dict2 in combinations(alignments, 2):
+        total_similarity += get_alignments_pair_similarity(first=dict1, second=dict2, probands=probands)
+    return total_similarity / (len(alignments) * (len(alignments) - 1) / 2)
+
+
+def get_alignments_pair_ind_similarity(first: dict, second: dict, probands: {int}):
+    # Ensure both dictionaries have the same number of elements
+    if len(first) != len(second):
+        raise ValueError("Both dictionaries must have the same number of elements.")
+    probands = set(probands).intersection(first)
+    # Calculate the number of shared values
+    shared_values = sum(1 for key in first if key not in probands and first[key] // 2 == second[key] // 2)
+
+    # Calculate the total size (number of elements)
+    total_size = len(first) - len(probands)
+
+    # Calculate the similarity using the formula
+    similarity = shared_values / total_size
+
+    return similarity
+
+
+def get_alignments_ind_similarity(alignments: [dict], probands):
+    total_similarity = 0
+    for dict1, dict2 in combinations(alignments, 2):
+        total_similarity += get_alignments_pair_ind_similarity(first=dict1, second=dict2, probands=probands)
+    return total_similarity / (len(alignments) * (len(alignments) - 1) / 2)
 
 
 def save_statistics_to_file(alignment_result: {int: [dict]}, coalescent_tree: CoalescentTree,
-                            clade_root: int, alignments_number: int, filename: str):
+                            clade_root: int, alignments_number: int, filename: str,
+                            min_alignment_length: int, min_length_alignments: [int]):
     # Calculating the clade for the given vertex and sorting the vertices by their levels
-    clade = coalescent_tree.get_connected_component_for_vertex(clade_root)
+    clade = coalescent_tree.get_vertex_descendants(clade_root)
+    # clade = coalescent_tree.get_connected_component_for_vertex(clade_root)
     clade = sorted(clade, key=lambda v: coalescent_tree.vertex_to_level_map[v], reverse=True)
     # Calculating the rest of the data
     coalescing_events = len([x for x in clade if x in coalescent_tree.children_map
@@ -33,6 +105,15 @@ def save_statistics_to_file(alignment_result: {int: [dict]}, coalescent_tree: Co
     statistics_file.write(f"There are {len(clade)} vertices in the clade\n")
     statistics_file.write(f"There are {len(proband_vertices)} probands in the clade\n")
     statistics_file.write(f"There are {coalescing_events} coalescing events in the clade\n")
+    statistics_file.write("##############################\n")
+    statistics_file.write(f"The minimum alignment length: {min_alignment_length}\n")
+    statistics_file.write(f"The corresponding alignments: {min_length_alignments}\n")
+    statistics_file.write("##############################\n")
+    alignments_similarity = get_alignments_similarity(alignment_result[clade_root], coalescent_tree.probands)
+    alignments_ind_similarity = get_alignments_ind_similarity(alignment_result[clade_root],
+                                                              coalescent_tree.probands)
+    statistics_file.write(f"The alignments similarity: {alignments_similarity}\n")
+    statistics_file.write(f"The alignments individual similarity: {alignments_ind_similarity}\n")
     statistics_file.write("##############################\n")
     statistics_file.write("Number of coalescing events grouped by the children number:\n")
     coalescing_number_to_events_number = dict()
@@ -50,7 +131,21 @@ def save_statistics_to_file(alignment_result: {int: [dict]}, coalescent_tree: Co
     statistics_file.write("##############################\n")
     statistics_file.write("The number of pedigree candidates for every vertex:\n")
     for vertex in clade:
-        statistics_file.write(f"{vertex}: {coalescent_vertex_pedigree_candidates_number[vertex]}\n")
+        if vertex in coalescent_tree.probands:
+            statistics_file.write(f"{vertex} (proband): {coalescent_vertex_pedigree_candidates_number[vertex]}\n")
+        else:
+            statistics_file.write(f"{vertex}: {coalescent_vertex_pedigree_candidates_number[vertex]}\n")
+    statistics_file.write("##############################\n")
+    statistics_file.write("Appearances of each candidate:\n")
+    vertex_candidate_count_dict = defaultdict(lambda: defaultdict(int))
+    for alignment in alignment_result[clade_root]:
+        for key, value in alignment.items():
+            vertex_candidate_count_dict[key][value] += 1
+    for vertex in clade:
+        statistics_file.write(f"{vertex}:\n")
+        for value, count in sorted(vertex_candidate_count_dict[vertex].items(), key=lambda x: x[1], reverse=True):
+            percentage = count / alignments_number
+            statistics_file.write(f"        {value} ({percentage});\n")
     statistics_file.close()
 
 
@@ -62,7 +157,7 @@ def save_general_statistics_coalescent_tree(coalescent_tree: CoalescentTree, coa
 
 
 def save_alignment_result_to_files(alignment_result: {int: [dict]}, coalescent_tree: CoalescentTree,
-                                   coalescent_tree_filename: str):
+                                   pedigree: GenealogicalGraph, coalescent_tree_filename: str):
     save_general_statistics_coalescent_tree(coalescent_tree, coalescent_tree_filename)
     for clade_root in alignment_result:
         # TODO: Draw an image?
@@ -71,13 +166,24 @@ def save_alignment_result_to_files(alignment_result: {int: [dict]}, coalescent_t
         os.chdir(directory_name)
         counter = 0
         valid_alignments = alignment_result[clade_root]
+        min_length = sys.maxsize
+        min_length_alignments = []
+
         for valid_alignment in valid_alignments:
             alignment_filename = f"alignment_{counter}"
-            save_dictionary_to_file(dictionary_filename=alignment_filename, dictionary=valid_alignment)
+            alignment_length = save_dictionary_to_file(dictionary_filename=alignment_filename,
+                                                       alignment=valid_alignment,
+                                                       pedigree=pedigree, coalescent_tree=coalescent_tree)
+            if min_length == alignment_length:
+                min_length_alignments.append(counter)
+            elif alignment_length < min_length:
+                min_length = alignment_length
+                min_length_alignments = [counter]
             counter += 1
         statistics_file_name = f"clade_{clade_root}.txt"
         save_statistics_to_file(alignment_result=alignment_result, coalescent_tree=coalescent_tree,
-                                clade_root=clade_root, alignments_number=counter, filename=statistics_file_name)
+                                clade_root=clade_root, alignments_number=counter, filename=statistics_file_name,
+                                min_alignment_length=min_length, min_length_alignments=min_length_alignments)
         os.chdir("..")
 
 
@@ -93,13 +199,12 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str):
 
     pedigree_filename = pedigree_files[0]
 
-    pedigree = Graph.get_pedigree_from_file(filename=pedigree_filename)
     start_preprocessing = time.time()
-    potential_mrca_graph = PotentialMrcaProcessedGraph(pedigree=pedigree)
+    potential_mrca_graph = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filename=pedigree_filename)
     end_preprocessing = time.time()
+    # potential_mrca_graph.draw_graph()
     if print_enabled:
         print(f"Preprocessing time: {end_preprocessing - start_preprocessing} seconds")
-
     # Get the current working directory
     current_directory = os.getcwd()
     # Get a list of all files in the current directory
@@ -112,12 +217,16 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str):
         filename = os.path.basename(file)
         if filename == pedigree_filename:
             continue
+        elif os.path.splitext(filename)[1] == ".svg":
+            continue
         if print_enabled:
             print(f"{filename}")
         logs_directory_name = f"{result_directory_name}/{filename}/{logs_default_directory_name}"
         os.makedirs(logs_directory_name)
         logger = MatcherLogger(logs_directory_name=logs_directory_name)
-        coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filename)
+        coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(
+                                                                          filename=filename,
+                                                                          max_parent_number=2 ** 10)
         coalescent_tree.remove_unary_nodes()
         graph_matcher = GraphMather(coalescent_tree=coalescent_tree, processed_graph=potential_mrca_graph,
                                     logger=logger)
@@ -130,7 +239,7 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str):
         count += 1
         os.chdir(result_directory_name)
         os.chdir(filename)
-        save_alignment_result_to_files(result, coalescent_tree, filename)
+        save_alignment_result_to_files(result, coalescent_tree, potential_mrca_graph, filename)
         os.chdir("../..")
     if print_enabled:
         print(f"Average inference time {total_alignment_time / count} seconds")

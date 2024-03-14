@@ -5,7 +5,7 @@ from divide_and_conquer.graph_matcher import GraphMather, MatcherLogger
 from divide_and_conquer.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from divide_and_conquer.subtree_matcher import SubtreeMatcher
 from genealogical_graph import CoalescentTree
-from graph import Graph
+from simple_graph import SimpleGraph
 
 pedigrees_main_folder_name = "pedigrees"
 pedigree_extension = ".pedigree"
@@ -171,7 +171,7 @@ def test_pedigree_directory(directory_name):
         raise Exception(f"There is no pedigree file in {directory_name}")
     if not coalescent_trees:
         raise Exception(f"There are no coalescent trees in {directory_name}")
-    potential_mrca_graph = PotentialMrcaProcessedGraph(pedigree=Graph.get_pedigree_from_file(filename=pedigree))
+    potential_mrca_graph = PotentialMrcaProcessedGraph(pedigree=SimpleGraph.get_pedigree_from_file(filename=pedigree))
     test_preprocessed_pedigree(potential_mrca_graph)
     for coalescent_tree_name in coalescent_trees:
         # Verify that all the alignments are consistent

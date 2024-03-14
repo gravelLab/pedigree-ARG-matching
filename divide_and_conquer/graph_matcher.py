@@ -14,7 +14,7 @@ from divide_and_conquer.potential_mrca_processed_graph import *
 logs_enabled = True
 logs_default_directory_name = "logs"
 
-print_enabled = False
+print_enabled = True
 
 
 class MatcherLogger:
@@ -135,30 +135,31 @@ class GraphMather:
         start_time = time.time()
         result_dict = dict()
         for clade in clades:
-            root_vertex = self.coalescent_tree.get_root_for_clade(clade)
-            lowest_non_unary_node = root_vertex
-            while len(self.coalescent_tree.children_map[lowest_non_unary_node]) == 1:
-                lowest_non_unary_node = self.coalescent_tree.children_map[lowest_non_unary_node][0]
+            root_vertices = self.coalescent_tree.get_roots_for_clade(clade)
+            for root_vertex in root_vertices:
+                lowest_non_unary_node = root_vertex
+                while len(self.coalescent_tree.children_map[lowest_non_unary_node]) == 1:
+                    lowest_non_unary_node = self.coalescent_tree.children_map[lowest_non_unary_node][0]
+                    if lowest_non_unary_node not in self.coalescent_tree.children_map:
+                        break
                 if lowest_non_unary_node not in self.coalescent_tree.children_map:
-                    break
-            if lowest_non_unary_node not in self.coalescent_tree.children_map:
-                continue
-            clade_alignments = []
-            for root_matcher in coalescent_tree_vertex_to_subtrees[root_vertex].values():
-                root_matcher: SubtreeMatcher
-                alignments = root_matcher.get_all_subtree_alignments()
-                if print_enabled:
-                    print(f"There are {len(alignments)} alignments for the matcher, filtering the results")
-                validation_start = time.time()
-                valid_alignments = [x for x in alignments if
-                                    self.verify_valid_alignment(alignment=x, root_vertex=lowest_non_unary_node)]
-                clade_alignments.extend(valid_alignments)
-                validation_end = time.time()
-                time_taken = validation_end - validation_start
-                if print_enabled:
-                    print(f"There are {len(valid_alignments)} valid alignments")
-                    print(f"Time spent on validation: {time_taken}. Average time taken: {time_taken/len(alignments)}")
-            result_dict[root_vertex] = clade_alignments
+                    continue
+                clade_alignments = []
+                for root_matcher in coalescent_tree_vertex_to_subtrees[root_vertex].values():
+                    root_matcher: SubtreeMatcher
+                    alignments = root_matcher.get_all_subtree_alignments()
+                    if print_enabled:
+                        print(f"There are {len(alignments)} alignments for the matcher, filtering the results")
+                    validation_start = time.time()
+                    valid_alignments = [x for x in alignments if
+                                        self.verify_valid_alignment(alignment=x, root_vertex=lowest_non_unary_node)]
+                    clade_alignments.extend(valid_alignments)
+                    validation_end = time.time()
+                    time_taken = validation_end - validation_start
+                    if print_enabled:
+                        print(f"There are {len(valid_alignments)} valid alignments")
+                        print(f"Time spent on validation: {time_taken}. Average time taken: {time_taken/len(alignments)}")
+                result_dict[root_vertex] = clade_alignments
         end_time = time.time()
         if print_enabled:
             print(f"Time spent on building and filtering the results: {end_time - start_time}")
