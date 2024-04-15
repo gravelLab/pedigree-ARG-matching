@@ -112,7 +112,7 @@ class GenealogicalGraph(SimpleGraph):
         pass
 
     def get_vertex_descendants(self, vertex_id: int):
-        return self.descendant_writer.get_vertex_descendants(vertex_id)
+        return [x for x in self.descendant_writer.get_vertex_descendants(vertex_id) if x in self.vertex_to_level_map]
 
     def initialize_genealogical_graph_from_probands(self):
         for x in self.probands:

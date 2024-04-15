@@ -2,10 +2,10 @@ import matplotlib.pyplot as plt
 from utility import *
 
 # filename = get_file_path("Specify the path to the statistics file:\n")
-filename = "pedigrees/simulation/results.txt"
+filename = "pedigrees/simulation/histogram3.txt"
 # result = input("Specify the name of the resulting image:\n")
 # result = f"{result}.png"
-result = "results.png"
+result = "individuals_result_extended.png"
 
 # Assuming your data is stored in a file named 'data.txt'
 with open(filename, 'r') as file:

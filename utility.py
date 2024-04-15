@@ -1,4 +1,5 @@
 import os
+import matplotlib.pyplot as plt
 
 
 def get_file_path(input_request: str):
@@ -42,3 +43,26 @@ def get_integer_input(input_request: str):
                 return result
         except ValueError:
             print("You need to specify an integer")
+
+
+def parse_dictionary_from_file(file_path: str):
+    result = dict()
+    with open(file_path, 'r') as file:
+        for line in file:
+            parts = line.strip().split(':')
+            key = int(parts[0].strip())
+            value = int(parts[1].strip())
+            result[key] = value
+    return result
+
+
+def build_histogram(histogram_filename: str, dictionary: dict):
+    x = list(dictionary.keys())
+    y = list(dictionary.values())
+
+    plt.bar(x, y)
+    plt.xlabel('Distances')
+    plt.ylabel('Frequency')
+    plt.title('Distance histogram')
+    plt.savefig(f"{histogram_filename}.png")
+    plt.close()

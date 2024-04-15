@@ -9,8 +9,8 @@ filepath = get_file_path("Specify the path to the coalescent tree. It should con
                          "meaningful results:\n")
 coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath)
 pedigree_filepath = get_file_path("Specify the path to the pedigree file:\n")
-genealogical_graph = GenealogicalGraph(pedigree=SimpleGraph.get_pedigree_from_file(filename=pedigree_filepath),
-                                       probands=coalescent_tree.probands)
+simple_graph = SimpleGraph.get_diploid_graph_from_file(filename=pedigree_filepath)
+genealogical_graph = GenealogicalGraph(pedigree=simple_graph, probands=coalescent_tree.probands)
 # print("Processing the graph")
 # genealogical_graph = GenealogicalGraph(pedigree=Graph.get_pedigree_from_file(filename=pedigree_filepath),
 #                                        probands=coalescent_tree.probands)
@@ -22,8 +22,9 @@ proband_number = len(coalescent_tree.probands)
 probands = list(coalescent_tree.probands)
 reduction_step = 300
 tests_per_step = 14
-values_for_simulation = [value for value in range(7638, 100, -400) if value > 100]
-values_for_simulation.extend([value for value in range(100, 9, -10) if value > 9])
+# values_for_simulation = [value for value in range(7638, 100, -400) if value > 100]
+# values_for_simulation.extend([value for value in range(100, 9, -10) if value > 9])
+values_for_simulation = range(11, 20)
 
 for probands_left in values_for_simulation:
     os.makedirs(f"{probands_left}")
