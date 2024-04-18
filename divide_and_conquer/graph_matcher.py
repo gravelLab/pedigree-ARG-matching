@@ -5,14 +5,14 @@
 
 import datetime
 import os
-
 from collections import defaultdict
 from enum import Enum
 
+from diskcache import Cache
+
+from divide_and_conquer.potential_mrca_processed_graph import *
 from divide_and_conquer.subtree_matcher import *
 from genealogical_graph import CoalescentTree
-from divide_and_conquer.potential_mrca_processed_graph import *
-from diskcache import Cache
 
 logs_enabled = True
 logs_default_directory_name = "logs"
@@ -591,8 +591,9 @@ class GraphMather:
                                                                  vertices_coalescent_ids[2],
                                                                  coalescent_vertex_to_candidates)
         else:
-            # result = self.get_pmrcas_without_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
-            result = self.get_pmracs_for_vertices_with_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
+            result = self.get_pmracs_for_vertices_dfs(vertices_coalescent_ids, coalescent_vertex_to_candidates)
+        # result = self.get_pmrcas_without_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
+        # result = self.get_pmracs_for_vertices_with_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         # result = self.get_mrcas_without_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         # for assignment in result:
         #     (assigned_children, verified_candidates_list) = assignment
@@ -669,6 +670,93 @@ class GraphMather:
             raise Exception("No valid assignments found")
         return partial_result
 
+    def get_pmracs_for_vertices_dfs(self, vertices_coalescent_ids: [int],
+                                    coalescent_vertex_to_candidates: {int: [int]}):
+        result = []
+        vertices_length = len(vertices_coalescent_ids)
+        current_index = 0
+        current_partial_assignment = dict()
+        partial_result = dict()
+        current_stack = []
+        current_stack.extend(coalescent_vertex_to_candidates[vertices_coalescent_ids[0]])
+        set_cache = dict()
+
+        def cache_set(set_to_cache: frozenset):
+            if set_to_cache in set_cache:
+                return set_cache[set_to_cache]
+            set_cache[set_to_cache] = set_to_cache
+            return set_to_cache
+
+        def free_current_vertex_data():
+            nonlocal current_index
+            current_coalescent_vertex = vertices_coalescent_ids[current_index]
+            current_fixed_vertex = current_partial_assignment[current_coalescent_vertex]
+            partial_result.pop(current_fixed_vertex)
+            current_partial_assignment.pop(current_coalescent_vertex)
+
+        while current_stack:
+            vertex = current_stack.pop()
+            if vertex in partial_result:
+                continue
+            if vertex == -1:
+                current_index -= 1
+                free_current_vertex_data()
+                continue
+            vertex_ancestors = self.pedigree.get_vertex_ancestors(vertex)
+            verified_assignments = None
+            if not current_index:
+                first_candidate_ancestors = [x for x in self.pedigree.get_vertex_ancestors(vertex)
+                                             if len(self.pedigree.children_map[x]) >= vertices_length]
+                if first_candidate_ancestors:
+                    verified_assignments = (
+                        (vertex,),
+                        ([(ancestor, {cache_set(frozenset(self.pedigree.vertex_to_ancestor_map[vertex][ancestor])): 1})
+                          for ancestor in vertex_ancestors])
+                    )
+            else:
+                new_verified_candidates_list = []
+                previously_assigned_vertex = current_partial_assignment[vertices_coalescent_ids[current_index - 1]]
+                (assigned_children, verified_candidates_list) = partial_result[previously_assigned_vertex]
+                extended_assigned_children = assigned_children + (vertex,)
+                for verified_candidate_tuple in verified_candidates_list:
+                    (verified_candidate, verified_subsets) = verified_candidate_tuple
+                    if verified_candidate not in vertex_ancestors:
+                        continue
+                    is_correct_assignment = True
+                    verified_candidate_access = self.pedigree.vertex_to_ancestor_map[vertex][verified_candidate]
+                    new_subsets = dict(verified_subsets)
+                    for (image, preimage_size) in verified_subsets.items():
+                        image: frozenset
+                        new_image = cache_set(image.union(verified_candidate_access))
+                        if len(new_image) < preimage_size + 1:
+                            is_correct_assignment = False
+                            break
+                        if preimage_size + 1 > new_subsets.get(new_image, 0):
+                            new_subsets[new_image] = preimage_size + 1
+                    if not is_correct_assignment:
+                        continue
+                    candidate_access = cache_set(
+                        frozenset(self.pedigree.vertex_to_ancestor_map[vertex][verified_candidate])
+                    )
+                    if candidate_access not in new_subsets:
+                        new_subsets[candidate_access] = 1
+                    new_verified_candidates_list.append((verified_candidate, new_subsets))
+                if new_verified_candidates_list:
+                    verified_assignments = (extended_assigned_children, new_verified_candidates_list)
+            if verified_assignments:
+                current_partial_assignment[vertices_coalescent_ids[current_index]] = vertex
+                partial_result[vertex] = verified_assignments
+                if current_index + 1 < vertices_length:
+                    current_index += 1
+                    current_stack.append(-1)
+                    current_stack.extend(coalescent_vertex_to_candidates[vertices_coalescent_ids[current_index]])
+                else:
+                    (assigned_children, candidates_list) = verified_assignments
+                    valid_candidates = [(assigned_children, [candidate[0] for candidate in candidates_list])]
+                    result.extend(valid_candidates)
+                    free_current_vertex_data()
+        return result
+
     # Returns all the potential common ancestors for the specified vertices
     # Note that not all the potential common ancestors are MRCAs
     def get_pmracs_for_vertices_with_memory(self, vertices_coalescent_ids: [int],
@@ -680,9 +768,8 @@ class GraphMather:
         vertices_length = len(vertices_coalescent_ids)
         # partial_result elements are lists whose elements
         # have the format: (partial_assignment: tuple, [(candidate, [(preimage_length, image)])])
-        alignment_result = []
         first_candidates = coalescent_vertex_to_candidates[vertices_coalescent_ids[0]]
-        partial_result = Cache(size_limit= 2 * 1024 * 1000000, eviction_policy="FIFO")
+        partial_result = Cache(size_limit=2 * 1024 * 1000000, eviction_policy="FIFO")
         for first_candidate in first_candidates:
             # Filtering out the pedigree candidates who have fewer children than the number of children of the vertex
             # in the coalescent tree for which we are making the inference
@@ -696,7 +783,7 @@ class GraphMather:
                 # partial_result.append(self.get_single_vertex_verified_subset_tuple(first_candidate,
                 #                                                                  first_candidate_ancestors))
         for next_coalescent_id in vertices_coalescent_ids[1:]:
-            next_result = Cache(size_limit= 2 * 1024 * 1000000, eviction_policy="FIFO")
+            next_result = Cache(size_limit=2 * 1024 * 1000000, eviction_policy="FIFO")
             if print_enabled:
                 print(f"Partial result: {len(partial_result)}")
                 print(f"Candidates for the next vertex: {len(coalescent_vertex_to_candidates[next_coalescent_id])}")
