@@ -21,11 +21,11 @@ class SubtreeMatcher:
     """
 
     def __init__(self, root_coalescent_tree: int, root_pedigree: int,
-                 subtrees_matchers: [{int: SubtreeMatcher}] = None,
+                 children_assignments: [{int: SubtreeMatcher}] = None,
                  overlapping_ploids_assignments: [{int: [int]}] = None):
         self.root_coalescent_tree = root_coalescent_tree
         self.root_pedigree = root_pedigree
-        self.children_assignments = subtrees_matchers
+        self.children_assignments = children_assignments
         self.overlapping_ploids_assignments = overlapping_ploids_assignments
         self.subtree_alignments = None
 

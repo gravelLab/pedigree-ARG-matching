@@ -85,14 +85,14 @@ class MatcherLogger:
         for child in focal_vertex_children:
             self.log(f"{child}: {len(child_candidates_map[child])}")
         self.log(f"Time taken for vertex inference: {spent_time}")
-        total_candidates_found = 0
-        correct_children_assignment_combinations = 0
-        for correct_partial_result in inference_result:
-            correct_children_assignment_combinations += 1
-            (_, valid_candidates) = correct_partial_result
-            total_candidates_found += len(valid_candidates)
+        total_candidates_found = len(inference_result)
+        # correct_children_assignment_combinations = 0
+        # for correct_partial_result in inference_result:
+        #     correct_children_assignment_combinations += 1
+        #     (_, valid_candidates) = correct_partial_result
+        #     total_candidates_found += len(valid_candidates)
         self.log(f"Total candidates found: {total_candidates_found}")
-        self.log(f"Correct children combinations found: {correct_children_assignment_combinations}")
+        # self.log(f"Correct children combinations found: {correct_children_assignment_combinations}")
 
     def close(self):
         if logs_enabled:
@@ -237,7 +237,7 @@ class GraphMather:
         if len(focal_vertex_children) == 1:
             child, = focal_vertex_children
             result = {x: SubtreeMatcher(root_coalescent_tree=focal_vertex, root_pedigree=x,
-                                        subtrees_matchers=[{child: y}]) for x, y in vertex_subtree_dict[child].items()}
+                                        children_assignments=[{child: y}]) for x, y in vertex_subtree_dict[child].items()}
             return result
         if print_enabled:
             print("####################")
@@ -259,20 +259,36 @@ class GraphMather:
                                               vertex_subtree_dict, inference_result)
         result_build_start = time.time()
         candidate_subtree_matcher_dictionary = dict()
-        for single_result in inference_result:
-            (assigned_children, focal_vertex_candidates) = single_result
-            assert len(children_order) == len(assigned_children) == len(focal_vertex_children)
-            children_dictionary = dict()
-            for index, child_assigned_pedigree_id in enumerate(assigned_children):
-                child_coalescent_id = children_order[index]
-                assigned_child_matcher = vertex_subtree_dict[child_coalescent_id][child_assigned_pedigree_id]
-                children_dictionary[child_coalescent_id] = assigned_child_matcher
-            for focal_vertex_candidate in focal_vertex_candidates:
-                subtree_matcher = candidate_subtree_matcher_dictionary.setdefault(focal_vertex_candidate,
-                                                                                  SubtreeMatcher(focal_vertex,
-                                                                                                 focal_vertex_candidate,
-                                                                                                 []))
-                subtree_matcher.children_assignments.append(children_dictionary)
+        inference_result_keys = list(inference_result)
+        for focal_vertex_candidate in inference_result_keys:
+            children_assignments = inference_result[focal_vertex_candidate]
+            children_dictionaries = []
+            for children_assignment in children_assignments:
+                assert len(children_order) == len(children_assignment) == len(focal_vertex_children)
+                children_dictionary = dict()
+                for index, child_assigned_pedigree_id in enumerate(children_assignment):
+                    child_coalescent_id = children_order[index]
+                    assigned_child_matcher = vertex_subtree_dict[child_coalescent_id][child_assigned_pedigree_id]
+                    children_dictionary[child_coalescent_id] = assigned_child_matcher
+                children_dictionaries.append(children_dictionary)
+            candidate_subtree_matcher_dictionary[focal_vertex_candidate] = SubtreeMatcher(root_coalescent_tree=focal_vertex,
+                                                                                          root_pedigree=focal_vertex_candidate,
+                                                                                          children_assignments=children_dictionaries)
+            inference_result.pop(focal_vertex_candidate)
+        # for single_result in inference_result:
+        #     (assigned_children, focal_vertex_candidates) = single_result
+        #     assert len(children_order) == len(assigned_children) == len(focal_vertex_children)
+        #     children_dictionary = dict()
+        #     for index, child_assigned_pedigree_id in enumerate(assigned_children):
+        #         child_coalescent_id = children_order[index]
+        #         assigned_child_matcher = vertex_subtree_dict[child_coalescent_id][child_assigned_pedigree_id]
+        #         children_dictionary[child_coalescent_id] = assigned_child_matcher
+        #     for focal_vertex_candidate in focal_vertex_candidates:
+        #         subtree_matcher = candidate_subtree_matcher_dictionary.setdefault(focal_vertex_candidate,
+        #                                                                           SubtreeMatcher(focal_vertex,
+        #                                                                                          focal_vertex_candidate,
+        #                                                                                          []))
+        #         subtree_matcher.children_assignments.append(children_dictionary)
         result_build_end = time.time()
         if print_enabled:
             print(f"Building the result {result_build_end - result_build_start}")
@@ -448,7 +464,7 @@ class GraphMather:
         @param coalescent_vertex_to_candidates:
         @return
         """
-        result = []
+        result = defaultdict(list)
         first_vertex_candidates = coalescent_vertex_to_candidates[first]
         second_vertex_candidates = coalescent_vertex_to_candidates[second]
         if len(first_vertex_candidates) > len(second_vertex_candidates):
@@ -458,8 +474,8 @@ class GraphMather:
                 verified_ancestors = self.filter_common_ancestors_for_vertex_pair(
                     first_vertex_candidate,
                     second_vertex_candidate)
-                if verified_ancestors:
-                    result.append(((first_vertex_candidate, second_vertex_candidate), verified_ancestors))
+                for verified_ancestor in verified_ancestors:
+                    result[verified_ancestor].append((first_vertex_candidate, second_vertex_candidate))
         return result
 
     def get_pmracs_for_vertex_triple_dfs(self, first: int, second: int, third: int,
@@ -511,61 +527,88 @@ class GraphMather:
                                                coalescent_vertex_to_candidates: {int: [int]}):
         """!
         @brief
-        @param first:
-        @param second:
-        @param third:
-        @param coalescent_vertex_to_candidates:
+        @param first: The first coalescent vertex
+        @param second:The second coalescent vertex
+        @param third: The third coalescent vertex
+        @param coalescent_vertex_to_candidates: The map returning the candidate list for a given coalescent vertex
         @return:
         """
+        triplet_cache = dict()
+
+        def get_triplet_tuple(first_element, second_element, third_element):
+            triplet_tuple = (first_element, second_element, third_element)
+            if triplet_tuple in triplet_cache:
+                return triplet_cache[triplet_tuple]
+            triplet_cache[triplet_tuple] = triplet_tuple
+            return triplet_tuple
+
         first_second_pair_result = self.get_pmracs_for_vertex_pair(first, second, coalescent_vertex_to_candidates)
         first_third_pair_result = self.get_pmracs_for_vertex_pair(first, third, coalescent_vertex_to_candidates)
-        first_second_dict = dict()
-        first_third_dict = dict()
+        first_second_dict = defaultdict(dict)
+        first_third_dict = defaultdict(dict)
         for (pair_result, dictionary) in ((first_second_pair_result, first_second_dict),
                                           (first_third_pair_result, first_third_dict)):
-            for valid_assignment in pair_result:
-                ((first_candidate, _), verified_ancestors) = valid_assignment
-                if first_candidate not in dictionary:
-                    dictionary[first_candidate] = []
-                dictionary[first_candidate].append(valid_assignment)
-        result = []
-        for (first_candidate, first_second_partial_results) in first_second_dict.items():
-            if first_candidate not in first_third_dict:
-                continue
-            for ((_, second_candidate), verified_ancestors_second) in first_second_partial_results:
-                assert first_candidate == _
-                verified_ancestors_second_parents_restricted = None
-                second_candidate_ancestors = self.pedigree.vertex_to_ancestor_map[second_candidate]
-                for first_third_partial_result in first_third_dict[first_candidate]:
-                    ((__, third_candidate), verified_ancestors_third) = first_third_partial_result
-                    assert first_candidate == __
-                    resulting_ancestors = verified_ancestors_second
-                    # If the second and the third candidates happen to have the same parents, we can restrict
-                    # the candidates space that should be searched. Specifically, the resulting pmracs
-                    # must belong to the intersection of the parents' ancestors sets or be the parents themselves
-                    if self.pedigree.parents_map[second_candidate] == self.pedigree.parents_map[third_candidate]:
-                        if self.pedigree.parents_map[first_candidate] == self.pedigree.parents_map[second_candidate]:
-                            result.append(((first_candidate, second_candidate, third_candidate),
-                                           self.pedigree.parents_map[first_candidate]))
-                            continue
-                        if verified_ancestors_second_parents_restricted is None:
-                            [first_parent, second_parent] = self.pedigree.parents_map[second_candidate]
-                            parents_set = {first_parent, second_parent}
-                            first_parent_ancestors = self.pedigree.vertex_to_ancestor_map[first_parent]
-                            second_parent_ancestors = self.pedigree.vertex_to_ancestor_map[second_parent]
-                            parents_common_ancestors = set(first_parent_ancestors).intersection(
-                                set(second_parent_ancestors))
-                            verified_ancestors_second_parents_restricted = (
-                                (parents_set.union(parents_common_ancestors)).intersection(verified_ancestors_second))
-                        resulting_ancestors = verified_ancestors_second_parents_restricted
-                    # The resulting pmracs should belong to the both partial pmracs sets
-                    resulting_ancestors = [x for x in verified_ancestors_third
-                                           if x in resulting_ancestors and
-                                           self.verify_pmrca_for_vertex_pair(second_candidate, third_candidate, x) and
-                                           self.triplet_condition_holds(first_candidate, second_candidate,
-                                                                        third_candidate, x)]
-                    if resulting_ancestors:
-                        result.append(((first_candidate, second_candidate, third_candidate), resulting_ancestors))
+            for valid_assignment in pair_result.items():
+                (pmrca_candidate, children_assignments) = valid_assignment
+                for children_assignment in children_assignments:
+                    (first_candidate, other_candidate) = children_assignment
+                    if first_candidate not in dictionary[pmrca_candidate]:
+                        dictionary[pmrca_candidate][first_candidate] = []
+                    dictionary[pmrca_candidate][first_candidate].append(other_candidate)
+        shared_common_ancestors = set(first_third_pair_result.keys()).intersection(
+            first_third_pair_result.keys())
+        result = defaultdict(list)
+        for shared_common_ancestor in shared_common_ancestors:
+            shared_first_vertex_assignments = (frozenset(first_second_dict[shared_common_ancestor]).
+                                               intersection(first_third_dict[shared_common_ancestor]))
+            for first_candidate in shared_first_vertex_assignments:
+                for second_candidate in first_second_dict[shared_common_ancestor][first_candidate]:
+                    for third_candidate in first_third_dict[shared_common_ancestor][first_candidate]:
+                        triplet_tuple = get_triplet_tuple(first_candidate, second_candidate, third_candidate)
+                        # TODO: Add common parents speed-up
+                        if (self.verify_pmrca_for_vertex_pair(second_candidate, third_candidate, shared_common_ancestor)
+                                and self.triplet_condition_holds(first_candidate, second_candidate,
+                                                                 third_candidate, shared_common_ancestor)):
+                            result[shared_common_ancestor].append(triplet_tuple)
+
+        # result = []
+        # for (first_candidate, first_second_partial_results) in first_second_dict.items():
+        #     if first_candidate not in first_third_dict:
+        #         continue
+        #     for ((_, second_candidate), verified_ancestors_second) in first_second_partial_results:
+        #         assert first_candidate == _
+        #         verified_ancestors_second_parents_restricted = None
+        #         second_candidate_ancestors = self.pedigree.vertex_to_ancestor_map[second_candidate]
+        #         for first_third_partial_result in first_third_dict[first_candidate]:
+        #             ((__, third_candidate), verified_ancestors_third) = first_third_partial_result
+        #             assert first_candidate == __
+        #             resulting_ancestors = verified_ancestors_second
+        #             # If the second and the third candidates happen to have the same parents, we can restrict
+        #             # the candidates space that should be searched. Specifically, the resulting pmracs
+        #             # must belong to the intersection of the parents' ancestors sets or be the parents themselves
+        #             if self.pedigree.parents_map[second_candidate] == self.pedigree.parents_map[third_candidate]:
+        #                 if self.pedigree.parents_map[first_candidate] == self.pedigree.parents_map[second_candidate]:
+        #                     result.append(((first_candidate, second_candidate, third_candidate),
+        #                                    self.pedigree.parents_map[first_candidate]))
+        #                     continue
+        #                 if verified_ancestors_second_parents_restricted is None:
+        #                     [first_parent, second_parent] = self.pedigree.parents_map[second_candidate]
+        #                     parents_set = {first_parent, second_parent}
+        #                     first_parent_ancestors = self.pedigree.vertex_to_ancestor_map[first_parent]
+        #                     second_parent_ancestors = self.pedigree.vertex_to_ancestor_map[second_parent]
+        #                     parents_common_ancestors = set(first_parent_ancestors).intersection(
+        #                         set(second_parent_ancestors))
+        #                     verified_ancestors_second_parents_restricted = (
+        #                         (parents_set.union(parents_common_ancestors)).intersection(verified_ancestors_second))
+        #                 resulting_ancestors = verified_ancestors_second_parents_restricted
+        #             # The resulting pmracs should belong to the both partial pmracs sets
+        #             resulting_ancestors = [x for x in verified_ancestors_third
+        #                                    if x in resulting_ancestors and
+        #                                    self.verify_pmrca_for_vertex_pair(second_candidate, third_candidate, x) and
+        #                                    self.triplet_condition_holds(first_candidate, second_candidate,
+        #                                                                 third_candidate, x)]
+        #             if resulting_ancestors:
+        #                 result.append(((first_candidate, second_candidate, third_candidate), resulting_ancestors))
         return result
 
     def get_pmracs_for_vertices(self, vertices_coalescent_ids: [int],
@@ -590,8 +633,42 @@ class GraphMather:
                                                                  vertices_coalescent_ids[1],
                                                                  vertices_coalescent_ids[2],
                                                                  coalescent_vertex_to_candidates)
+        # elif vertices_length < 5:
+        #     result = self.get_pmracs_for_vertices_dfs(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         else:
-            result = self.get_pmracs_for_vertices_dfs(vertices_coalescent_ids, coalescent_vertex_to_candidates)
+            separate_results = []
+            start_index = 0
+            if len(vertices_coalescent_ids) % 2 == 1:
+                separate_results.append(self.get_pmracs_for_vertex_triple_iterative(
+                    vertices_coalescent_ids[0],
+                    vertices_coalescent_ids[1],
+                    vertices_coalescent_ids[2],
+                    coalescent_vertex_to_candidates
+                ))
+                start_index = 3
+            separate_results.extend([self.get_pmracs_for_vertex_pair(vertices_coalescent_ids[i],
+                                                                     vertices_coalescent_ids[i + 1],
+                                                                     coalescent_vertex_to_candidates)
+                                     for i in range(start_index, len(vertices_coalescent_ids), 2)])
+            common_keys = frozenset.intersection(*(frozenset(d.keys()) for d in separate_results))
+            separate_results = [ {key: d[key] for key in common_keys} for d in separate_results]
+            result = separate_results[0]
+            for next_result in separate_results[1:]:
+                new_result = dict()
+                for ancestor_candidate, children_assignments in result.items():
+                    extended_children_assignments = []
+                    for children_assignment in children_assignments:
+                        for next_children_assignment in next_result[ancestor_candidate]:
+                            joined_children_assignment = children_assignment + next_children_assignment
+                            if (len(frozenset(next_children_assignment).union(children_assignment))
+                                    != len(children_assignment) + len(next_children_assignment)):
+                                continue
+                            if (len(joined_children_assignment) > 3 or
+                                    self.verify_pmrca_for_vertices(ancestor_candidate, joined_children_assignment)):
+                                extended_children_assignments.append(joined_children_assignment)
+                    if extended_children_assignments:
+                        new_result[ancestor_candidate] = extended_children_assignments
+                result = new_result
         # result = self.get_pmrcas_without_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         # result = self.get_pmracs_for_vertices_with_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         # result = self.get_mrcas_without_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
