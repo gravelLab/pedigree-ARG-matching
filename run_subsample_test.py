@@ -2,6 +2,7 @@ import os
 import shutil
 from run_alignment import *
 from utility import *
+import time
 
 os.chdir("pedigrees")
 print("All the path are relevant with regard to the pedigrees folder")
@@ -14,14 +15,33 @@ result_filename = input("Specify the name of the resulting dictionary:")
 result_file = open(result_filename, 'w')
 for subsample_test_directory in sorted(os.listdir(), key=len):
     os.chdir(subsample_test_directory)
+    simulation_full_path = os.path.abspath(".")
     for separate_simulation in os.listdir():
         if os.path.exists(result_directory) and os.path.isdir(result_directory):
             shutil.rmtree(result_directory)
+        if separate_simulation == "SKIP":
+            continue
         print(f"Running the alignment on {subsample_test_directory}/{separate_simulation}")
-        run_alignment_and_save_results(directory=separate_simulation, result_directory_name=result_directory,
-                                       pedigree=pedigree)
+        try:
+            run_alignment_and_save_results(directory=separate_simulation, result_directory_name=result_directory,
+                                           pedigree=pedigree)
+        except KeyboardInterrupt:
+            print("Skipping this simulation")
+            separate_simulation_path = os.path.join(simulation_full_path, separate_simulation)
+            os.chdir(separate_simulation_path)
+            open("SKIP", 'w')
+            os.chdir("..")
+            print(os.getcwd())
+            continue
+        except FileExistsError:
+            print("This simulation directory already exists, adding a timestamp")
+            current_time_seconds = time.time()
+            run_alignment_and_save_results(directory=separate_simulation,
+                                           result_directory_name=f"{result_directory}_{current_time_seconds}",
+                                           pedigree=pedigree)
         os.chdir(separate_simulation)
-        clade_names = [file for file in os.listdir() if os.path.isfile(file) and not file.endswith('.pedigree')]
+        clade_names = [file for file in os.listdir() if os.path.isfile(file) and not file.endswith('.pedigree') and
+                       not file.endswith("SKIP")]
         assert len(clade_names) == 1
         clade_name = clade_names[0]
         os.chdir(result_directory)

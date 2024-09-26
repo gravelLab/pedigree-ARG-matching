@@ -30,6 +30,8 @@ class SubtreeMatcher:
         self.subtree_alignments = None
 
     def get_all_subtree_alignments(self):
+        if self.subtree_alignments is not None:
+            return self.subtree_alignments
         results = []
         root_assignment_dict = {self.root_coalescent_tree: self.root_pedigree}
         # If the given vertex has no children, the resulting alignment is a dictionary with one key-value pair

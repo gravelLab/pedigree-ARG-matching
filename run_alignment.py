@@ -3,7 +3,7 @@ import sys
 import time
 from itertools import combinations
 
-from divide_and_conquer.graph_matcher import GraphMather, MatcherLogger, logs_default_directory_name
+from divide_and_conquer.graph_matcher import *
 from divide_and_conquer.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from genealogical_graph import *
 from utility import *
@@ -46,11 +46,22 @@ def save_dictionary_to_file(dictionary_filename: str, dictionary: dict):
     dictionary_file.close()
 
 
-def get_alignments_pair_distance_probands_ignored(first: dict, second: dict, probands: {int}):
+def get_alignments_proband_distance_probands_ignored(first: dict, second: dict, probands: {int}):
     # Ensure both dictionaries have the same number of elements
     if len(first) != len(second):
         raise ValueError("Both dictionaries must have the same number of elements.")
-    # Calculate the number of shared values
+    # Calculate the number of shared values. Assuming here that the keys in both the dictionaries are the same
+    distance = sum(1 for key in first if key not in probands and first[key] != second[key])
+    assert distance == len(first) - len(probands) - sum(1 for key in first if key not in probands and
+                                                        first[key] == second[key])
+    return distance
+
+
+def get_alignments_key_similarity_probands_ignored(first: dict, second: dict, probands: {int}):
+    # Ensure both dictionaries have the same number of elements
+    if len(first) != len(second):
+        raise ValueError("Both dictionaries must have the same number of elements.")
+    # Calculate the number of shared values. Assuming here that the keys in both the dictionaries are the same
     return sum(1 for key in first if key not in probands and first[key] == second[key])
 
 
@@ -60,7 +71,7 @@ def get_alignments_pair_similarity(first: dict, second: dict, probands: {int}):
         raise ValueError("Both dictionaries must have the same number of elements.")
     probands = set(probands).intersection(first)
     # Calculate the number of shared values
-    shared_values = get_alignments_pair_distance_probands_ignored(first, second, probands)
+    shared_values = get_alignments_key_similarity_probands_ignored(first, second, probands)
 
     # Calculate the total size (number of elements)
     total_size = len(first) - len(probands)
@@ -102,7 +113,7 @@ def get_alignments_ind_similarity(alignments: [dict], probands):
     return total_similarity / (len(alignments) * (len(alignments) - 1) / 2)
 
 
-def get_distance_histogram(alignments: [dict]):
+def get_distance_histogram_to_identity(alignments: [dict]):
     # Assuming that all the alignments have the same keys
     coalescent_vertices = alignments[0].keys()
     vertices_length = len(coalescent_vertices)
@@ -114,7 +125,8 @@ def get_distance_histogram(alignments: [dict]):
         # alignment_distance = get_alignments_pair_distance_probands_ignored(alignment, identity_solution, probands)
         distance_histogram[alignment_distance] += 1
     # Verifying that the identity alignment is always present
-    assert 0 in distance_histogram
+    # if current_matching_mode == MatchingMode.ALL_ALIGNMENTS:
+    #     assert 0 in distance_histogram
     return distance_histogram
 
 
@@ -148,7 +160,7 @@ def save_statistics_to_file(alignment_result: {int: [dict]}, coalescent_tree: Co
         statistics_file.write(f"The alignments similarity: {alignments_similarity}\n")
         statistics_file.write(f"The alignments individual similarity: {alignments_ind_similarity}\n")
     else:
-        statistics_file.write("The similarities among the trees was not calculated\n")
+        statistics_file.write("The similarities among the trees were not calculated\n")
     statistics_file.write("##############################\n")
     statistics_file.write("Number of coalescing events grouped by the children number:\n")
     coalescing_number_to_events_number = dict()
@@ -215,15 +227,16 @@ def save_alignment_result_to_files(alignment_result: {int: [dict]}, coalescent_t
                 min_length = alignment_length
                 min_length_alignments = [counter]
             counter += 1
-        statistics_file_name = f"clade_{clade_root}.txt"
+        statistics_file_name = f"_clade_{clade_root}.txt"
         save_statistics_to_file(alignment_result=alignment_result, coalescent_tree=coalescent_tree,
                                 clade_root=clade_root, alignments_number=counter, filename=statistics_file_name,
                                 min_alignment_length=min_length, min_length_alignments=min_length_alignments)
-        distance_histogram_filename = f"distance_histogram_{clade_root}.txt"
-        distance_histogram_dict = get_distance_histogram(valid_alignments)
-        save_dictionary_to_file(dictionary_filename=distance_histogram_filename, dictionary=distance_histogram_dict)
-        distance_histogram_image_filename = f"distance_histogram_{clade_root}"
-        build_histogram(histogram_filename=distance_histogram_image_filename, dictionary=distance_histogram_dict)
+        if len(valid_alignments) > 0:
+            distance_histogram_filename = f"distance_histogram_{clade_root}.txt"
+            distance_histogram_dict = get_distance_histogram_to_identity(valid_alignments)
+            save_dictionary_to_file(dictionary_filename=distance_histogram_filename, dictionary=distance_histogram_dict)
+            distance_histogram_image_filename = f"distance_histogram_{clade_root}"
+            build_histogram(histogram_filename=distance_histogram_image_filename, dictionary=distance_histogram_dict)
         os.chdir("..")
 
 
@@ -262,6 +275,8 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str,
             continue
         elif os.path.splitext(filename)[1] == ".svg":
             continue
+        elif filename == "SKIP":
+            continue
         if print_enabled:
             print(f"{filename}")
         logs_directory_name = f"{result_directory_name}/{filename}/{logs_default_directory_name}"
@@ -278,6 +293,7 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str,
         end_alignment = time.time()
         if print_enabled:
             print(f"Matching time: {end_alignment - start_alignment} seconds")
+        logger.log(f"Matching time: {end_alignment - start_alignment} seconds")
         total_alignment_time += end_alignment - start_alignment
         count += 1
         os.chdir(result_directory_name)

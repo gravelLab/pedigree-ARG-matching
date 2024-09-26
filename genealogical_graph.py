@@ -32,33 +32,71 @@ class GenealogicalGraph(SimpleGraph):
             self.children_map = pedigree.children_map
             self.vertices_number = pedigree.vertices_number
         if probands is None:
-            probands = {x for x in self.parents_map if x not in self.children_map}
+            self.initialize_probands()
         self.probands = probands
         self.levels = []
         self.vertex_to_level_map = dict()
+        # TODO: Save the state of the levels (track whether or not they should be recalculated)
         if initialize_levels:
             self.initialize_vertex_to_level_map()
         self.descendant_writer = DescendantMemoryCache()
+
+    def _find_cycle(self):
+        visited = set()  # To track visited nodes
+        recursion_stack = set()  # To track nodes currently in the recursion stack
+        cycle = []  # To store the cycle if found
+
+        def dfs(node, path):
+            nonlocal cycle
+            if node in recursion_stack:
+                # A cycle is detected; capture the cycle path
+                cycle_start_index = path.index(node)
+                cycle = path[cycle_start_index:] + [node]
+                return True
+
+            if node in visited:
+                return False
+
+            visited.add(node)
+            recursion_stack.add(node)
+            path.append(node)
+
+            for child in self.children_map.get(node, []):
+                if dfs(child, path):
+                    return True
+
+            path.pop()
+            recursion_stack.remove(node)
+            return False
+
+        for node in self.children_map:
+            if node not in visited:
+                if dfs(node, []):
+                    break
+
+        return cycle
 
     def initialize_vertex_to_level_map(self):
         """!
         @brief Assigns the vertices to the level. Refer to the docstring for this class to understand how a level of
         a vertex is defined.
         """
+        self.initialize_probands()
         self.levels = []
         current_level = 1
         self.vertex_to_level_map = {x: 0 for x in self.probands}
         current_level_vertices = self.probands
         while current_level_vertices:
-            current_level_vertices = set(itertools.chain.from_iterable(
-                [self.parents_map[x] for x in current_level_vertices if x in self.parents_map])
-            )
+            current_level_vertices = {parent for x in current_level_vertices for parent in self.parents_map.get(x, [])}
             for vertex in current_level_vertices:
                 self.vertex_to_level_map[vertex] = current_level
             current_level += 1
             self.levels.append(list())
         for vertex, level in self.vertex_to_level_map.items():
             self.levels[level].append(vertex)
+
+    def initialize_probands(self):
+        self.probands = {x for x in self.parents_map if not self.children_map.get(x, [])}
 
     def get_proband_descendants(self, vertex_id: int):
         """!
@@ -128,9 +166,24 @@ class GenealogicalGraph(SimpleGraph):
             counter += 1
         return self
 
+    def get_min_levels(self) -> (list, dict):
+        min_levels_dict = dict()
+        min_levels = []
+        current_level = self.levels[0]
+        level_index = 0
+        while current_level:
+            for vertex in current_level:
+                min_levels_dict[vertex] = level_index
+            min_levels.append(list(current_level))
+            next_level = set()
+            [next_level.update(self.parents_map[vertex]) for vertex in current_level if vertex in self.parents_map]
+            current_level = next_level
+            level_index += 1
+        return min_levels, min_levels_dict
+
     def get_vertices_for_given_level(self, level):
         """!
-        @bried Returns the vertices belonging to the specified level.
+        @brief Returns the vertices belonging to the specified level.
         @param level The level to be used.
         """
         return self.levels[level]
@@ -146,6 +199,18 @@ class GenealogicalGraph(SimpleGraph):
         @brief Returns the graph's probands.
         """
         return self.probands
+
+    def remove_edge(self, parent: int, child: int, recalculate_levels: bool = True):
+        self.parents_map[child].remove(parent)
+        self.children_map[parent].remove(child)
+        if recalculate_levels:
+            self.initialize_vertex_to_level_map()
+
+    def add_edge(self, parent: int, child: int, recalculate_levels: bool = True):
+        self.parents_map[child].append(parent)
+        self.children_map[parent].append(child)
+        if recalculate_levels:
+            self.initialize_vertex_to_level_map()
 
     def remove_vertex(self, vertex: int, recalculate_levels: bool = True):
         """!
@@ -181,7 +246,9 @@ class GenealogicalGraph(SimpleGraph):
 
     def get_ascending_genealogy_from_vertices_by_levels(self, vertices: [int]):
         ascending_genealogy = self.get_ascending_genealogy_from_vertices(vertices)
-        return [[x for x in level if x in ascending_genealogy] for level in self.levels]
+        ascending_genealogy_by_levels = [[x for x in level if x in ascending_genealogy] for level in self.levels]
+        assert len(ascending_genealogy) == sum(len(sublist) for sublist in ascending_genealogy_by_levels)
+        return ascending_genealogy_by_levels
 
     def write_levels_to_file(self, file, levels):
         processed_ids = set()

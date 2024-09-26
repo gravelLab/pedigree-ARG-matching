@@ -7,6 +7,7 @@ import datetime
 import os
 from collections import defaultdict
 from enum import Enum
+from functools import reduce
 
 from diskcache import Cache
 
@@ -25,7 +26,15 @@ class InitialMatchingMode(Enum):
     INDIVIDUAL = 2
 
 
-current_initial_matching_mode = InitialMatchingMode.INDIVIDUAL
+current_initial_matching_mode = InitialMatchingMode.PLOID
+
+
+class MatchingMode(Enum):
+    ALL_ALIGNMENTS = 1,
+    LIKELIHOOD = 2,
+
+
+current_matching_mode = MatchingMode.ALL_ALIGNMENTS
 
 
 class MatcherLogger:
@@ -121,9 +130,9 @@ class GraphMather:
         self.overlapping_vertices = set()
         if initial_mapping is None:
             if current_initial_matching_mode == InitialMatchingMode.PLOID:
-                initial_mapping = {x: [x] for x in processed_graph.probands}
+                initial_mapping = {x: [x] for x in coalescent_tree.probands}
             elif current_initial_matching_mode == InitialMatchingMode.INDIVIDUAL:
-                initial_mapping = {x: [2 * (x // 2), (2 * (x // 2) + 1)] for x in processed_graph.probands}
+                initial_mapping = {x: [2 * (x // 2), (2 * (x // 2) + 1)] for x in coalescent_tree.probands}
                 individual_mentioned = defaultdict(int)
                 for vertex in initial_mapping:
                     vertex_individual = vertex // 2
@@ -138,7 +147,7 @@ class GraphMather:
         """!
         @brief   This method finds all the valid mapping between the given processed pedigree and
                  every sub-clade within the coalescent tree
-        @return  Dictionary that maps every vertex in the coalescent tree to the list of valid alignments for
+        @return  Dictionary that maps every clade root vertex in the coalescent tree to the list of valid alignments for
                  the sub-clade where the chosen vertex is the root.
                  The alignments are represented as a list of SubtreeMatcher objects
         """
@@ -170,14 +179,31 @@ class GraphMather:
                 clade_alignments = []
                 for root_matcher in coalescent_tree_vertex_to_subtrees[root_vertex].values():
                     root_matcher: SubtreeMatcher
+                    # TODO: Thoroughly test the filtering version of the verification step. If it is correct,
+                    # use it instead
+
+                    # Filtering version
+                    # validation_start = time.time()
+                    # valid_alignments = self.get_verified_subtree_alignments(matcher=root_matcher)
+                    # validation_end = time.time()
+                    # clade_alignments.extend(valid_alignments)
+                    # time_taken = validation_end - validation_start
+                    # if print_enabled:
+                    #     print(f"There are {len(valid_alignments)} valid alignments")
+                    #     print(f"Time spent on validation: {time_taken}.")
+
+                    # valid_alignments = self.get_verified_subtree_alignments_iteratively(root_matcher)
+                    # -----------------------------------------------------------------------------------#
+                    # Brute-force version
                     alignments = root_matcher.get_all_subtree_alignments()
                     if print_enabled:
                         print(f"There are {len(alignments)} alignments for the matcher, filtering the results")
                     validation_start = time.time()
                     valid_alignments = [x for x in alignments if
                                         self.verify_valid_alignment(alignment=x, root_vertex=lowest_non_unary_node)]
-                    clade_alignments.extend(valid_alignments)
                     validation_end = time.time()
+
+                    clade_alignments.extend(valid_alignments)
                     time_taken = validation_end - validation_start
                     if print_enabled:
                         print(f"There are {len(valid_alignments)} valid alignments")
@@ -188,6 +214,68 @@ class GraphMather:
         if print_enabled:
             print(f"Time spent on building and filtering the results: {end_time - start_time}")
         return result_dict
+
+    def get_verified_subtree_alignments(self, matcher: SubtreeMatcher):
+        if matcher.subtree_alignments is not None:
+            return matcher.subtree_alignments
+        results = []
+        root_assignment_dict = {matcher.root_coalescent_tree: matcher.root_pedigree}
+        # If the given vertex has no children, the resulting alignment is a dictionary with one key-value pair
+        if matcher.children_assignments is None:
+            return [root_assignment_dict]
+        # If there are children assignments, loop over all the corresponding children alignments
+        for children_assignment in matcher.children_assignments:
+            children_alignments = [self.get_verified_subtree_alignments(matcher=x) for x in
+                                   children_assignment.values()]
+            search_space = reduce(lambda x, y: x * len(y), children_alignments, 1)
+            print(f"Search space {search_space}")
+            for children_dictionaries in product(*children_alignments):
+                new_result = dict(root_assignment_dict)
+                for dictionary in children_dictionaries:
+                    new_result.update(dictionary)
+                if self.verify_valid_alignment(alignment=new_result, root_vertex=matcher.root_coalescent_tree):
+                    results.append(new_result)
+        matcher.subtree_alignments = results
+        return results
+
+    def get_verified_subtree_alignments_iteratively(self, matcher: SubtreeMatcher, print_debug=True):
+        # TODO: Check if works properly. Add the root assignments to the search space
+        if matcher.subtree_alignments is not None:
+            return matcher.subtree_alignments
+        results = []
+        root_assignment_dict = {matcher.root_coalescent_tree: matcher.root_pedigree}
+        # If the given vertex has no children, the resulting alignment is a dictionary with one key-value pair
+        if matcher.children_assignments is None:
+            return [root_assignment_dict]
+        # There are children assignments, loop over all the corresponding children alignments
+        for index, children_assignment in enumerate(matcher.children_assignments):
+            if print_debug:
+                print(f"Processing assignment {index + 1} of {len(matcher.children_assignments)}")
+            current_valid_alignments = [root_assignment_dict]
+            child_index = 0
+            children_matchers = sorted(children_assignment.values(),
+                                       key=lambda x: x.root_coalescent_tree in self.coalescent_tree.children_map,
+                                       reverse=False)
+            for child_matcher in children_matchers:
+                if print_debug:
+                    print(f"Processing child {child_index + 1} "
+                          f"of {len(self.coalescent_tree.children_map[matcher.root_coalescent_tree])}")
+                    print(f"Current number of sub-alignments is {len(current_valid_alignments)}")
+                new_valid_alignments = []
+                print("#########################")
+                child_mather_alignments = self.get_verified_subtree_alignments_iteratively(matcher=child_matcher)
+                print("#########################")
+                for child_mather_alignment in child_mather_alignments:
+                    for current_valid_alignment in current_valid_alignments:
+                        new_alignment = dict(child_mather_alignment)
+                        new_alignment.update(current_valid_alignment)
+                        if self.verify_valid_alignment(alignment=new_alignment,
+                                                       root_vertex=matcher.root_coalescent_tree):
+                            new_valid_alignments.append(new_alignment)
+                current_valid_alignments = new_valid_alignments
+            results.extend(current_valid_alignments)
+        matcher.subtree_alignments = results
+        return results
 
     def verify_valid_alignment(self, alignment: dict, root_vertex=None):
         """!
@@ -214,9 +302,11 @@ class GraphMather:
                 proband_number += 1
                 continue
             children = self.coalescent_tree.children_map[parent]
-            children_number = len(children)
-            assert children_number > 0
-            children_pedigree = [alignment[x] for x in children]
+            assert len(children) > 0
+            children_pedigree = [alignment[x] for x in children if x in alignment]
+            # if len(children_pedigree) != len(children):
+            #     print("WARNING: not all the children are present in the mapping")
+            children_number = len(children_pedigree)
             self.add_edges_to_mrca_from_descendants(network_graph, parent_pedigree, children_pedigree)
             if parent_pedigree != root_vertex_pedigree:
                 network_graph.add_edge(parent_pedigree, target_vertex_label, capacity=children_number - 1)
@@ -237,7 +327,8 @@ class GraphMather:
         if len(focal_vertex_children) == 1:
             child, = focal_vertex_children
             result = {x: SubtreeMatcher(root_coalescent_tree=focal_vertex, root_pedigree=x,
-                                        children_assignments=[{child: y}]) for x, y in vertex_subtree_dict[child].items()}
+                                        children_assignments=[{child: y}]) for x, y in
+                      vertex_subtree_dict[child].items()}
             return result
         if print_enabled:
             print("####################")
@@ -271,9 +362,10 @@ class GraphMather:
                     assigned_child_matcher = vertex_subtree_dict[child_coalescent_id][child_assigned_pedigree_id]
                     children_dictionary[child_coalescent_id] = assigned_child_matcher
                 children_dictionaries.append(children_dictionary)
-            candidate_subtree_matcher_dictionary[focal_vertex_candidate] = SubtreeMatcher(root_coalescent_tree=focal_vertex,
-                                                                                          root_pedigree=focal_vertex_candidate,
-                                                                                          children_assignments=children_dictionaries)
+            candidate_subtree_matcher_dictionary[focal_vertex_candidate] = SubtreeMatcher(
+                root_coalescent_tree=focal_vertex,
+                root_pedigree=focal_vertex_candidate,
+                children_assignments=children_dictionaries)
             inference_result.pop(focal_vertex_candidate)
         # for single_result in inference_result:
         #     (assigned_children, focal_vertex_candidates) = single_result
@@ -438,12 +530,16 @@ class GraphMather:
         @return:
         """
         verified_ancestors = []
-        if first_candidate not in self.pedigree.parents_map or second_candidate not in self.pedigree.parents_map:
+        if (not self.pedigree.parents_map.get(first_candidate, []) or
+                    not self.pedigree.parents_map.get(second_candidate, [])):
             return verified_ancestors
+        # if len(self.pedigree.parents_map[first_candidate]) or len(self.pedigree.parents_map[second_candidate]) == 0:
+        #     return verified_ancestors
         while self.pedigree.parents_map[first_candidate] == self.pedigree.parents_map[second_candidate]:
             verified_ancestors.extend(self.pedigree.parents_map[first_candidate])
             [first_candidate, second_candidate] = self.pedigree.parents_map[first_candidate]
-            if first_candidate not in self.pedigree.parents_map or second_candidate not in self.pedigree.parents_map:
+            if (not self.pedigree.parents_map.get(first_candidate, []) or
+                    not self.pedigree.parents_map.get(second_candidate, [])):
                 return verified_ancestors
         first_ancestors = self.pedigree.vertex_to_ancestor_map[first_candidate]
         second_ancestors = self.pedigree.vertex_to_ancestor_map[second_candidate]
@@ -633,50 +729,52 @@ class GraphMather:
                                                                  vertices_coalescent_ids[1],
                                                                  vertices_coalescent_ids[2],
                                                                  coalescent_vertex_to_candidates)
-        # elif vertices_length < 5:
-        #     result = self.get_pmracs_for_vertices_dfs(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         else:
-            separate_results = []
-            start_index = 0
-            if len(vertices_coalescent_ids) % 2 == 1:
-                separate_results.append(self.get_pmracs_for_vertex_triple_iterative(
-                    vertices_coalescent_ids[0],
-                    vertices_coalescent_ids[1],
-                    vertices_coalescent_ids[2],
-                    coalescent_vertex_to_candidates
-                ))
-                start_index = 3
-            separate_results.extend([self.get_pmracs_for_vertex_pair(vertices_coalescent_ids[i],
-                                                                     vertices_coalescent_ids[i + 1],
-                                                                     coalescent_vertex_to_candidates)
-                                     for i in range(start_index, len(vertices_coalescent_ids), 2)])
-            common_keys = frozenset.intersection(*(frozenset(d.keys()) for d in separate_results))
-            separate_results = [ {key: d[key] for key in common_keys} for d in separate_results]
-            result = separate_results[0]
-            for next_result in separate_results[1:]:
-                new_result = dict()
-                for ancestor_candidate, children_assignments in result.items():
-                    extended_children_assignments = []
-                    for children_assignment in children_assignments:
-                        for next_children_assignment in next_result[ancestor_candidate]:
-                            joined_children_assignment = children_assignment + next_children_assignment
-                            if (len(frozenset(next_children_assignment).union(children_assignment))
-                                    != len(children_assignment) + len(next_children_assignment)):
-                                continue
-                            if (len(joined_children_assignment) > 3 or
-                                    self.verify_pmrca_for_vertices(ancestor_candidate, joined_children_assignment)):
-                                extended_children_assignments.append(joined_children_assignment)
-                    if extended_children_assignments:
-                        new_result[ancestor_candidate] = extended_children_assignments
-                result = new_result
+            result = self.get_pmracs_for_vertices_dfs(vertices_coalescent_ids, coalescent_vertex_to_candidates)
+        # else:
+        #     separate_results = []
+        #     start_index = 0
+        #     if len(vertices_coalescent_ids) % 2 == 1:
+        #         separate_results.append(self.get_pmracs_for_vertex_triple_iterative(
+        #             vertices_coalescent_ids[0],
+        #             vertices_coalescent_ids[1],
+        #             vertices_coalescent_ids[2],
+        #             coalescent_vertex_to_candidates
+        #         ))
+        #         start_index = 3
+        #     separate_results.extend([self.get_pmracs_for_vertex_pair(vertices_coalescent_ids[i],
+        #                                                              vertices_coalescent_ids[i + 1],
+        #                                                              coalescent_vertex_to_candidates)
+        #                              for i in range(start_index, len(vertices_coalescent_ids), 2)])
+        #     common_keys = frozenset.intersection(*(frozenset(d.keys()) for d in separate_results))
+        #     separate_results = [{key: d[key] for key in common_keys} for d in separate_results]
+        #     result = separate_results[0]
+        #     for next_result in separate_results[1:]:
+        #         new_result = dict()
+        #         for ancestor_candidate, children_assignments in result.items():
+        #             extended_children_assignments = []
+        #             for children_assignment in children_assignments:
+        #                 for next_children_assignment in next_result[ancestor_candidate]:
+        #                     joined_children_assignment = children_assignment + next_children_assignment
+        #                     if (len(frozenset(next_children_assignment).union(children_assignment))
+        #                             != len(children_assignment) + len(next_children_assignment)):
+        #                         continue
+        #                     if (len(joined_children_assignment) > 3 or
+        #                             self.verify_pmrca_for_vertices(ancestor_candidate, joined_children_assignment)):
+        #                         extended_children_assignments.append(joined_children_assignment)
+        #             if extended_children_assignments:
+        #                 new_result[ancestor_candidate] = extended_children_assignments
+        #         result = new_result
         # result = self.get_pmrcas_without_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         # result = self.get_pmracs_for_vertices_with_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         # result = self.get_mrcas_without_memory(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         # for assignment in result:
         #     (assigned_children, verified_candidates_list) = assignment
         #     self.inference_cache[assigned_children] = verified_candidates_list
-        if not result:
-            raise Exception("Failed")
+        # if not result:
+        #     raise Exception("Failed the alignment, 0 candidates found")
+        # candidates_ancestors = {y for x in result for y in self.pedigree.vertex_to_ancestor_map[x]}
+        # result = {k: v for k, v in result.items() if k not in candidates_ancestors}
         return vertices_coalescent_ids, result
 
     def get_pmrcas_without_memory(self, vertices_coalescent_ids: [int], coalescent_vertex_to_candidates: {int: [int]}):
@@ -832,7 +930,11 @@ class GraphMather:
                     valid_candidates = [(assigned_children, [candidate[0] for candidate in candidates_list])]
                     result.extend(valid_candidates)
                     free_current_vertex_data()
-        return result
+        formatted_result = defaultdict(list)
+        for (assigned_children, candidates_list) in result:
+            for candidate in candidates_list:
+                formatted_result[candidate].append(assigned_children)
+        return formatted_result
 
     # Returns all the potential common ancestors for the specified vertices
     # Note that not all the potential common ancestors are MRCAs

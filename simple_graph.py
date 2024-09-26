@@ -36,6 +36,7 @@ class SimpleGraph:
             if vertex in visited:
                 continue
             connected_component = self.get_connected_component_for_vertex(vertex)
+            assert not [x for x in connected_component if x in visited]
             visited.update(connected_component)
             connected_components.append(connected_component)
         return connected_components

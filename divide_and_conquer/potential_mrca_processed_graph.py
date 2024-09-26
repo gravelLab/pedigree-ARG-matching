@@ -23,10 +23,12 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         and the values are the "access vertices" through which u can reach the particular ancestor.
     """
 
-    def __init__(self, pedigree: SimpleGraph, probands: [int] = None):
-        super().__init__(pedigree=pedigree, probands=probands)
+    def __init__(self, pedigree: SimpleGraph, probands: [int] = None, initialize_ancestor_maps: bool = True,
+                 initialize_levels: bool = True):
+        super().__init__(pedigree=pedigree, probands=probands, initialize_levels=initialize_levels)
         self.vertex_to_ancestor_map: {int: {int: [int]}} = {key: dict() for key in self.vertex_to_level_map}
-        self.initialize_potential_mrca_map()
+        if initialize_ancestor_maps:
+            self.initialize_potential_mrca_map()
         # self.inference_cache = dict()
 
     def initialize_potential_mrca_map(self):
@@ -35,6 +37,8 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         used during the alignment process. This matrix maps a pair (descendant, ancestor) to the list of the ancestor's
         children vertices through which the descendant can reach the ancestor.
          """
+        # TODO: Recalculate the levels if necessary
+        self.vertex_to_ancestor_map = {key: dict() for key in self.vertex_to_level_map}
         ancestor_to_vertex_map = {vertex: dict() for vertex in self.vertex_to_level_map.keys()}
         tuple_reuse_map = dict()
 
@@ -87,7 +91,10 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         return self.vertex_to_ancestor_map[vertex].keys()
 
     @staticmethod
-    def get_processed_graph_from_file(filename, missing_parent_notation=None, separation_symbol=' '):
+    def get_processed_graph_from_file(filename, missing_parent_notation=None, separation_symbol=' ',
+                                      initialize_ancestor_maps: bool = True,
+                                      initialize_levels: bool = True
+                                      ):
         pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filename,
                                                                         missing_parent_notation=missing_parent_notation,
                                                                         separation_symbol=separation_symbol)
