@@ -1,3 +1,5 @@
+import os.path
+
 from utility import *
 
 import msprime.ancestry
@@ -27,8 +29,10 @@ def save_coalescent_tree(tskit_tree: Tree, individual_id_dict: dict, filename: s
 pedigree_path = get_file_path("Specify the path to the pedigree:")
 pedigree_file = open(pedigree_path, 'r')
 # Asking for the input parameters
-output_directory_path = get_directory_path(
+output_directory_path = input(
     "Specify the path to the result directory (where the simulated ARG will be saved):")
+if not os.path.exists(output_directory_path):
+    os.makedirs(output_directory_path)
 
 pedigree = msprime.parse_pedigree(text_file=pedigree_file, sequence_length=sequence_length)
 

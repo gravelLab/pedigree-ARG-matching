@@ -1,8 +1,7 @@
-import os
-import shutil
-from utility import *
 import random
+
 from genealogical_graph import CoalescentTree, SimpleGraph, GenealogicalGraph
+from utility import *
 
 os.chdir("pedigrees")
 filepath = get_file_path("Specify the path to the coalescent tree. It should consist of one clade for more "

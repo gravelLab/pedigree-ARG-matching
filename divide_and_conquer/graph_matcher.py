@@ -9,7 +9,6 @@ from collections import defaultdict
 from enum import Enum
 from functools import reduce
 
-from diskcache import Cache
 
 from divide_and_conquer.potential_mrca_processed_graph import *
 from divide_and_conquer.subtree_matcher import *
@@ -161,7 +160,7 @@ class GraphMather:
                     vertex,
                     coalescent_tree_vertex_to_subtrees)
         # root_assignments = [coalescent_tree_vertex_to_subtrees[x] for x in self.coalescent_tree.levels[-1]]
-        clades = sorted(self.coalescent_tree.get_connected_components(), reverse=True, key=len)[:10]
+        clades = sorted(self.coalescent_tree.get_connected_components(), reverse=True, key=len)
         if print_enabled:
             print("Filtering")
         start_time = time.time()
@@ -180,8 +179,7 @@ class GraphMather:
                 for root_matcher in coalescent_tree_vertex_to_subtrees[root_vertex].values():
                     root_matcher: SubtreeMatcher
                     # TODO: Thoroughly test the filtering version of the verification step. If it is correct,
-                    # use it instead
-
+                    #  use it instead
                     # Filtering version
                     # validation_start = time.time()
                     # valid_alignments = self.get_verified_subtree_alignments(matcher=root_matcher)
@@ -319,7 +317,7 @@ class GraphMather:
         @param focal_vertex The root of the sub-clade for which the inference is to be performed
         @param vertex_subtree_dict The dictionary containing all the valid alignment for the focal vertex
         @return The list of all the valid sub-clade alignments for the specified focal vertex. The resulting
-                list consists of \link SubtreeMatcher subtree_matcher.SubtreeMatcher \endlink objects
+                list consists of SubtreeMatcher subtree_matcher.SubtreeMatcher objects
         """
         focal_vertex_children: [int] = self.coalescent_tree.children_map[focal_vertex]
         if not focal_vertex_children:
@@ -935,85 +933,6 @@ class GraphMather:
             for candidate in candidates_list:
                 formatted_result[candidate].append(assigned_children)
         return formatted_result
-
-    # Returns all the potential common ancestors for the specified vertices
-    # Note that not all the potential common ancestors are MRCAs
-    def get_pmracs_for_vertices_with_memory(self, vertices_coalescent_ids: [int],
-                                            coalescent_vertex_to_candidates: {int: [int]}):
-        """!
-        @brief Calculates the pmracs for the given vertices in an iterative manner storing the calculations done
-        during the verification of the previous sub-assignment.
-        """
-        vertices_length = len(vertices_coalescent_ids)
-        # partial_result elements are lists whose elements
-        # have the format: (partial_assignment: tuple, [(candidate, [(preimage_length, image)])])
-        first_candidates = coalescent_vertex_to_candidates[vertices_coalescent_ids[0]]
-        partial_result = Cache(size_limit=2 * 1024 * 1000000, eviction_policy="FIFO")
-        for first_candidate in first_candidates:
-            # Filtering out the pedigree candidates who have fewer children than the number of children of the vertex
-            # in the coalescent tree for which we are making the inference
-            first_candidate_ancestors = [x for x in self.pedigree.get_vertex_ancestors(first_candidate)
-                                         if len(self.pedigree.children_map[x]) >= vertices_length]
-            if first_candidate_ancestors:
-                (assigned_children, verified_candidates_list) = self.get_single_vertex_verified_subset_tuple(
-                    first_candidate,
-                    first_candidate_ancestors)
-                partial_result[assigned_children] = verified_candidates_list
-                # partial_result.append(self.get_single_vertex_verified_subset_tuple(first_candidate,
-                #                                                                  first_candidate_ancestors))
-        for next_coalescent_id in vertices_coalescent_ids[1:]:
-            next_result = Cache(size_limit=2 * 1024 * 1000000, eviction_policy="FIFO")
-            if print_enabled:
-                print(f"Partial result: {len(partial_result)}")
-                print(f"Candidates for the next vertex: {len(coalescent_vertex_to_candidates[next_coalescent_id])}")
-                print(
-                    f"The whole search space is {len(partial_result) * len(coalescent_vertex_to_candidates[next_coalescent_id])}")
-            for next_candidate in coalescent_vertex_to_candidates[next_coalescent_id]:
-                next_candidate_ancestors = self.pedigree.get_vertex_ancestors(next_candidate)
-                for assigned_children in partial_result.iterkeys():
-                    verified_candidates_list = partial_result[assigned_children]
-                    next_verified_candidates_list = []
-                    extended_assigned_children = assigned_children + (next_candidate,)
-                    for verified_candidate_tuple in verified_candidates_list:
-                        (verified_candidate, verified_subsets) = verified_candidate_tuple
-                        if verified_candidate not in next_candidate_ancestors:
-                            continue
-                        is_correct_assignment = True
-                        verified_candidate_access = self.pedigree.vertex_to_ancestor_map[next_candidate][
-                            verified_candidate]
-                        new_subsets = []
-                        for verified_subset_tuple in verified_subsets:
-                            (preimage_size, image) = verified_subset_tuple
-                            image: frozenset
-                            new_image = image.union(verified_candidate_access)
-                            if len(new_image) < preimage_size + 1:
-                                is_correct_assignment = False
-                                break
-                            new_subsets.append((preimage_size + 1, new_image))
-                        if not is_correct_assignment:
-                            continue
-                        new_subsets.extend(verified_subsets)
-                        new_subsets.append(
-                            (1, set(self.pedigree.vertex_to_ancestor_map[next_candidate][verified_candidate])))
-                        next_verified_candidates_list.append((verified_candidate, new_subsets))
-                        # next_result.append((extended_assigned_children, new_subsets))
-                    if next_verified_candidates_list:
-                        next_result[extended_assigned_children] = next_verified_candidates_list
-            if print_enabled:
-                print(f"The resulting number of correct assignments is: {len(next_result)}")
-            partial_result = next_result
-        # Refactored code
-        # alignment_result = [(key, partial_result[key]) for key in partial_result]
-        result = [(assigned_children, [candidate[0] for candidate in partial_result[assigned_children]]) for
-                  assigned_children in partial_result]
-        # result = []
-        # for assignment in alignment_result:
-        #     (assigned_children, verified_candidates_list) = assignment
-        #     candidates = [verified_candidate_tuple[0] for verified_candidate_tuple in verified_candidates_list]
-        #     result.append((assigned_children, candidates))
-        if not result:
-            raise Exception("No valid assignments found")
-        return result
 
     def verify_mrca_for_vertices(self, mrca: int, descendant_vertices: [int]):
         # A speed-up for the case with two vertices

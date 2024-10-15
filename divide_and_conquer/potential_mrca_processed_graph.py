@@ -98,4 +98,5 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filename,
                                                                         missing_parent_notation=missing_parent_notation,
                                                                         separation_symbol=separation_symbol)
-        return PotentialMrcaProcessedGraph(pedigree=pedigree)
+        return PotentialMrcaProcessedGraph(pedigree=pedigree, initialize_levels=initialize_levels,
+                                           initialize_ancestor_maps=initialize_ancestor_maps)

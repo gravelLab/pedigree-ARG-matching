@@ -1,25 +1,66 @@
 import os
-import unittest
+
+import pytest
 
 from divide_and_conquer.graph_matcher import GraphMather, MatcherLogger
 from divide_and_conquer.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
-from divide_and_conquer.subtree_matcher import SubtreeMatcher
-from genealogical_graph import CoalescentTree
-from simple_graph import SimpleGraph
+from genealogical_graph import CoalescentTree, SimpleGraph
+from itertools import combinations
 
-pedigrees_main_folder_name = "pedigrees"
 pedigree_extension = ".pedigree"
+logs_folder_name = "logs"
+pedigrees_main_folder_name = "pedigrees"
 
 
-# TODO: Consider using subtests
+def find_paths_for_one_vertex(graph: PotentialMrcaProcessedGraph, descendant: int):
+    """
+    Find all paths from the given descendant to its ancestors.
+    """
+    paths = {}
 
-def test_pedigree_coalescent_tree_alignment(pedigree: PotentialMrcaProcessedGraph,
-                                            coalescent_tree: CoalescentTree):
+    def dfs(current, path):
+        # Add the current node to the path
+        path.append(current)
+        for parent in graph.parents_map.get(current, []):
+            if parent not in paths:
+                paths[parent] = []
+            paths[parent].append(list(path))
+            # Recurse to explore further ancestors
+            dfs(parent, path)
+        # Backtrack to explore other paths
+        path.pop()
+
+    dfs(descendant, [])
+    return paths
+
+
+def build_descendant_ancestor_paths_dict(graph: SimpleGraph) -> dict[int, dict[int, [[int]]]]:
+    """
+    Build a two-level dictionary where each descendant maps to a dictionary of ancestors
+    and their corresponding paths.
+
+    Returns:
+        A two-level dictionary:
+        - First level key: descendant vertex.
+        - Second level key: ancestor vertex.
+        - Value: list of all paths from the descendant to the ancestor.
+    """
+    all_descendant_paths = {vertex: find_paths_for_one_vertex(graph, vertex) for vertex in graph.parents_map}
+    return all_descendant_paths
+
+
+def verify_pedigree_coalescent_tree_alignment(pedigree: PotentialMrcaProcessedGraph, coalescent_tree: CoalescentTree):
     logger = MatcherLogger()
     graph_matcher: GraphMather = GraphMather(pedigree, coalescent_tree, logger)
     alignments = graph_matcher.find_mapping()
-    test_identity_is_present(coalescent_tree=coalescent_tree, alignments=alignments)
-    test_all_found_alignments_are_correct(pedigree=pedigree, coalescent_tree=coalescent_tree, alignments=alignments)
+    coalescent_tree_roots = coalescent_tree.levels[-1]
+    for coalescent_tree_root in coalescent_tree_roots:
+        clade_alignments = alignments[coalescent_tree_root]
+        verify_identity_present_for_clade(coalescent_tree=coalescent_tree,
+                                          coalescent_tree_root=coalescent_tree_root,
+                                          clade_alignments=clade_alignments)
+        verify_clade_alignments_locally_consistent(coalescent_tree=coalescent_tree, pedigree=pedigree,
+                                                   clade_alignments=clade_alignments)
 
 
 def find_vertex_ancestors(pedigree: PotentialMrcaProcessedGraph, vertex: int):
@@ -41,71 +82,47 @@ def find_pmrcas_for_vertices(pedigree: PotentialMrcaProcessedGraph, vertices: [i
     return set.intersection(*vertices_ancestors_list)
 
 
-def test_all_found_alignments_are_correct(pedigree: PotentialMrcaProcessedGraph,
-                                          coalescent_tree: CoalescentTree,
-                                          alignments: {int: [SubtreeMatcher]}):
-    coalescent_tree_roots = coalescent_tree.levels[-1]
-    for coalescent_tree_root in coalescent_tree_roots:
-        test_alignments_correct_for_clade(coalescent_tree=coalescent_tree, pedigree=pedigree,
-                                          coalescent_tree_root=coalescent_tree_root, alignments=alignments)
+def halls_condition_holds(mrca: int, descendants: [int], vertex_to_ancestor_map: dict[int, dict[int, tuple[int]]]):
+    """
+    Checks if Hall's condition holds for the given set of vertices.
+    """
+    n = len(descendants)
+    # Generate all possible subsets of the vertex set (excluding the empty set)
+    for r in range(1, n + 1):
+        for subset in combinations(descendants, r):
+            neighbor_set = set()
+            for vertex in subset:
+                neighbor_set.update(vertex_to_ancestor_map[vertex][mrca])
+            if len(neighbor_set) < len(subset):
+                return False
+    return True
 
 
-def test_alignments_correct_for_clade(coalescent_tree: CoalescentTree, pedigree: PotentialMrcaProcessedGraph,
-                                      coalescent_tree_root: int, alignments: {int: [SubtreeMatcher]}):
-    if coalescent_tree_root not in coalescent_tree.children_map:
-        return
-    coalescent_tree_root_children = coalescent_tree.children_map[coalescent_tree_root]
-    # Need to add an if statement because we are using a workaround for this case
-    if len(coalescent_tree_root_children) > 1:
-        for alignment in alignments[coalescent_tree_root]:
-            alignment: SubtreeMatcher
-            if alignment.children_assignments is None:
-                return
-            children_vertices = list(alignment.children_assignments.values())
-            children_vertices_pmracs = find_pmrcas_for_vertices(pedigree, children_vertices)
-            if alignment.root_pedigree not in children_vertices_pmracs:
-                raise Exception("Assigned coalescent vertex is not a MRCA for the children assignments")
-    for coalescent_tree_root_child in coalescent_tree_root_children:
-        test_alignments_correct_for_clade(coalescent_tree=coalescent_tree, pedigree=pedigree,
-                                          coalescent_tree_root=coalescent_tree_root_child, alignments=alignments)
+def verify_clade_alignments_locally_consistent(coalescent_tree: CoalescentTree, pedigree: PotentialMrcaProcessedGraph,
+                                               clade_alignments: [dict[int, int]]):
+    for alignment in clade_alignments:
+        for coalescent_vertex, vertex_pedigree_assignment in alignment.items():
+            coalescent_vertex_children = coalescent_tree.children_map.get(coalescent_vertex, [])
+            if not coalescent_vertex_children:
+                # Picked a proband vertex, there is nothing to be verified, so we can simply continue
+                continue
+            children_pedigree_assignments = [alignment[x] for x in coalescent_vertex_children]
+            for children_assignment in children_pedigree_assignments:
+                assert vertex_pedigree_assignment in pedigree.vertex_to_ancestor_map[children_assignment]
+            assert halls_condition_holds(vertex_pedigree_assignment, children_pedigree_assignments,
+                                         pedigree.vertex_to_ancestor_map), \
+                (f"The inferred coalescent tree assignment {vertex_pedigree_assignment} is not"
+                 f" a pmrca of {children_pedigree_assignments} in the alignment {alignment}")
 
 
-def test_identity_is_present(coalescent_tree: CoalescentTree, alignments: {int: [SubtreeMatcher]}):
-    coalescent_tree_roots = coalescent_tree.levels[-1]
-    for coalescent_tree_root in coalescent_tree_roots:
-        test_identity_present_for_clade(coalescent_tree=coalescent_tree,
-                                        coalescent_tree_root=coalescent_tree_root,
-                                        alignments=alignments)
+def verify_identity_present_for_clade(coalescent_tree: CoalescentTree, coalescent_tree_root: int,
+                                      clade_alignments: [dict[int, int]]):
+    clade_vertices = coalescent_tree.get_connected_component_for_vertex(coalescent_tree_root)
+    identity_solution = {x: x for x in clade_vertices}
+    assert identity_solution in clade_alignments, "The identity solution is not present in the solution set"
 
 
-def test_identity_present_for_clade(coalescent_tree: CoalescentTree,
-                                    coalescent_tree_root: int, alignments: {int: [SubtreeMatcher]}):
-    root_identity_alignments = [x for x in alignments[coalescent_tree_root]
-                                if x.root_pedigree == x.root_coalescent_tree]
-    if not root_identity_alignments:
-        raise Exception("No identity alignments")
-    # If coalescent_tree_root is a proband in the coalescent tree, there is nothing else to verify
-    if coalescent_tree_root not in coalescent_tree.children_map:
-        return
-    # Otherwise, check that the children subtrees also have an identity mapping
-    identity_present = False
-    children_identity_alignment = {x: x for x in coalescent_tree.children_map[coalescent_tree_root]}
-    correct_children_set = set(coalescent_tree.children_map[coalescent_tree_root])
-    for alignment in root_identity_alignments:
-        alignment: SubtreeMatcher
-        children_set = set(alignment.children_assignments.values())
-        if children_set == correct_children_set:
-            identity_present = True
-            break
-    if not identity_present:
-        raise Exception("There are no identity mappings for the children")
-    for child in coalescent_tree.children_map[coalescent_tree_root]:
-        test_identity_present_for_clade(coalescent_tree=coalescent_tree,
-                                        coalescent_tree_root=child,
-                                        alignments=alignments)
-
-
-def test_vertex_level_consistency(pedigree: PotentialMrcaProcessedGraph):
+def verify_vertex_level_consistency(pedigree: PotentialMrcaProcessedGraph):
     # Test that the level assignments are consistent
     for i in range(len(pedigree.levels)):
         for vertex in pedigree.levels[i]:
@@ -123,38 +140,43 @@ def test_vertex_level_consistency(pedigree: PotentialMrcaProcessedGraph):
             assert vertex in pedigree.children_map
 
 
-def test_vertex_to_ancestor_map(pedigree: PotentialMrcaProcessedGraph):
-    levels_number = len(pedigree.levels)
+def verify_vertex_to_ancestor_map(pedigree: PotentialMrcaProcessedGraph):
+    vertex_to_ancestors_paths_dict = build_descendant_ancestor_paths_dict(pedigree)
     # Test that every non-founder vertex is present in the map and has ancestors
-    for i in range(levels_number - 1):
-        for vertex in pedigree.levels[i]:
+    for level in pedigree.levels[:-1]:
+        for vertex in level:
             assert vertex in pedigree.vertex_to_ancestor_map
-            ancestors = set(pedigree.vertex_to_ancestor_map[vertex])
-            ancestors_test = find_vertex_ancestors(pedigree, vertex)
-            assert ancestors == ancestors_test
+            ancestors = frozenset(pedigree.vertex_to_ancestor_map[vertex])
+            # If the vertex has parents, it must have an ancestor set. Otherwise, the ancestors set must be empty
+            if pedigree.parents_map.get(vertex, []):
+                ancestors_test = {x for x in vertex_to_ancestors_paths_dict[vertex]}
+                assert ancestors == ancestors_test
+            else:
+                assert not ancestors
             for ancestor in ancestors:
-                assert pedigree.vertex_to_level_map[ancestor]
-                ancestor_children = set(pedigree.children_map[ancestor])
-                access_vertices = set(pedigree.vertex_to_ancestor_map[vertex][ancestor])
-                # Verify that the access vertices are the ancestor children
-                assert access_vertices <= ancestor_children
-                assert access_vertices
+                # Every vertex that is an ancestor to somebody is not a leaf-vertex
+                assert pedigree.vertex_to_level_map[ancestor], "A proband vertex is assigned a non-zero level"
+                access_vertices = frozenset(pedigree.vertex_to_ancestor_map[vertex][ancestor])
+                access_vertices_test = {path[-1] for path in vertex_to_ancestors_paths_dict[vertex][ancestor]}
+                assert access_vertices == access_vertices_test, "The access vertices don't match"
                 # Verify that every access vertex is an ancestor of vertex
                 for access_vertex in access_vertices:
                     assert access_vertex == vertex or access_vertex in ancestors
+                    assert ancestor in pedigree.vertex_to_ancestor_map[access_vertex]
+                ancestor_children = frozenset(pedigree.children_map[ancestor])
                 for non_access_vertex in ancestor_children.difference(access_vertices):
                     assert non_access_vertex not in ancestors
     # Test that every founder vertex has no ancestors
-    for vertex in pedigree.levels[levels_number - 1]:
-        assert not len(pedigree.vertex_to_ancestor_map[vertex])
+    for vertex in pedigree.levels[-1]:
+        assert not pedigree.vertex_to_ancestor_map[vertex]
 
 
-def test_preprocessed_pedigree(pedigree: PotentialMrcaProcessedGraph):
-    test_vertex_level_consistency(pedigree)
-    test_vertex_to_ancestor_map(pedigree)
+def verify_preprocessed_pedigree(pedigree: PotentialMrcaProcessedGraph):
+    verify_vertex_level_consistency(pedigree)
+    verify_vertex_to_ancestor_map(pedigree)
 
 
-def test_pedigree_directory(directory_name):
+def run_verification_for_pedigree_directory(directory_name):
     pedigree = None
     coalescent_trees = []
     for file in os.listdir(directory_name):
@@ -171,25 +193,29 @@ def test_pedigree_directory(directory_name):
         raise Exception(f"There is no pedigree file in {directory_name}")
     if not coalescent_trees:
         raise Exception(f"There are no coalescent trees in {directory_name}")
-    potential_mrca_graph = PotentialMrcaProcessedGraph(pedigree=SimpleGraph.get_pedigree_from_file(filename=pedigree))
-    test_preprocessed_pedigree(potential_mrca_graph)
+    potential_mrca_graph = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filename=pedigree)
+    verify_preprocessed_pedigree(potential_mrca_graph)
     for coalescent_tree_name in coalescent_trees:
-        # Verify that all the alignments are consistent
+        # Verify that all the alignments are "locally" consistent. Specifically, we want to verify that
+        # every non-leaf vertex in the coalescent tree is assigned to a pedigree ploid that is a valid pmrca
+        # for the children vertices
         coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(coalescent_tree_name)
-        test_pedigree_coalescent_tree_alignment(pedigree=potential_mrca_graph, coalescent_tree=coalescent_tree)
+        coalescent_tree.remove_unary_nodes()
+        verify_pedigree_coalescent_tree_alignment(pedigree=potential_mrca_graph, coalescent_tree=coalescent_tree)
         print(f"Alignment with {coalescent_tree_name} has been tested")
 
 
-class TestPotentialCommonAncestors(unittest.TestCase):
-
-    def test_generated_pedigrees_alignments(self):
-        os.chdir(pedigrees_main_folder_name)
-        for directory_entry in os.listdir():
-            if os.path.isdir(directory_entry):
-                print(f"Testing the algorithm on {directory_entry}")
-                test_pedigree_directory(directory_name=directory_entry)
-                print(f"{directory_entry} has been tested")
+def get_pedigree_directories():
+    os.chdir(pedigrees_main_folder_name)
+    return [
+        directory_entry
+        for directory_entry in os.listdir()
+        if os.path.isdir(directory_entry) and directory_entry != logs_folder_name
+    ]
 
 
-if __name__ == '__main__':
-    unittest.main()
+@pytest.mark.parametrize("directory_entry", get_pedigree_directories())
+def test_generated_pedigrees_alignments(directory_entry):
+    print(f"Testing the algorithm on {directory_entry}")
+    run_verification_for_pedigree_directory(directory_name=directory_entry)
+    print(f"{directory_entry} has been tested")

@@ -420,6 +420,9 @@ class CoalescentTree(GenealogicalGraph):
         self.initialize_vertex_to_level_map()
         assert not [x for x in self.children_map if len(self.children_map[x]) == 1]
 
+    def get_identity_solution(self):
+        return {x: x for x in self.vertex_to_level_map}
+
     # def save_to_file(self, filename: str):
     #     file = open(filename, 'w')
     #     self.write_levels_to_file(file, self.levels)
