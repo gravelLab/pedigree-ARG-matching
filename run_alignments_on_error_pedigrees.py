@@ -76,8 +76,8 @@ def log_overall_results(number_of_simulation_steps: int):
                               f"{individual_and_non_spouse_present_counter}\n")
     general_result_file.write(f"The number of simulations without the individual, but with a spouse: "
                               f"{individual_not_present_spouse_present_counter}\n")
-    general_result_file.write(f"The number of simulations without the individual and all the spouses:"
-                              f"{neither_individual_nor_spouse_present_counter} ")
+    general_result_file.write(f"The number of simulations without the individual and all the spouses: "
+                              f"{neither_individual_nor_spouse_present_counter}\n")
     general_result_file.write("----------------------------------------------------------------------\n")
     general_result_file.write(f"Initial number of individual candidates for the root: "
                               f"{initial_root_vertex_individual_assignments_number}\n")

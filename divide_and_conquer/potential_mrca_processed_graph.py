@@ -1,16 +1,7 @@
-"""!
-@file potential_mrca_processed_graph.py
-@brief Brief description here
-"""
-import time
-
-import networkx
-
 from genealogical_graph import GenealogicalGraph, SimpleGraph
 
 graph_build_time = 0
 last_threshold = 10
-print_enabled = True
 
 
 class PotentialMrcaProcessedGraph(GenealogicalGraph):

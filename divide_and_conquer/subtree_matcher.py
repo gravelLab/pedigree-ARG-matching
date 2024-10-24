@@ -1,8 +1,3 @@
-"""!
-@file subtree_matcher.py
-@brief Brief description here
-"""
-
 from __future__ import annotations
 from itertools import product
 
@@ -10,7 +5,6 @@ from itertools import product
 class SubtreeMatcher:
     """
     This class represents multiple matchings between a subtree of a coalescent tree in the ARG and the pedigree.
-    # TODO: Add some documentation about the expected behaviour
 
     Attributes:
         root_coalescent_tree (int): Represents the vertex id of the root of the coalescent tree
@@ -21,12 +15,10 @@ class SubtreeMatcher:
     """
 
     def __init__(self, root_coalescent_tree: int, root_pedigree: int,
-                 children_assignments: [{int: SubtreeMatcher}] = None,
-                 overlapping_ploids_assignments: [{int: [int]}] = None):
+                 children_assignments: [{int: SubtreeMatcher}] = None):
         self.root_coalescent_tree = root_coalescent_tree
         self.root_pedigree = root_pedigree
         self.children_assignments = children_assignments
-        self.overlapping_ploids_assignments = overlapping_ploids_assignments
         self.subtree_alignments = None
 
     def get_all_subtree_alignments(self):

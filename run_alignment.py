@@ -256,8 +256,7 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str,
         start_preprocessing = time.time()
         potential_mrca_graph = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filename=pedigree_filename)
         end_preprocessing = time.time()
-        if print_enabled:
-            print(f"Preprocessing time: {end_preprocessing - start_preprocessing} seconds")
+        print_log(f"Preprocessing time: {end_preprocessing - start_preprocessing} seconds")
     else:
         potential_mrca_graph = pedigree
     # potential_mrca_graph.draw_graph()
@@ -277,8 +276,7 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str,
             continue
         elif filename == "SKIP":
             continue
-        if print_enabled:
-            print(f"{filename}")
+        print_log(f"{filename}")
         logs_directory_name = f"{result_directory_name}/{filename}/{logs_default_directory_name}"
         os.makedirs(logs_directory_name)
         logger = MatcherLogger(logs_directory_name=logs_directory_name)
@@ -291,8 +289,7 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str,
         start_alignment = time.time()
         result = graph_matcher.find_mapping()
         end_alignment = time.time()
-        if print_enabled:
-            print(f"Matching time: {end_alignment - start_alignment} seconds")
+        print_log(f"Matching time: {end_alignment - start_alignment} seconds")
         logger.log(f"Matching time: {end_alignment - start_alignment} seconds")
         total_alignment_time += end_alignment - start_alignment
         count += 1
@@ -300,6 +297,5 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str,
         os.chdir(filename)
         save_alignment_result_to_files(result, coalescent_tree, potential_mrca_graph, filename)
         os.chdir("../..")
-    if print_enabled:
-        print(f"Average inference time {total_alignment_time / count} seconds")
+    print_log(f"Average inference time {total_alignment_time / count} seconds")
     os.chdir("..")

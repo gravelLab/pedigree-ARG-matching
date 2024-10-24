@@ -31,8 +31,5 @@ plt.yscale('log')
 plt.xlabel('Proband number')
 plt.ylabel('Number of alignments')
 plt.title('Subclade Alignments')
-
-
-
 plt.savefig(result)
 plt.show()
