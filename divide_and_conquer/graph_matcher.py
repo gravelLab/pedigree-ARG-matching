@@ -9,7 +9,6 @@ from collections import defaultdict
 from enum import Enum
 from functools import reduce
 
-
 from divide_and_conquer.potential_mrca_processed_graph import *
 from divide_and_conquer.subtree_matcher import *
 from genealogical_graph import CoalescentTree
@@ -107,6 +106,16 @@ class MatcherLogger:
             self.file.close()
 
 
+def get_subtree_matcher_for_coalescent_tree_proband(proband: int, proband_pedigree_ids: [int]):
+    """
+    @brief Helper function returning the valid sub-alignments for a proband (which is simply one identity alignment).
+    @param proband The id of the proband in the coalescent tree
+    @param proband_pedigree_ids The ids of the corresponding vertices in the pedigree
+    """
+    return {proband_pedigree_id: SubtreeMatcher(root_coalescent_tree=proband, root_pedigree=proband_pedigree_id)
+            for proband_pedigree_id in proband_pedigree_ids}
+
+
 class GraphMather:
     """!
     This class runs the divide-and-conquer alignment algorithm on the given preprocessed pedigree and the coalescent
@@ -152,7 +161,7 @@ class GraphMather:
         """
         coalescent_tree_vertex_to_subtrees = dict()
         for vertex in self.coalescent_tree.levels[0]:
-            coalescent_tree_vertex_to_subtrees[vertex] = self.get_subtree_matcher_for_coalescent_tree_proband(
+            coalescent_tree_vertex_to_subtrees[vertex] = get_subtree_matcher_for_coalescent_tree_proband(
                 vertex, self.initial_mapping[vertex])
         for level in self.coalescent_tree.levels[1:]:
             for vertex in level:
@@ -385,15 +394,6 @@ class GraphMather:
             print(f"There are {len(candidate_subtree_matcher_dictionary)} resulting assignments")
         return candidate_subtree_matcher_dictionary
 
-    def get_subtree_matcher_for_coalescent_tree_proband(self, proband: int, proband_pedigree_ids: [int]):
-        """
-        @brief Helper function returning the valid sub-alignments for a proband (which is simply one identity alignment).
-        @param proband The id of the proband in the coalescent tree
-        @param proband_pedigree_ids The ids of the corresponding vertices in the pedigree
-        """
-        return {proband_pedigree_id: SubtreeMatcher(root_coalescent_tree=proband, root_pedigree=proband_pedigree_id)
-                for proband_pedigree_id in proband_pedigree_ids}
-
     # ----------------------------------------- Alignment logic ------------------------------------------------------
 
     def verify_pmrca_for_vertex_pair(self, first_vertex: int, second_vertex: int, common_ancestor: int):
@@ -529,10 +529,8 @@ class GraphMather:
         """
         verified_ancestors = []
         if (not self.pedigree.parents_map.get(first_candidate, []) or
-                    not self.pedigree.parents_map.get(second_candidate, [])):
+                not self.pedigree.parents_map.get(second_candidate, [])):
             return verified_ancestors
-        # if len(self.pedigree.parents_map[first_candidate]) or len(self.pedigree.parents_map[second_candidate]) == 0:
-        #     return verified_ancestors
         while self.pedigree.parents_map[first_candidate] == self.pedigree.parents_map[second_candidate]:
             verified_ancestors.extend(self.pedigree.parents_map[first_candidate])
             [first_candidate, second_candidate] = self.pedigree.parents_map[first_candidate]

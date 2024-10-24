@@ -1,5 +1,8 @@
 import os
 import matplotlib.pyplot as plt
+from scipy.stats import poisson
+import random
+from math import ceil
 
 
 def get_file_path(input_request: str):
@@ -66,3 +69,17 @@ def build_histogram(histogram_filename: str, dictionary: dict):
     plt.title('Distance histogram')
     plt.savefig(f"{histogram_filename}.png")
     plt.close()
+
+
+def random_subselect(input_list, percentage):
+    # Calculate the number of elements to select
+    num_elements = ceil(len(input_list) * percentage)
+    # Randomly select elements from the list
+    return random.sample(input_list, num_elements)
+
+
+def random_subselect_poisson(input_list, percentage):
+    n = len(input_list)
+    math_expectation = n * percentage
+    number_of_errors = poisson.rvs(math_expectation)
+    return random.sample(input_list, number_of_errors)

@@ -1,4 +1,5 @@
 import os
+import random
 
 import pytest
 
@@ -56,11 +57,13 @@ def verify_pedigree_coalescent_tree_alignment(pedigree: PotentialMrcaProcessedGr
     coalescent_tree_roots = coalescent_tree.levels[-1]
     for coalescent_tree_root in coalescent_tree_roots:
         clade_alignments = alignments[coalescent_tree_root]
+        assert clade_alignments
         verify_identity_present_for_clade(coalescent_tree=coalescent_tree,
                                           coalescent_tree_root=coalescent_tree_root,
                                           clade_alignments=clade_alignments)
         verify_clade_alignments_locally_consistent(coalescent_tree=coalescent_tree, pedigree=pedigree,
                                                    clade_alignments=clade_alignments)
+        verify_all_root_candidate_ploids_found(clade_alignments=clade_alignments, clade_root=coalescent_tree_root)
 
 
 def find_vertex_ancestors(pedigree: PotentialMrcaProcessedGraph, vertex: int):
@@ -115,6 +118,17 @@ def verify_clade_alignments_locally_consistent(coalescent_tree: CoalescentTree, 
                  f" a pmrca of {children_pedigree_assignments} in the alignment {alignment}")
 
 
+def verify_all_root_candidate_ploids_found(clade_alignments: [dict[int, int]], clade_root: int):
+    # The alignment problem has a natural symmetry. Specifically, if we infer that a specific pedigree
+    # ploid is a valid assignment for the clade's root, then the other ploid of the same individual
+    # is also a valid assignment! Indeed, the other ploid is connected to the same ploids as the initial ploid.
+    # This test verifies that this holds for all the found alignments
+    pedigree_ploid_candidates = {clade_alignment[clade_root] for clade_alignment in clade_alignments}
+    pedigree_individual_candidates = {x // 2 for x in pedigree_ploid_candidates}
+    respective_ploid_candidates = {val for x in pedigree_individual_candidates for val in (2 * x, 2 * x + 1)}
+    assert pedigree_ploid_candidates == respective_ploid_candidates
+
+
 def verify_identity_present_for_clade(coalescent_tree: CoalescentTree, coalescent_tree_root: int,
                                       clade_alignments: [dict[int, int]]):
     clade_vertices = coalescent_tree.get_connected_component_for_vertex(coalescent_tree_root)
@@ -140,8 +154,7 @@ def verify_vertex_level_consistency(pedigree: PotentialMrcaProcessedGraph):
             assert vertex in pedigree.children_map
 
 
-def verify_vertex_to_ancestor_map(pedigree: PotentialMrcaProcessedGraph):
-    vertex_to_ancestors_paths_dict = build_descendant_ancestor_paths_dict(pedigree)
+def verify_vertex_to_ancestor_map(pedigree: PotentialMrcaProcessedGraph, vertex_to_ancestors_paths_dict):
     # Test that every non-founder vertex is present in the map and has ancestors
     for level in pedigree.levels[:-1]:
         for vertex in level:
@@ -171,38 +184,76 @@ def verify_vertex_to_ancestor_map(pedigree: PotentialMrcaProcessedGraph):
         assert not pedigree.vertex_to_ancestor_map[vertex]
 
 
-def verify_preprocessed_pedigree(pedigree: PotentialMrcaProcessedGraph):
+def verify_preprocessed_pedigree(pedigree: PotentialMrcaProcessedGraph,
+                                 vertex_to_ancestors_paths_dict: dict[int, dict[int, [[int]]]]):
     verify_vertex_level_consistency(pedigree)
-    verify_vertex_to_ancestor_map(pedigree)
+    verify_vertex_to_ancestor_map(pedigree, vertex_to_ancestors_paths_dict)
+
+
+def verify_alignment_on_random_small_coalescent_trees(potential_mrca_graph: PotentialMrcaProcessedGraph,
+                                                      vertex_to_ancestors_paths_dict: dict[int, dict[int, [[int]]]]):
+    pedigree_proband_ploids = potential_mrca_graph.probands
+    for i in range(10):
+        tree_probands = list(random.sample(sorted(pedigree_proband_ploids), 2))
+        [first_proband, second_proband] = tree_probands
+        # Finding valid pedigree MRCA for these vertices
+        common_ancestors = set.intersection(*[set(vertex_to_ancestors_paths_dict[x]) for x in tree_probands])
+        valid_pedigree_mrca = set()
+        for common_ancestor in common_ancestors:
+            vertex_to_paths = {x: vertex_to_ancestors_paths_dict[x][common_ancestor] for x in tree_probands}
+            # Check if the paths intersect only at the common ancestor
+            for first_path in vertex_to_paths[tree_probands[0]]:
+                for second_path in vertex_to_paths[tree_probands[1]]:
+                    path1_set = frozenset(first_path)
+                    path2_set = frozenset(second_path)
+                    # If the intersection is not empty, paths intersect before the common ancestor
+                    if path1_set & path2_set:
+                        continue
+                    else:
+                        valid_pedigree_mrca.add(common_ancestor)
+                        break
+        graph = SimpleGraph()
+        root = -1
+        graph.add_edge(child=first_proband, parent=root)
+        graph.add_edge(child=second_proband, parent=root)
+        coalescent_tree = CoalescentTree(graph=graph)
+        logger = MatcherLogger()
+        matcher = GraphMather(processed_graph=potential_mrca_graph, coalescent_tree=coalescent_tree,
+                              logger=logger)
+        result = matcher.find_mapping()
+        valid_candidates = {x[root] for x in result[root]}
+        assert valid_candidates == valid_pedigree_mrca
 
 
 def run_verification_for_pedigree_directory(directory_name):
-    pedigree = None
+    pedigree_path = None
     coalescent_trees = []
     for file in os.listdir(directory_name):
         file_path = f"{directory_name}/{file}"
         if file.endswith(pedigree_extension):
             # Found the pedigree file
-            if pedigree is not None:
+            if pedigree_path is not None:
                 raise Exception(f"Multiple pedigrees in {directory_name}")
-            pedigree = file_path
+            pedigree_path = file_path
         else:
             # Found a coalescent tree
             coalescent_trees.append(file_path)
-    if pedigree is None:
+    if pedigree_path is None:
         raise Exception(f"There is no pedigree file in {directory_name}")
     if not coalescent_trees:
         raise Exception(f"There are no coalescent trees in {directory_name}")
-    potential_mrca_graph = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filename=pedigree)
-    verify_preprocessed_pedigree(potential_mrca_graph)
+    pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filename=pedigree_path)
+    vertex_to_ancestors_paths_dict = build_descendant_ancestor_paths_dict(pedigree)
+    verify_preprocessed_pedigree(pedigree, vertex_to_ancestors_paths_dict)
     for coalescent_tree_name in coalescent_trees:
         # Verify that all the alignments are "locally" consistent. Specifically, we want to verify that
         # every non-leaf vertex in the coalescent tree is assigned to a pedigree ploid that is a valid pmrca
         # for the children vertices
-        coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(coalescent_tree_name)
+        coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(coalescent_tree_name)
         coalescent_tree.remove_unary_nodes()
-        verify_pedigree_coalescent_tree_alignment(pedigree=potential_mrca_graph, coalescent_tree=coalescent_tree)
+        verify_pedigree_coalescent_tree_alignment(pedigree=pedigree, coalescent_tree=coalescent_tree)
         print(f"Alignment with {coalescent_tree_name} has been tested")
+    verify_alignment_on_random_small_coalescent_trees(pedigree, vertex_to_ancestors_paths_dict)
 
 
 def get_pedigree_directories():

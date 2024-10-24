@@ -17,11 +17,11 @@ class SimpleGraph:
     (children-parent relationships) in a graph
     """
 
-    def __init__(self, children_map: defaultdict = None, parents_map: defaultdict = None, vertices_number: int = 0):
+    def __init__(self, children_map: dict = None, parents_map: dict = None, vertices_number: int = 0):
         if parents_map is None:
-            parents_map = defaultdict(list)
+            parents_map = dict()
         if children_map is None:
-            children_map = defaultdict(list)
+            children_map = dict()
         self.children_map = children_map
         self.parents_map = parents_map
         self.vertices_number = vertices_number
@@ -82,9 +82,7 @@ class SimpleGraph:
         while current_level_vertices:
             next_level_vertices = set()
             for vertex in current_level_vertices:
-                if vertex not in self.parents_map:
-                    continue
-                parents = self.parents_map[vertex]
+                parents = self.parents_map.get(vertex, [])
                 result.update(parents)
                 next_level_vertices.update(parents)
             current_level_vertices = next_level_vertices
@@ -143,6 +141,10 @@ class SimpleGraph:
         @param parent The parent id.
         @param child The child id.
         """
+        if parent not in self.children_map:
+            self.children_map[parent] = list()
+        if child not in self.parents_map:
+            self.parents_map[child] = list()
         self.children_map[parent].append(child)
         self.parents_map[child].append(parent)
 
@@ -286,6 +288,9 @@ class SimpleGraph:
                 self.add_edge(2 * parent, child_ploid)
                 self.add_edge(2 * parent + 1, child_ploid)
                 child_ploid += 1
+
+    def get_vertices(self) -> set[int]:
+        return set(self.parents_map).union(self.children_map)
 
     def get_sink_vertices(self):
         """!

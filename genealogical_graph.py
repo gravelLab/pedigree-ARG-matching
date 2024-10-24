@@ -220,14 +220,11 @@ class GenealogicalGraph(SimpleGraph):
         the vertex from the graph
         """
         removed = super().remove_vertex(vertex)
-        # Vertex usually must belong to this map, this can only happen if we try to remove the same vertex twice
-        if removed:
-            vertex_level = self.vertex_to_level_map[vertex]
-            self.vertex_to_level_map.pop(vertex)
-            level: [int] = self.levels[vertex_level]
-            level.remove(vertex)
-            if vertex in self.probands:
-                self.probands.remove(vertex)
+        # Update the levels if they have been calculated
+        if removed and self.probands:
+            self.probands.discard(vertex)
+            vertex_level = self.vertex_to_level_map.pop(vertex)
+            self.levels[vertex_level].remove(vertex)
             if recalculate_levels:
                 self.initialize_vertex_to_level_map()
         return removed
@@ -251,25 +248,26 @@ class GenealogicalGraph(SimpleGraph):
         return ascending_genealogy_by_levels
 
     def write_levels_to_file(self, file, levels):
-        processed_ids = set()
+        processed_individuals = set()
         for level in levels:
-            for vertex in level:
-                vertex_id = vertex // 2
-                if vertex_id in processed_ids:
+            for vertex_ploid_id in level:
+                vertex_individual_id = vertex_ploid_id // 2
+                if vertex_individual_id in processed_individuals:
                     continue
-                else:
-                    processed_ids.add(vertex_id)
+                processed_individuals.add(vertex_individual_id)
                 [first_parent_id, second_parent_id] = [-1, -1]
-                if vertex in self.parents_map:
-                    ploid_id = 2 * vertex_id
-                    if ploid_id in self.parents_map:
-                        [first_parent, _] = self.parents_map[ploid_id]
+                if vertex_ploid_id in self.parents_map:
+                    ploid_id = 2 * vertex_individual_id
+                    ploid_parents = self.parents_map.get(ploid_id, [])
+                    if ploid_parents:
+                        [first_parent, _] = ploid_parents
                         first_parent_id = first_parent // 2
                     ploid_id += 1
-                    if ploid_id in self.parents_map:
-                        [second_parent, _] = self.parents_map[ploid_id]
+                    ploid_parents = self.parents_map.get(ploid_id, [])
+                    if ploid_parents:
+                        [second_parent, _] = ploid_parents
                         second_parent_id = second_parent // 2
-                file.write(f"{vertex_id} {first_parent_id} {second_parent_id}\n")
+                file.write(f"{vertex_individual_id} {first_parent_id} {second_parent_id}\n")
 
     def draw_graph(self):
         g = nx.DiGraph()
@@ -295,6 +293,12 @@ class GenealogicalGraph(SimpleGraph):
         file = open(filename, 'w')
         self.write_levels_to_file(file, self.levels)
         file.close()
+
+    def reduce_to_ascending_genealogy(self, probands: [int], recalculate_levels: bool = True):
+        ascending_genealogy = self.get_ascending_genealogy_from_vertices(probands)
+        graph_vertices = self.get_vertices()
+        vertices_to_remove = graph_vertices.difference(ascending_genealogy)
+        self.remove_vertices(vertices=vertices_to_remove, recalculate_levels=recalculate_levels)
 
     @staticmethod
     def get_diploid_graph_from_file(filename: str, max_parent_number: int = 2,
@@ -351,8 +355,10 @@ class CoalescentTree(GenealogicalGraph):
     of the GenealogicalGraph, it calculates the connected components (clades) of the graph.
     """
 
-    def __init__(self, pedigree: SimpleGraph):
-        super().__init__(pedigree=pedigree)
+    def __init__(self, graph: SimpleGraph = None):
+        if graph is None:
+            graph = SimpleGraph()
+        super().__init__(pedigree=graph)
         self.descendant_writer = DescendantMemoryCache()
         self.initialize_genealogical_graph_from_probands()
 
@@ -393,7 +399,7 @@ class CoalescentTree(GenealogicalGraph):
         pedigree = SimpleGraph(children_map=defaultdict(list, children_map_vertices),
                                parents_map=defaultdict(list, parents_map_vertices),
                                vertices_number=vertices_number)
-        return CoalescentTree(pedigree=pedigree)
+        return CoalescentTree(graph=pedigree)
 
     def remove_unary_nodes(self):
         """
@@ -450,7 +456,7 @@ class CoalescentTree(GenealogicalGraph):
                                                                         missing_parent_notation=missing_parent_notation,
                                                                         separation_symbol=separation_symbol,
                                                                         skip_first_line=skip_first_line)
-        result = CoalescentTree(pedigree=pedigree)
+        result = CoalescentTree(graph=pedigree)
         return result
 
     @staticmethod
