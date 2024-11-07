@@ -1,5 +1,4 @@
-import matplotlib.pyplot as plt
-from utility import *
+from scripts.utility import *
 
 # filename = get_file_path("Specify the path to the statistics file:\n")
 # filename = "pedigrees/likelihood_comparison_simulation/full"

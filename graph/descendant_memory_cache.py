@@ -4,7 +4,7 @@
 """
 
 
-from descendant_cache import DescendantCache
+from graph.descendant_cache import DescendantCache
 
 
 class DescendantMemoryCache(DescendantCache):

@@ -11,7 +11,7 @@ class MatchingMode(Enum):
     LIKELIHOOD = 2,
 
 
-current_initial_matching_mode = InitialMatchingMode.INDIVIDUAL
+default_initial_matching_mode = InitialMatchingMode.INDIVIDUAL
 current_matching_mode = MatchingMode.ALL_ALIGNMENTS
 
 logs_enabled = True

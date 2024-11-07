@@ -5,6 +5,40 @@ import random
 from math import ceil
 
 
+def get_file_paths(input_request: str) -> list[str]:
+    print(input_request)
+    paths = []
+    while True:
+        path = input("Enter a file path (or press Enter to finish): ").strip()
+        if path == "":
+            if paths:
+                break
+            else:
+                print("Please enter at least one file path.")
+        elif os.path.isfile(path):
+            paths.append(path)
+        else:
+            print("Invalid file path. Please try again.")
+    return paths
+
+
+def get_folder_paths(input_request: str) -> list[str]:
+    print(input_request)
+    paths = []
+    while True:
+        path = input("Enter a folder path (or press Enter to finish): ").strip()
+        if path == "":
+            if paths:
+                break
+            else:
+                print("Please enter at least one folder path.")
+        elif os.path.isdir(path):
+            paths.append(path)
+        else:
+            print("Invalid folder path. Please try again.")
+    return paths
+
+
 def get_file_path(input_request: str):
     while True:
         file_path = input(input_request)
@@ -27,7 +61,7 @@ def get_directory_path(input_request: str):
             return file_path
 
 
-def get_non_existing_directory_name(input_request: str):
+def get_non_existing_directory_path(input_request: str):
     while True:
         directory_name = input(input_request)
         if os.path.exists(directory_name):
@@ -36,7 +70,7 @@ def get_non_existing_directory_name(input_request: str):
             return directory_name
 
 
-def get_integer_input(input_request: str):
+def get_natural_number_input(input_request: str):
     while True:
         try:
             result = int(input(input_request))
@@ -48,6 +82,17 @@ def get_integer_input(input_request: str):
             print("You need to specify an integer")
 
 
+def get_natural_number_input_in_bounds(input_request: str, lower_bound: int, upper_bound: int):
+    if lower_bound >= upper_bound:
+        raise ValueError("Lower bound cannot be greater than upper bound")
+    while True:
+        value = get_natural_number_input(input_request)
+        if value < lower_bound or value > upper_bound:
+            print("Value out of bounds, try again")
+            continue
+        return value
+
+
 def parse_dictionary_from_file(file_path: str):
     result = dict()
     with open(file_path, 'r') as file:
@@ -57,6 +102,20 @@ def parse_dictionary_from_file(file_path: str):
             value = int(parts[1].strip())
             result[key] = value
     return result
+
+
+def read_mapping_from_file(file_path):
+    parsed_dict = {}
+    with open(file_path, 'r') as file:
+        for line in file:
+            # Split the line on ':' to separate key and value
+            key, value = line.strip().split(':')
+            # Convert key to an integer and value to a list of integers
+            key = int(key.strip())
+            value = [int(x) for x in value.strip()[1:-1].split(',')]
+            # Add to the dictionary
+            parsed_dict[key] = value
+    return parsed_dict
 
 
 def build_histogram(histogram_filename: str, dictionary: dict):

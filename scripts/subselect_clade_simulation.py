@@ -1,14 +1,11 @@
-import random
+from graph.coalescent_tree import CoalescentTree, SimpleGraph, GenealogicalGraph
+from scripts.utility import *
 
-from genealogical_graph import CoalescentTree, SimpleGraph, GenealogicalGraph
-from utility import *
-
-os.chdir("pedigrees")
 filepath = get_file_path("Specify the path to the coalescent tree. It should consist of one clade for more "
                          "meaningful results:\n")
 coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath)
 pedigree_filepath = get_file_path("Specify the path to the pedigree file:\n")
-simple_graph = SimpleGraph.get_diploid_graph_from_file(filename=pedigree_filepath)
+simple_graph = SimpleGraph.get_diploid_graph_from_file(filepath=pedigree_filepath)
 coalescent_tree_individuals = {x // 2 for x in coalescent_tree.probands}
 unphased_probands = ([2 * x for x in coalescent_tree_individuals] +
                      [2 * x + 1 for x in coalescent_tree_individuals])
@@ -17,7 +14,7 @@ genealogical_graph = GenealogicalGraph(pedigree=simple_graph, probands=unphased_
 # genealogical_graph = GenealogicalGraph(pedigree=Graph.get_pedigree_from_file(filename=pedigree_filepath),
 #                                        probands=coalescent_tree.probands)
 # print("The pedigree has been processed")
-simulation_dir_name = get_non_existing_directory_name("Specify the name for the simulation directory:\n")
+simulation_dir_name = get_non_existing_directory_path("Specify the name for the simulation directory:\n")
 os.makedirs(simulation_dir_name)
 os.chdir(simulation_dir_name)
 proband_number = len(coalescent_tree.probands)

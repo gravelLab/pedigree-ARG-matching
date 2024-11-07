@@ -1,13 +1,12 @@
-import os
 import shutil
-from run_alignment import *
-from utility import *
-import time
+
+from scripts.run_alignment import *
+from scripts.utility import *
 
 os.chdir("pedigrees")
 print("All the path are relevant with regard to the pedigrees folder")
 pedigree_path = get_file_path("Specify the path to the pedigree:")
-pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filename=pedigree_path)
+pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path)
 simulation = get_directory_path("Specify the simulation directory in the pedigrees folder:")
 result_directory = input("Specify the name of the directory where the results will be saved:")
 os.chdir(simulation)

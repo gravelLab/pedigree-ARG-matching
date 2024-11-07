@@ -1,12 +1,10 @@
-import math
 import sys
-import time
 from itertools import combinations
 
-from divide_and_conquer.graph_matcher import *
-from divide_and_conquer.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
-from genealogical_graph import *
-from utility import *
+from alignment.graph_matcher import *
+from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
+from graph.genealogical_graph import *
+from scripts.utility import *
 
 print_enabled = False
 calculate_similarity = False
@@ -254,7 +252,7 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str,
     pedigree_filename = pedigree_files[0]
     if pedigree is None:
         start_preprocessing = time.time()
-        potential_mrca_graph = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filename=pedigree_filename)
+        potential_mrca_graph = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_filename)
         end_preprocessing = time.time()
         print_log(f"Preprocessing time: {end_preprocessing - start_preprocessing} seconds")
     else:
@@ -281,11 +279,11 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str,
         os.makedirs(logs_directory_name)
         logger = MatcherLogger(logs_directory_name=logs_directory_name)
         coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(
-            filename=filename,
+            filepath=filename,
             max_parent_number=2 ** 10)
         coalescent_tree.remove_unary_nodes()
-        graph_matcher = GraphMather(coalescent_tree=coalescent_tree, processed_graph=potential_mrca_graph,
-                                    logger=logger)
+        graph_matcher = GraphMatcher(coalescent_tree=coalescent_tree, processed_graph=potential_mrca_graph,
+                                     logger=logger)
         start_alignment = time.time()
         result = graph_matcher.find_mapping()
         end_alignment = time.time()

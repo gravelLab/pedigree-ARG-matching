@@ -1,4 +1,4 @@
-from divide_and_conquer.configuration import print_enabled
+from alignment.configuration import print_enabled
 
 
 def print_log(log_string: str):

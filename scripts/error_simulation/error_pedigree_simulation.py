@@ -1,7 +1,7 @@
 import warnings
 
-from divide_and_conquer.graph_matcher import *
-from utility import *
+from alignment.graph_matcher import *
+from scripts.utility import *
 
 simulation_root_dir = "error_pedigrees"
 
@@ -10,14 +10,14 @@ error_rate = 0.01
 os.makedirs(simulation_root_dir, exist_ok=True)
 os.chdir(simulation_root_dir)
 
-simulation_name = get_non_existing_directory_name("Specify the name of the simulation: ")
-simulation_steps = get_integer_input("Specify the number of simulation steps: ")
+simulation_name = get_non_existing_directory_path("Specify the name of the simulation: ")
+simulation_steps = get_natural_number_input("Specify the number of simulation steps: ")
 pedigree_path = get_file_path("Specify the absolute path to the pedigree:")
 
 os.makedirs(simulation_name)
 os.chdir(simulation_name)
 
-potential_mrca_graph = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filename=pedigree_path,
+potential_mrca_graph = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path,
                                                                                  initialize_levels=True,
                                                                                  initialize_ancestor_maps=False)
 # List of non-founder individuals

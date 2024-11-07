@@ -11,11 +11,11 @@ from functools import reduce
 
 import networkx
 
-from divide_and_conquer.configuration import *
-from divide_and_conquer.potential_mrca_processed_graph import *
-from divide_and_conquer.subtree_matcher import *
-from genealogical_graph import CoalescentTree
-from divide_and_conquer.log import print_log
+from alignment.configuration import *
+from alignment.potential_mrca_processed_graph import *
+from alignment.subtree_matcher import *
+from graph.coalescent_tree import CoalescentTree
+from alignment.log import print_log
 
 
 class MatcherLogger:
@@ -98,27 +98,27 @@ def get_subtree_matcher_for_coalescent_tree_proband(proband: int, proband_pedigr
             for proband_pedigree_id in proband_pedigree_ids}
 
 
-class GraphMather:
+class GraphMatcher:
     """!
     This class runs the divide-and-conquer alignment algorithm on the given preprocessed pedigree and the coalescent
     tree.
-
-    Attributes:
-        processed_graph (PotentialMrcaProcessedGraph): The preprocessed pedigree graph that stores the "access vertices"
-        through which a descendant vertex can reach the ancestor vertex.
-        coalescent_tree (CoalescentTree): The coalescent tree with which the processed_graph is to be aligned.
-        logger (MatcherLogger): The logger instance to log steps of the algorithm
-        initial_mapping (dict): The initial mapping between the proband vertices in the processed pedigree to
-        the vertices in the coalescent tree.
     """
 
     def __init__(self, processed_graph: PotentialMrcaProcessedGraph, coalescent_tree: CoalescentTree,
                  logger: MatcherLogger, initial_mapping: dict = None):
+        """
+        @param processed_graph (PotentialMrcaProcessedGraph): The preprocessed pedigree graph that stores the
+        "access vertices" through which a descendant vertex can reach the ancestor vertex.
+        @param coalescent_tree (CoalescentTree): The coalescent tree with which the processed_graph is to be aligned.
+        @param logger (MatcherLogger): The logger instance to log steps of the algorithm
+        @param initial_mapping (dict): The initial mapping between the proband vertices in the processed pedigree to
+        the vertices in the coalescent tree.
+        """
         # TODO: Consider changing the API, passing the logger is not elegant
         self.pedigree = processed_graph
         self.coalescent_tree = coalescent_tree
         if initial_mapping is None:
-            initial_mapping = self.get_initial_mapping_for_mode(current_initial_matching_mode)
+            initial_mapping = self.get_initial_mapping_for_mode(default_initial_matching_mode)
         self.initial_mapping = initial_mapping
         self.logger = logger
 
@@ -296,6 +296,36 @@ class GraphMather:
         maximum_flow = networkx.maximum_flow_value(flowG=network_graph, _s=source_vertex_label, _t=target_vertex_label)
         return maximum_flow == proband_number
 
+    def add_edges_to_mrca_from_descendants(self, flow_network: networkx.DiGraph, mrca: int, descendant_vertices: [int]):
+        """
+        :param flow_network:
+        :param mrca:
+        :param descendant_vertices:
+        :return:
+        """
+        mrca_access_label = f"{mrca}'"
+        flow_network.add_edge(mrca_access_label, mrca, capacity=len(descendant_vertices))
+        for descendant in descendant_vertices:
+            # descendant_mrca_access_vertices = self.vertex_to_ancestor_map[descendant][mrca]
+            # flow_network.add_edges_from([(x, mrca_access_label) for x in descendant_mrca_access_vertices], capacity=1)
+            # current_level_vertices = descendant_mrca_access_vertices
+            current_level_vertices = [mrca]
+            while current_level_vertices:
+                next_level_vertices = set()
+                for vertex in current_level_vertices:
+                    if vertex == descendant:
+                        continue
+                    neighbors = self.pedigree.vertex_to_ancestor_map[descendant][vertex]
+                    for neighbor in neighbors:
+                        vertex_access_label = f"{vertex}'"
+                        # We can potentially override the edge's capacity if vertex is the mrca in the
+                        # coalescent tree
+                        if not flow_network.has_edge(vertex_access_label, vertex):
+                            flow_network.add_edge(vertex_access_label, vertex, capacity=1)
+                        flow_network.add_edge(neighbor, vertex_access_label, capacity=1)
+                    next_level_vertices.update(neighbors)
+                current_level_vertices = next_level_vertices
+
     def get_subtrees_from_children(self, focal_vertex: int, vertex_subtree_dict: {int: {int: SubtreeMatcher}}):
         """!
         @brief This method finds all the valid alignments for the sub-clade where the given focal_vertex is the root.
@@ -398,22 +428,31 @@ class GraphMather:
         @return True if potential mrca candidate is indeed a potential mrca, False otherwise.
         """
         first_vertex_access = self.pedigree.vertex_to_ancestor_map[first_vertex][potential_mrca_candidate]
-        second_vertex_access = self.pedigree.vertex_to_ancestor_map[second_vertex][potential_mrca_candidate]
-        current_access = set(first_vertex_access).union(second_vertex_access)
-        if len(current_access) > 2:
+        if len(first_vertex_access) > 2:
             return True
-        third_vertex_access = self.pedigree.vertex_to_ancestor_map[third_vertex][potential_mrca_candidate]
-        for access_vertex in third_vertex_access:
-            if access_vertex not in current_access:
+        second_vertex_access = self.pedigree.vertex_to_ancestor_map[second_vertex][potential_mrca_candidate]
+        current_access = set(first_vertex_access)
+        # Add elements from the second access and check the distinct count
+        for vertex in second_vertex_access:
+            current_access.add(vertex)
+            if len(current_access) > 2:
                 return True
+        third_vertex_access = self.pedigree.vertex_to_ancestor_map[third_vertex][potential_mrca_candidate]
+        # Add elements from the third access and check the distinct count
+        for vertex in third_vertex_access:
+            current_access.add(vertex)
+            if len(current_access) > 2:
+                return True
+        # If the loop completes, there are 2 or fewer distinct elements
         return False
 
-    def filter_common_ancestors_for_vertex_pair(self, first_candidate, second_candidate):
+    def filter_common_ancestors_for_vertex_pair(self, first_candidate: int, second_candidate: int):
         """!
-        @brief
-        @param first_candidate:
-        @param second_candidate:
-        @return:
+        @brief Finds the pmracs vertices for the given vertex pair. Important: This method does not
+        check whether the passed vertices are different
+        @param first_candidate: The first vertex id
+        @param second_candidate: The second vertex id
+        @return: The list of pmracs for the given vertices
         """
         verified_ancestors = []
         if (not self.pedigree.parents_map.get(first_candidate, []) or
@@ -427,24 +466,22 @@ class GraphMather:
                 return verified_ancestors
         first_ancestors = self.pedigree.vertex_to_ancestor_map[first_candidate]
         second_ancestors = self.pedigree.vertex_to_ancestor_map[second_candidate]
-        if len(second_ancestors) > len(first_ancestors):
+        if len(second_ancestors) < len(first_ancestors):
             first_ancestors, second_ancestors = second_ancestors, first_ancestors
-        for ancestor in first_ancestors:
-            # TODO: Verify if Python truly optimizes the "in" lookup as it's speculated in some sources.
-            #  If not, use a hashset
-            if (ancestor in second_ancestors and
-                    self.verify_pmrca_for_vertex_pair(first_candidate, second_candidate,
-                                                      ancestor)):
-                verified_ancestors.append(ancestor)
+        verified_ancestors.extend([ancestor for ancestor in first_ancestors if ancestor in second_ancestors and
+                                   self.verify_pmrca_for_vertex_pair(first_candidate, second_candidate, ancestor)
+                                   ])
         return verified_ancestors
 
     def get_pmracs_for_vertex_pair(self, first: int, second: int, coalescent_vertex_to_candidates: {int: [int]}):
         """!
-        @brief
-        @param first:
-        @param second:
-        @param coalescent_vertex_to_candidates:
-        @return
+        @brief Explores the possible candidates for the given coalescent vertices and finds the corresponding pmracs
+        @param first: The first coalescent vertex id
+        @param second: The second coalescent vertex id
+        @param coalescent_vertex_to_candidates: A dictionary mapping coalescent vertex ids to the list of pedigree
+        vertices
+        @return The dictionary mapping a valid pmrca id to the corresponding pedigree assignments for the passed
+        coalescent vertices
         """
         result = defaultdict(list)
         first_vertex_candidates = coalescent_vertex_to_candidates[first]
@@ -453,6 +490,8 @@ class GraphMather:
             first_vertex_candidates, second_vertex_candidates = second_vertex_candidates, first_vertex_candidates
         for first_vertex_candidate in first_vertex_candidates:
             for second_vertex_candidate in second_vertex_candidates:
+                if first_vertex_candidate == second_vertex_candidate:
+                    continue
                 verified_ancestors = self.filter_common_ancestors_for_vertex_pair(
                     first_vertex_candidate,
                     second_vertex_candidate)
@@ -463,12 +502,14 @@ class GraphMather:
     def get_pmracs_for_vertex_triple_iterative(self, first: int, second: int, third: int,
                                                coalescent_vertex_to_candidates: {int: [int]}):
         """!
-        @brief
+        @brief Explores the possible candidates for the given coalescent vertices and finds the corresponding pmracs
         @param first: The first coalescent vertex
         @param second:The second coalescent vertex
         @param third: The third coalescent vertex
-        @param coalescent_vertex_to_candidates: The map returning the candidate list for a given coalescent vertex
-        @return:
+        @param coalescent_vertex_to_candidates: A dictionary mapping coalescent vertex ids to the list of pedigree
+        vertices
+        @return The dictionary mapping a valid pmrca id to the corresponding pedigree assignments for the passed
+        coalescent vertices
         """
         triplet_cache = dict()
 
@@ -492,7 +533,10 @@ class GraphMather:
                     if first_candidate not in dictionary[pmrca_candidate]:
                         dictionary[pmrca_candidate][first_candidate] = []
                     dictionary[pmrca_candidate][first_candidate].append(other_candidate)
-        shared_common_ancestors = first_third_pair_result.keys() & first_third_pair_result.keys()
+        # Letting the GC free the memory if necessary
+        first_second_pair_result = None
+        first_third_pair_result = None
+        shared_common_ancestors = first_second_dict.keys() & first_third_dict.keys()
         result = defaultdict(list)
         for shared_common_ancestor in shared_common_ancestors:
             shared_first_vertex_assignments = (first_second_dict[shared_common_ancestor].keys() &
@@ -500,19 +544,20 @@ class GraphMather:
             for first_candidate in shared_first_vertex_assignments:
                 for second_candidate in first_second_dict[shared_common_ancestor][first_candidate]:
                     for third_candidate in first_third_dict[shared_common_ancestor][first_candidate]:
-                        triplet_tuple = get_triplet_tuple(first_candidate, second_candidate, third_candidate)
-                        # TODO: Add common parents speed-up
+                        if second_candidate == third_candidate:
+                            continue
+                        # TODO: Consider adding the common-parents speed-up
+                        current_triplet_tuple = get_triplet_tuple(first_candidate, second_candidate, third_candidate)
                         if (self.verify_pmrca_for_vertex_pair(second_candidate, third_candidate, shared_common_ancestor)
                                 and self.triplet_condition_holds(first_candidate, second_candidate,
                                                                  third_candidate, shared_common_ancestor)):
-                            result[shared_common_ancestor].append(triplet_tuple)
+                            result[shared_common_ancestor].append(current_triplet_tuple)
         return result
 
     def get_pmracs_for_vertices(self, vertices_coalescent_ids: [int],
                                 coalescent_vertex_to_candidates: {int: [int]}):
         """!
         @brief This function calculates the potential most recent common ancestor (pmrca) for the given vertices.
-        TODO: Give the definition of a pmrca taking into account various optimizations that have been implemented
         @param vertices_coalescent_ids The ids for the coalescent vertices.
         @param coalescent_vertex_to_candidates: A dictionary mapping an id of a coalescent vertex to the list of
         ids of pedigree vertices that can be assigned to this coalescent vertex.
@@ -537,11 +582,22 @@ class GraphMather:
 
     def get_pmracs_for_vertices_dfs(self, vertices_coalescent_ids: [int],
                                     coalescent_vertex_to_candidates: {int: [int]}):
+        """
+        Explores the search graph in a dfs manner storing the results only for the currently explored branch
+        @param vertices_coalescent_ids: The ids for the coalescent vertices.
+        @param coalescent_vertex_to_candidates: A dictionary mapping an id of a coalescent vertex to the list of
+        ids of pedigree vertices that can be assigned to this coalescent vertex.
+        @return: All the valid pmracs for the given vertices.
+        """
         result = []
         vertices_length = len(vertices_coalescent_ids)
+        # Specifies the index of the currently explored coalescent vertex
         current_index = 0
+        # Specifies the currently explored partial assignment
         current_partial_assignment = dict()
         partial_result = dict()
+        # The current_stack variable is a stack keeping track of the pedigree ploid assignments that are to be
+        # explored for the current coalescent vertex
         current_stack = []
         current_stack.extend(coalescent_vertex_to_candidates[vertices_coalescent_ids[0]])
         set_cache = dict()
@@ -625,33 +681,3 @@ class GraphMather:
             for candidate in candidates_list:
                 formatted_result[candidate].append(assigned_children)
         return formatted_result
-
-    def add_edges_to_mrca_from_descendants(self, flow_network: networkx.DiGraph, mrca: int, descendant_vertices: [int]):
-        """
-        :param flow_network:
-        :param mrca:
-        :param descendant_vertices:
-        :return:
-        """
-        mrca_access_label = f"{mrca}'"
-        flow_network.add_edge(mrca_access_label, mrca, capacity=len(descendant_vertices))
-        for descendant in descendant_vertices:
-            # descendant_mrca_access_vertices = self.vertex_to_ancestor_map[descendant][mrca]
-            # flow_network.add_edges_from([(x, mrca_access_label) for x in descendant_mrca_access_vertices], capacity=1)
-            # current_level_vertices = descendant_mrca_access_vertices
-            current_level_vertices = [mrca]
-            while current_level_vertices:
-                next_level_vertices = set()
-                for vertex in current_level_vertices:
-                    if vertex == descendant:
-                        continue
-                    neighbors = self.pedigree.vertex_to_ancestor_map[descendant][vertex]
-                    for neighbor in neighbors:
-                        vertex_access_label = f"{vertex}'"
-                        # We can potentially override the edge's capacity if vertex is the mrca in the
-                        # coalescent tree
-                        if not flow_network.has_edge(vertex_access_label, vertex):
-                            flow_network.add_edge(vertex_access_label, vertex, capacity=1)
-                        flow_network.add_edge(neighbor, vertex_access_label, capacity=1)
-                    next_level_vertices.update(neighbors)
-                current_level_vertices = next_level_vertices

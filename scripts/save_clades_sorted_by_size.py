@@ -1,8 +1,7 @@
-import os
 from collections import defaultdict
 
-from genealogical_graph import CoalescentTree, GenealogicalGraph
-from utility import *
+from graph.coalescent_tree import CoalescentTree, GenealogicalGraph
+from scripts.utility import *
 
 tree_filename = "clade"
 pedigree_filename = "pedigree.pedigree"
@@ -13,7 +12,7 @@ log_file_name = "log.txt"
 
 def save_clades_by_proband_sizes(pedigree_filepath, pedigree: GenealogicalGraph):
     filepath = get_file_path("Specify the path to the coalescent tree:\n")
-    result_filepath = get_non_existing_directory_name("Specify the path to save the clades to:\n")
+    result_filepath = get_non_existing_directory_path("Specify the path to save the clades to:\n")
     os.makedirs(result_filepath, exist_ok=False)
     coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath)
     # coalescent_tree.remove_unary_nodes()
@@ -49,5 +48,5 @@ def save_clades_by_proband_sizes(pedigree_filepath, pedigree: GenealogicalGraph)
 
 pedigree_filepath = get_file_path("Specify the path to the pedigree file:\n")
 print("Processing the graph")
-pedigree = GenealogicalGraph.get_diploid_graph_from_file(filename=pedigree_filepath)
+pedigree = GenealogicalGraph.get_diploid_graph_from_file(filepath=pedigree_filepath)
 save_clades_by_proband_sizes(pedigree_filepath, pedigree)

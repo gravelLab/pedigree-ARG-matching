@@ -1,10 +1,8 @@
-import os.path
-
-from utility import *
-
 import msprime.ancestry
 from tskit import TreeSequence, Tree
-from genealogical_graph import CoalescentTree
+
+from graph.coalescent_tree import CoalescentTree
+from scripts.utility import *
 
 sequence_length = 4
 

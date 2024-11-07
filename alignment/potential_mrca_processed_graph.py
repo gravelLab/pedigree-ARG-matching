@@ -1,4 +1,4 @@
-from genealogical_graph import GenealogicalGraph, SimpleGraph
+from graph.genealogical_graph import GenealogicalGraph, SimpleGraph
 
 graph_build_time = 0
 last_threshold = 10
@@ -82,11 +82,11 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         return self.vertex_to_ancestor_map[vertex].keys()
 
     @staticmethod
-    def get_processed_graph_from_file(filename, missing_parent_notation=None, separation_symbol=' ',
+    def get_processed_graph_from_file(filepath: str, missing_parent_notation=None, separation_symbol=' ',
                                       initialize_ancestor_maps: bool = True,
                                       initialize_levels: bool = True
                                       ):
-        pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filename,
+        pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filepath,
                                                                         missing_parent_notation=missing_parent_notation,
                                                                         separation_symbol=separation_symbol)
         return PotentialMrcaProcessedGraph(pedigree=pedigree, initialize_levels=initialize_levels,

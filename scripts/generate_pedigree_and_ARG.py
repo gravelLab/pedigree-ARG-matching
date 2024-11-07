@@ -4,7 +4,7 @@ import msprime.pedigrees
 
 import msprime.ancestry
 from tskit import TreeSequence, TableCollection, Tree
-from genealogical_graph import CoalescentTree
+from graph.coalescent_tree import CoalescentTree
 
 sequence_length = 2
 recombination_rate = 0.1
@@ -70,5 +70,5 @@ print("Generated ARG\n")
 first_tree: Tree = arg.first()
 
 generate_and_save_coalescent_tree(0, first_tree)
-arg_parsed: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filename=arg_filename,
+arg_parsed: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=arg_filename,
                                                                           max_parent_number=2 ** 10)

@@ -1,5 +1,5 @@
-from genealogical_graph import CoalescentTree, GenealogicalGraph
-from utility import *
+from graph.coalescent_tree import CoalescentTree, GenealogicalGraph
+from scripts.utility import *
 
 
 def save_largest_clade_and_get_probands():

@@ -8,7 +8,6 @@ import itertools
 import warnings
 
 from tskit import Tree
-from collections import defaultdict
 
 
 class SimpleGraph:
@@ -207,7 +206,7 @@ class SimpleGraph:
                                                skip_first_line=skip_first_line)
 
     @staticmethod
-    def get_diploid_graph_from_file(filename: str, max_parent_number: int = 2,
+    def get_diploid_graph_from_file(filepath: str, max_parent_number: int = 2,
                                     missing_parent_notation=None, separation_symbol=' ',
                                     skip_first_line: bool = False) -> SimpleGraph:
         """!
@@ -215,7 +214,7 @@ class SimpleGraph:
         organism.
         @param max_parent_number The maximum number of parents an individual can posses.
         The value must be either 1 or 2.
-        @param filename The path to the file to be used. The file can optionally start with 1 comment line starting with
+        @param filepath The path to the file to be used. The file can optionally start with 1 comment line starting with
         the '#' symbol.
         @param separation_symbol The symbol used to separate the values in a line. By default, a space is used.
         @param missing_parent_notation The list of text sequences representing that the given individual has no parents.
@@ -224,7 +223,7 @@ class SimpleGraph:
         header does not start with a '#' symbol.
         @return The processed pedigree.
         """
-        return SimpleGraph.get_graph_from_file(filename=filename, ploidy=2,
+        return SimpleGraph.get_graph_from_file(filename=filepath, ploidy=2,
                                                max_parent_number=max_parent_number,
                                                missing_parent_notation=missing_parent_notation,
                                                separation_symbol=separation_symbol,
@@ -304,3 +303,4 @@ class SimpleGraph:
         @brief Returns the vertices that don't have parents specified.
         """
         return [x for x in self.children_map if x not in self.parents_map]
+
