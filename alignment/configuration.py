@@ -14,7 +14,7 @@ class MatchingMode(Enum):
 default_initial_matching_mode = InitialMatchingMode.INDIVIDUAL
 current_matching_mode = MatchingMode.ALL_ALIGNMENTS
 
-logs_enabled = True
+logs_enabled = False
 logs_default_directory_name = "logs"
 
-print_enabled = True
+print_enabled = False

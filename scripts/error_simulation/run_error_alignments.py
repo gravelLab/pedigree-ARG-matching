@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import argparse
+import os.path
+import sys
 import traceback
 import warnings
 from io import UnsupportedOperation
 from pathlib import Path
 
 from alignment.graph_matcher import *
+from scripts import utility
 from scripts.run_alignment import save_alignment_result_to_files, get_alignments_proband_distance_probands_ignored
 from scripts.utility import *
 
@@ -415,6 +419,14 @@ def specific_error_pedigree_directories_mode():
                                             simulation_name=input_simulation_name)
 
 
+def get_absolute_paths_to_subfolders(directory_path: str) -> list[str]:
+    return [
+        os.path.abspath(os.path.join(directory_path, subdir))
+        for subdir in os.listdir(directory_path)
+        if os.path.isdir(os.path.join(directory_path, subdir))
+    ]
+
+
 def children_tree_directories_error_pedigree_directory_mode():
     current_working_directory = Path.cwd()
     error_pedigrees_folder_path = get_directory_path("Specify the absolute path to the error pedigrees directory:")
@@ -422,30 +434,144 @@ def children_tree_directories_error_pedigree_directory_mode():
                                                              " tree-pedigree directories:")
     os.chdir(error_pedigrees_folder_path)
     input_simulation_name = get_non_existing_directory_path("Specify the simulation name:")
-    tree_pedigree_paths = [
-        os.path.abspath(os.path.join(tree_pedigree_parent_directory_path, subdir))
-        for subdir in os.listdir(tree_pedigree_parent_directory_path)
-        if os.path.isdir(os.path.join(tree_pedigree_parent_directory_path, subdir))
-    ]
+    tree_pedigree_paths = get_absolute_paths_to_subfolders(tree_pedigree_parent_directory_path)
     os.chdir(current_working_directory)
     run_specific_error_pedigree_directories(paths=tree_pedigree_paths,
                                             error_pedigrees_folder_path=error_pedigrees_folder_path,
                                             simulation_name=input_simulation_name)
 
 
-script_menu = ("Choose the running mode:\n"
-               "1) Specify the path to the initial tree-pedigree pair and a parent directory of error-simulated "
-               "pedigree directories\n"
-               "2) Specify the path to multiple tree-pedigree pair directories and a parent directory of "
-               "error-simulated pedigree directories\n"
-               "3) Specify the path to a parent directory containing tree-pedigree pair directories and "
-               "a parent directory of error-simulated pedigree directories\n"
-               )
-menu_option = get_natural_number_input_in_bounds(script_menu, 1, 3)
-match menu_option:
-    case 1:
-        single_tree_parent_error_directory_alignment_mode()
-    case 2:
-        specific_error_pedigree_directories_mode()
-    case 3:
-        children_tree_directories_error_pedigree_directory_mode()
+def run_interactive_session():
+    script_menu = ("Choose the running mode:\n"
+                   "1) Specify the path to the initial tree-pedigree pair and a parent directory of error-simulated "
+                   "pedigree directories\n"
+                   "2) Specify the path to multiple tree-pedigree pair directories and a parent directory of "
+                   "error-simulated pedigree directories\n"
+                   "3) Specify the path to a parent directory containing tree-pedigree pair directories and "
+                   "a parent directory of error-simulated pedigree directories\n"
+                   )
+    menu_option = get_natural_number_input_in_bounds(script_menu, 1, 3)
+    match menu_option:
+        case 1:
+            single_tree_parent_error_directory_alignment_mode()
+        case 2:
+            specific_error_pedigree_directories_mode()
+        case 3:
+            children_tree_directories_error_pedigree_directory_mode()
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Choose the running mode.")
+    parser.add_argument("--error-dir", type=str, required=True,
+                        help="Path to the parent directory of error-simulated pedigree directories.")
+    parser.add_argument("--mode", choices=["1", "2", "3"], required=True,
+                        help="Specify the mode of operation. Choose from 1, 2, or 3.")
+    parser.add_argument("--simulation-name", type=str, required=True,
+                        help="Specify the simulation name.")
+
+    # Mode 1 specific arguments
+    parser.add_argument("--tree-path", type=str, help="Path to the coalescent tree")
+    parser.add_argument("--pedigree-path", type=str, help="Path to the coalescent tree")
+
+    # Mode 2 specific arguments
+    parser.add_argument("--initial-dirs", nargs='+', help="Path to multiple tree-pedigree pair directories")
+
+    # Mode 3 specific arguments
+    parser.add_argument("--initial-parent-dir", type=str, help="Path to the parent directory containing "
+                                                               "tree-pedigree pair directories")
+
+    # Parse the arguments
+    arguments = parser.parse_args()
+    # Define required arguments for each mode
+    mode_args = {
+        "1": ["--tree-path", "--pedigree-path"],
+        "2": ["--initial-dirs"],
+        "3": ["--initial-parent-dir"]
+    }
+    shared_arguments = ["--error-dir", "--mode", "--simulation-name"]
+    # Get the required arguments for the specified mode
+    mode_specific_args = mode_args[arguments.mode]
+
+    # Get all the arguments passed by the user
+    passed_args = [arg for arg in vars(arguments) if getattr(arguments, arg) is not None]
+    # Normalize argument names (convert underscores to hyphens for comparison)
+    normalized_passed_args = [f"--{arg.replace('_', '-')}" for arg in passed_args]
+
+    # Validate that only the required arguments for the selected mode are passed
+    for arg in normalized_passed_args:
+        if arg not in shared_arguments and arg not in mode_specific_args:
+            print(f"Mode {arguments.mode} does not accept the argument: {arg}")
+            sys.exit(1)
+
+    # Check that the error directory exists and the simulation name is not taken (i.e. there is no folder with that
+    # name under the error directory)
+    error_directory_path = arguments.error_dir
+    simulation_name = arguments.simulation_name
+    if not utility.verify_folder_path(error_directory_path):
+        print(f"The specified directory path {error_directory_path} either does not exist or is not a directory")
+        return
+    simulation_folder_path = Path(error_directory_path) / simulation_name
+    if os.path.exists(simulation_folder_path):
+        print(f"The specified simulation path {simulation_folder_path} already exists")
+        return
+    # Check the mode and print the corresponding information
+    print(f"The specified mode is: {arguments.mode}")
+    print(f"Error directory is: {error_directory_path}")
+    if arguments.mode == "1":
+        pedigree_path = arguments.pedigree_path
+        tree_path = arguments.tree_path
+        if tree_path and pedigree_path:
+            for path in (tree_path, pedigree_path):
+                if not utility.verify_filepath(path):
+                    print(f"Path {path} does not exist or is not a file")
+                    return
+            print(f"Running mode 1 with tree_path: {tree_path} and pedigree_path: {pedigree_path}")
+            run_single_parent_error_directory_alignment(tree_path=tree_path,
+                                                        pedigree_no_errors_path=pedigree_path,
+                                                        error_pedigrees_folder_path=error_directory_path,
+                                                        input_simulation_name=simulation_name)
+        else:
+            print("Mode 1 requires both --tree-path and --pedigree-path.")
+            return
+    elif arguments.mode == "2":
+        if arguments.initial_dirs:
+            pedigree_tree_directory_paths = arguments.initial_dirs
+            for directory in pedigree_tree_directory_paths:
+                if not utility.verify_folder_path(directory):
+                    print(f"Path {directory} does not exist or is not a directory")
+                    return
+            print(f"Running mode 2 selected with initial_dirs: {arguments.initial_dirs}")
+            run_specific_error_pedigree_directories(paths=pedigree_tree_directory_paths,
+                                                    error_pedigrees_folder_path=error_directory_path,
+                                                    simulation_name=simulation_name)
+        else:
+            print("Mode 2 requires --initial-dirs.")
+            return
+    elif arguments.mode == "3":
+        if arguments.initial_parent_dir:
+            parent_paths_directory = arguments.initial_parent_dir
+            if not utility.verify_folder_path(parent_paths_directory):
+                print(f"Path {parent_paths_directory} does not exist or is not a directory")
+                return
+            pedigree_tree_directory_paths = get_absolute_paths_to_subfolders(parent_paths_directory)
+            if not pedigree_tree_directory_paths:
+                print(f"The directory {parent_paths_directory} does not contain any subdirectories")
+                return
+            print(f"Running mode 3 selected with initial_parent_dir: {parent_paths_directory}")
+            run_specific_error_pedigree_directories(paths=pedigree_tree_directory_paths,
+                                                    error_pedigrees_folder_path=error_directory_path,
+                                                    simulation_name=simulation_name)
+        else:
+            print("Mode 3 requires --initial-parent-dir.")
+            return
+
+
+def main():
+    if len(sys.argv) == 1:  # Only the script name is present
+        run_interactive_session()
+    else:
+        parse_arguments()
+
+
+if __name__ == "__main__":
+    main()

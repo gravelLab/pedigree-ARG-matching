@@ -50,6 +50,14 @@ def get_file_path(input_request: str):
             return file_path
 
 
+def verify_filepath(path: str) -> bool:
+    return os.path.exists(path) and os.path.isfile(path)
+
+
+def verify_folder_path(path: str) -> bool:
+    return os.path.exists(path) and os.path.isdir(path)
+
+
 def get_directory_path(input_request: str):
     while True:
         file_path = input(input_request)
