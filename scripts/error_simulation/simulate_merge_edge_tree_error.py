@@ -16,6 +16,7 @@ def run_independent_simulations(tree: CoalescentTree):
             coalescent_tree.merge_edge(parent=error_vertex_parent, child=error_vertex, recalculate_levels=False)
         tree.initialize_vertex_to_level_map()
         tree.save_to_file(simulation_tree_name)
+        # TODO: Reverse the changes instead of parsing the tree again
         tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
 
 
@@ -27,12 +28,12 @@ def run_all_simulations(tree: CoalescentTree):
             tree.merge_edge(parent=error_vertex_parent, child=error_vertex, recalculate_levels=False)
         tree.remove_isolated_vertices(recalculate_levels=True)
         tree.save_to_file(simulation_tree_name)
+        # TODO: Reverse the changes instead of parsing the tree again
         tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
 
 
 results_directory_paths = get_non_existing_directory_path("Specify the path where the results are to be stored:")
 coalescent_tree_path = get_file_path("Specify the path to the coalescent tree:")
-coalescent_tree_filename = os.path.basename(coalescent_tree_path)
 coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
 possible_error_vertices = [x for x in coalescent_tree.children_map if x in coalescent_tree.parents_map]
 max_error_number = len(possible_error_vertices)

@@ -60,6 +60,12 @@ def get_subtree_matcher_for_coalescent_tree_proband(proband: int, proband_pedigr
             for proband_pedigree_id in proband_pedigree_ids}
 
 
+def get_initial_mapping_for_mode(coalescent_tree: CoalescentTree, mode: InitialMatchingMode = current_matching_mode):
+    if mode == InitialMatchingMode.PLOID:
+        return {x: [x] for x in coalescent_tree.probands}
+    return {x: [2 * (x // 2), (2 * (x // 2) + 1)] for x in coalescent_tree.probands}
+
+
 class GraphMatcher:
     """!
     This class runs the divide-and-conquer alignment algorithm on the given preprocessed pedigree and the coalescent
@@ -79,14 +85,9 @@ class GraphMatcher:
         self.pedigree = processed_graph
         self.coalescent_tree = coalescent_tree
         if initial_mapping is None:
-            initial_mapping = self.get_initial_mapping_for_mode(default_initial_matching_mode)
+            initial_mapping = get_initial_mapping_for_mode(coalescent_tree=self.coalescent_tree)
         self.initial_mapping = initial_mapping
         self.logger = logger
-
-    def get_initial_mapping_for_mode(self, mode: InitialMatchingMode):
-        if mode == InitialMatchingMode.PLOID:
-            return {x: [x] for x in self.coalescent_tree.probands}
-        return {x: [2 * (x // 2), (2 * (x // 2) + 1)] for x in self.coalescent_tree.probands}
 
     def find_mapping(self):
         """!

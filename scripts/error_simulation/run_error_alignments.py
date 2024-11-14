@@ -54,7 +54,6 @@ class ErrorPedigreeAlignmentComparison:
         self.error_free_pedigree_path = error_free_pedigree_path
         self.error_pedigrees_folder = error_pedigrees_folder
         self.save_alignments_to_files = save_alignments_to_files
-        # self.simulation_folder_path = simulation_folder_subpath
         self.coalescent_tree = None
         self.initial_pedigree = None
         self.initial_average_distance_to_identity = 0
@@ -142,7 +141,6 @@ class ErrorPedigreeAlignmentComparison:
     def run_initial_alignment(self):
         initial_alignment_path = self.simulation_folder_path / initial_alignment_dir_name
         os.mkdir(initial_alignment_path)
-        # os.chdir(initial_alignment_dir_name)
         if self.save_alignments_to_files:
             log_directory_path = initial_alignment_path / logs_default_directory_name
             initial_logger = MatcherLogger(logs_directory_path=log_directory_path)
@@ -156,7 +154,6 @@ class ErrorPedigreeAlignmentComparison:
                                            coalescent_tree=self.coalescent_tree,
                                            pedigree=self.initial_pedigree,
                                            directory_path=initial_alignment_path)
-        # os.chdir("..")
         return initial_result_dict
 
     def run_alignments(self) -> ErrorPedigreeAlignmentClassification:
@@ -181,15 +178,6 @@ class ErrorPedigreeAlignmentComparison:
         self.initial_pedigree.reduce_to_ascending_genealogy(probands=ascending_genealogy_probands,
                                                             recalculate_levels=True)
         self.initial_pedigree.initialize_potential_mrca_map()
-        # os.chdir(self.error_pedigrees_folder)
-        # os.chdir("..")
-        # dir_path = Path(self.simulation_folder_path)
-        # os.chdir(self.simulation_folder_path)
-        # self.detailed_result_file = open(detailed_result_filename, 'w')
-        # self.general_result_file = open(general_result_filename, 'w')
-        # self.detailed_result_file = open(self.simulation_folder_path / detailed_result_filename, 'w')
-        # self.general_result_file = open(self.simulation_folder_path / general_result_filename, 'w')
-        # self.log_graph_paths()
         initial_result_dict = self.run_initial_alignment()
         number_of_clades = len(initial_result_dict)
         if number_of_clades != 1:
@@ -209,7 +197,7 @@ class ErrorPedigreeAlignmentComparison:
         valid_alignments = [d for lst in initial_result_dict.values() for d in lst]
         # Letting the garbage collector to clean this object
         del initial_result_dict
-        self.initial_pedigree = None
+        del self.initial_pedigree
         # Gathering the statistics about the original alignments
         identity_solution = self.coalescent_tree.get_identity_solution()
         assert identity_solution in valid_alignments
@@ -233,14 +221,11 @@ class ErrorPedigreeAlignmentComparison:
         self.general_result_file.flush()
 
         # Run the alignments on the pedigrees with errors
-        # os.chdir(self.error_pedigrees_folder)
-        # current_directory = os.getcwd()
         current_directory = Path(self.error_pedigrees_folder)
         print(f"Starting running the alignments for {self.coalescent_tree_path}")
         simulation_counter = 0
         try:
             for subdirectory in os.listdir(self.error_pedigrees_folder):
-                # os.chdir(subdirectory)
                 subdirectory_path = current_directory / subdirectory
                 simulation_counter += 1
                 for file in os.listdir(subdirectory_path):
@@ -255,11 +240,6 @@ class ErrorPedigreeAlignmentComparison:
                         potential_mrca_graph.reduce_to_ascending_genealogy(probands=ascending_genealogy_probands,
                                                                            recalculate_levels=True)
                         potential_mrca_graph.initialize_potential_mrca_map()
-                        # os.chdir("..")
-                        # os.chdir("..")
-                        # os.chdir(self.simulation_folder_path)
-                        # os.mkdir(subdirectory)
-                        # os.chdir(subdirectory)
                         simulation_subdirectory_path = self.simulation_folder_path / subdirectory
                         if self.save_alignments_to_files:
                             os.mkdir(simulation_subdirectory_path)
@@ -323,7 +303,6 @@ class ErrorPedigreeAlignmentComparison:
                             self.error_pedigree_results.no_solutions_counter += 1
                         self.general_result_file.write("#####################################\n")
                         self.general_result_file.flush()
-                        # os.chdir(current_directory)
                         break
         except KeyboardInterrupt:
             print("Stop the simulation, log the final results")
@@ -449,7 +428,7 @@ def run_specific_error_pedigree_directories_parallel(paths: list[str], error_ped
     total_results = ErrorPedigreeAlignmentComparison.ErrorPedigreeAlignmentClassification()
     lock = Lock()
 
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=3) as executor:
         futures = [
             executor.submit(process_path, path, simulation_folder_path, error_pedigrees_folder_path, simulation_name)
             for path in paths]

@@ -289,8 +289,8 @@ class GenealogicalGraph(SimpleGraph):
         self.write_levels_to_file(file, levels)
         file.close()
 
-    def save_to_file(self, filename: str):
-        file = open(filename, 'w')
+    def save_to_file(self, filepath: str):
+        file = open(filepath, 'w')
         self.write_levels_to_file(file, self.levels)
         file.close()
 

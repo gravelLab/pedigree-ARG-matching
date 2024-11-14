@@ -18,7 +18,7 @@ def generate_and_save_ARG(parsed_pedigree: TableCollection):
                                                                 sequence_length=sequence_length)
     coalescent_tree_filename = arg_filename
     coalescent_tree: CoalescentTree = CoalescentTree.get_arg(tree_sequence=simulated_arg)
-    coalescent_tree.save_to_file(filename=coalescent_tree_filename)
+    coalescent_tree.save_to_file(filepath=coalescent_tree_filename)
     simulated_arg.draw_svg(path=f"{coalescent_tree_filename}.svg", size=(1000, 1000))
     return simulated_arg
 
@@ -27,7 +27,7 @@ def generate_and_save_coalescent_tree(tree_counter: int, tree: Tree):
     coalescent_tree_filename = f"coalescent_tree_{tree_counter}"
     tree_counter += 1
     coalescent_tree = CoalescentTree.get_coalescent_tree(tree)
-    coalescent_tree.save_to_file(filename=coalescent_tree_filename)
+    coalescent_tree.save_to_file(filepath=coalescent_tree_filename)
     tree.draw_svg(path=f"{coalescent_tree_filename}.svg", size=(1000, 1000))
     return tree_counter
 

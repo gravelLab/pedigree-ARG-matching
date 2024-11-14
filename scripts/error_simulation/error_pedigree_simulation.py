@@ -75,7 +75,7 @@ try:
             potential_mrca_graph.add_edge(parent=2 * new_parent + 1, child=child_ploid, recalculate_levels=False)
             add_edges.extend([(2 * random_parent, child_ploid), (2 * random_parent + 1, child_ploid)])
             remove_edges.extend([(2 * new_parent, child_ploid), (2 * new_parent + 1, child_ploid)])
-        potential_mrca_graph.save_to_file(filename=f"{simulation_name}_{i}.pedigree")
+        potential_mrca_graph.save_to_file(filepath=f"{simulation_name}_{i}.pedigree")
         # Reconstruct the initial graph
         for parent, child in add_edges:
             potential_mrca_graph.add_edge(parent=parent, child=child, recalculate_levels=False)

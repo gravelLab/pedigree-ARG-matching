@@ -157,3 +157,14 @@ def random_subselect_poisson(input_list, percentage):
     math_expectation = n * percentage
     number_of_errors = poisson.rvs(math_expectation)
     return random.sample(input_list, number_of_errors)
+
+
+def get_yes_or_no(prompt: str) -> bool:
+    while True:
+        user_input = input(f"{prompt} (yes or no): ").strip().lower()
+        if user_input in ['yes', 'y']:
+            return True
+        elif user_input in ['no', 'n']:
+            return False
+        else:
+            print("Invalid input. Please enter 'yes' or 'no'.")
