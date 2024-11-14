@@ -101,6 +101,13 @@ def get_natural_number_input_in_bounds(input_request: str, lower_bound: int, upp
         return value
 
 
+def save_dictionary_to_file(dictionary_filepath: str, dictionary: dict):
+    dictionary_file = open(dictionary_filepath, 'w')
+    for key, value in dictionary.items():
+        dictionary_file.write(f"{key}: {value}\n")
+    dictionary_file.close()
+
+
 def parse_dictionary_from_file(file_path: str):
     result = dict()
     with open(file_path, 'r') as file:
@@ -126,7 +133,7 @@ def read_mapping_from_file(file_path):
     return parsed_dict
 
 
-def build_histogram(histogram_filename: str, dictionary: dict):
+def build_histogram(histogram_filepath: str, dictionary: dict):
     x = list(dictionary.keys())
     y = list(dictionary.values())
 
@@ -134,7 +141,7 @@ def build_histogram(histogram_filename: str, dictionary: dict):
     plt.xlabel('Distances')
     plt.ylabel('Frequency')
     plt.title('Distance histogram')
-    plt.savefig(f"{histogram_filename}.png")
+    plt.savefig(f"{histogram_filepath}.png")
     plt.close()
 
 

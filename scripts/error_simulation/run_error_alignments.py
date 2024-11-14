@@ -5,8 +5,9 @@ import os.path
 import sys
 import traceback
 import warnings
+from concurrent.futures import as_completed, ProcessPoolExecutor
 from io import UnsupportedOperation
-from pathlib import Path
+from threading import Lock
 
 from alignment.graph_matcher import *
 from scripts import utility
@@ -15,8 +16,8 @@ from scripts.utility import *
 
 log_directory = "log_dir"
 initial_alignment_dir_name = "initial_alignment"
-general_result_filename = "!simulation_result.txt"
-detailed_result_filename = "!detailed_simulation_result.txt"
+general_result_filename = "simulation_result.txt"
+detailed_result_filename = "detailed_simulation_result.txt"
 
 
 class ErrorPedigreeAlignmentComparison:
@@ -47,11 +48,13 @@ class ErrorPedigreeAlignmentComparison:
             self.individual_not_present_spouse_present_counter += other_result.individual_not_present_spouse_present_counter
 
     def __init__(self, coalescent_tree_path: str, error_free_pedigree_path: str,
-                 error_pedigrees_folder: str, simulation_folder_path: str):
+                 error_pedigrees_folder: str, simulation_folder_subpath: str,
+                 save_alignments_to_files: bool = True):
         self.coalescent_tree_path = coalescent_tree_path
         self.error_free_pedigree_path = error_free_pedigree_path
         self.error_pedigrees_folder = error_pedigrees_folder
-        self.simulation_folder_path = simulation_folder_path
+        self.save_alignments_to_files = save_alignments_to_files
+        # self.simulation_folder_path = simulation_folder_subpath
         self.coalescent_tree = None
         self.initial_pedigree = None
         self.initial_average_distance_to_identity = 0
@@ -61,8 +64,13 @@ class ErrorPedigreeAlignmentComparison:
         self.new_individual_assignments_number = 0
         self.new_individual_simulations_number = 0
         self.error_pedigree_results = None
-        self.general_result_file = None
-        self.detailed_result_file = None
+        error_pedigree_parent_directory = Path(self.error_pedigrees_folder).parent
+        simulation_directory = error_pedigree_parent_directory / simulation_folder_subpath
+        simulation_directory.mkdir(parents=True, exist_ok=True)
+        self.simulation_folder_path = simulation_directory
+        self.detailed_result_file = open(self.simulation_folder_path / detailed_result_filename, 'w')
+        self.general_result_file = open(self.simulation_folder_path / general_result_filename, 'w')
+        self.log_graph_paths()
 
     def log_graph_paths(self):
         self.general_result_file.write(f"The path to the initial, error-free pedigree is:"
@@ -132,16 +140,23 @@ class ErrorPedigreeAlignmentComparison:
                                            f"{self.new_individual_simulations_number}\n")
 
     def run_initial_alignment(self):
-        coalescent_tree_filename = os.path.basename(self.coalescent_tree_path)
-        os.mkdir(initial_alignment_dir_name)
-        os.chdir(initial_alignment_dir_name)
-        initial_logger = MatcherLogger(logs_directory_name=log_directory)
+        initial_alignment_path = self.simulation_folder_path / initial_alignment_dir_name
+        os.mkdir(initial_alignment_path)
+        # os.chdir(initial_alignment_dir_name)
+        if self.save_alignments_to_files:
+            log_directory_path = initial_alignment_path / logs_default_directory_name
+            initial_logger = MatcherLogger(logs_directory_path=log_directory_path)
+        else:
+            initial_logger = None
         initial_matcher = GraphMatcher(coalescent_tree=self.coalescent_tree, processed_graph=self.initial_pedigree,
                                        logger=initial_logger)
         initial_result_dict = initial_matcher.find_mapping()
-        save_alignment_result_to_files(initial_result_dict, self.coalescent_tree, self.initial_pedigree,
-                                       coalescent_tree_filename)
-        os.chdir("..")
+        if self.save_alignments_to_files:
+            save_alignment_result_to_files(alignment_result=initial_result_dict,
+                                           coalescent_tree=self.coalescent_tree,
+                                           pedigree=self.initial_pedigree,
+                                           directory_path=initial_alignment_path)
+        # os.chdir("..")
         return initial_result_dict
 
     def run_alignments(self) -> ErrorPedigreeAlignmentClassification:
@@ -166,21 +181,19 @@ class ErrorPedigreeAlignmentComparison:
         self.initial_pedigree.reduce_to_ascending_genealogy(probands=ascending_genealogy_probands,
                                                             recalculate_levels=True)
         self.initial_pedigree.initialize_potential_mrca_map()
-        coalescent_tree_filename = os.path.basename(self.coalescent_tree_path)
-        os.chdir(self.error_pedigrees_folder)
-        os.chdir("..")
-        dir_path = Path(self.simulation_folder_path)
-        dir_path.mkdir(parents=True, exist_ok=True)
-        # os.mkdir(self.simulation_folder_path)
-        os.chdir(self.simulation_folder_path)
-        self.detailed_result_file = open(detailed_result_filename, 'w')
-        self.general_result_file = open(general_result_filename, 'w')
-        self.log_graph_paths()
+        # os.chdir(self.error_pedigrees_folder)
+        # os.chdir("..")
+        # dir_path = Path(self.simulation_folder_path)
+        # os.chdir(self.simulation_folder_path)
+        # self.detailed_result_file = open(detailed_result_filename, 'w')
+        # self.general_result_file = open(general_result_filename, 'w')
+        # self.detailed_result_file = open(self.simulation_folder_path / detailed_result_filename, 'w')
+        # self.general_result_file = open(self.simulation_folder_path / general_result_filename, 'w')
+        # self.log_graph_paths()
         initial_result_dict = self.run_initial_alignment()
         number_of_clades = len(initial_result_dict)
         if number_of_clades != 1:
             raise UnsupportedOperation("The current version of the script supports trees with only one clade")
-        print(f"Clades: {number_of_clades}")
         root_vertex = next(iter(initial_result_dict))
         root_vertex_individual = root_vertex // 2
         root_vertex_children_all_ploids = [
@@ -195,7 +208,7 @@ class ErrorPedigreeAlignmentComparison:
         assert individual_and_spouses, "Zero assignments found for the root!"
         valid_alignments = [d for lst in initial_result_dict.values() for d in lst]
         # Letting the garbage collector to clean this object
-        initial_result_dict = None
+        del initial_result_dict
         self.initial_pedigree = None
         # Gathering the statistics about the original alignments
         identity_solution = self.coalescent_tree.get_identity_solution()
@@ -220,38 +233,50 @@ class ErrorPedigreeAlignmentComparison:
         self.general_result_file.flush()
 
         # Run the alignments on the pedigrees with errors
-        os.chdir(self.error_pedigrees_folder)
-        current_directory = os.getcwd()
-
-        print("Starting running the alignments")
+        # os.chdir(self.error_pedigrees_folder)
+        # current_directory = os.getcwd()
+        current_directory = Path(self.error_pedigrees_folder)
+        print(f"Starting running the alignments for {self.coalescent_tree_path}")
         simulation_counter = 0
         try:
-            for subdirectory in os.listdir(current_directory):
-                os.chdir(subdirectory)
+            for subdirectory in os.listdir(self.error_pedigrees_folder):
+                # os.chdir(subdirectory)
+                subdirectory_path = current_directory / subdirectory
                 simulation_counter += 1
-                for file in os.listdir(os.getcwd()):
+                for file in os.listdir(subdirectory_path):
                     if file.endswith(".pedigree"):
-                        print(f"Parsing {file}")
+                        filepath = subdirectory_path / file
+                        print(f"Parsing {filepath} [{self.coalescent_tree_path}]")
                         potential_mrca_graph = (PotentialMrcaProcessedGraph.
-                                                get_processed_graph_from_file(filepath=file,
+                                                get_processed_graph_from_file(filepath=filepath,
                                                                               initialize_levels=False,
                                                                               initialize_ancestor_maps=False))
                         print("Reducing to the ascending genealogy")
                         potential_mrca_graph.reduce_to_ascending_genealogy(probands=ascending_genealogy_probands,
                                                                            recalculate_levels=True)
                         potential_mrca_graph.initialize_potential_mrca_map()
-                        os.chdir("..")
-                        os.chdir("..")
-                        os.chdir(self.simulation_folder_path)
-                        os.mkdir(subdirectory)
-                        os.chdir(subdirectory)
-                        logger = MatcherLogger(logs_directory_name=log_directory)
+                        # os.chdir("..")
+                        # os.chdir("..")
+                        # os.chdir(self.simulation_folder_path)
+                        # os.mkdir(subdirectory)
+                        # os.chdir(subdirectory)
+                        simulation_subdirectory_path = self.simulation_folder_path / subdirectory
+                        if self.save_alignments_to_files:
+                            os.mkdir(simulation_subdirectory_path)
+                            log_directory_path = str(simulation_subdirectory_path / logs_default_directory_name)
+                            logger = MatcherLogger(logs_directory_path=log_directory_path)
+                        else:
+                            logger = None
                         matcher = GraphMatcher(coalescent_tree=self.coalescent_tree,
                                                processed_graph=potential_mrca_graph,
                                                logger=logger)
                         result = matcher.find_mapping()
-                        save_alignment_result_to_files(result, self.coalescent_tree, potential_mrca_graph,
-                                                       coalescent_tree_filename)
+                        if self.save_alignments_to_files:
+                            alignments_dir_path = str(simulation_subdirectory_path)
+                            save_alignment_result_to_files(alignment_result=result,
+                                                           coalescent_tree=self.coalescent_tree,
+                                                           pedigree=potential_mrca_graph,
+                                                           directory_path=alignments_dir_path)
                         resulting_alignments = [d for lst in result.values() for d in lst]
                         self.log_solutions(resulting_alignments, simulation_counter)
                         self.general_result_file.write("#####################################\n")
@@ -298,7 +323,7 @@ class ErrorPedigreeAlignmentComparison:
                             self.error_pedigree_results.no_solutions_counter += 1
                         self.general_result_file.write("#####################################\n")
                         self.general_result_file.flush()
-                        os.chdir(current_directory)
+                        # os.chdir(current_directory)
                         break
         except KeyboardInterrupt:
             print("Stop the simulation, log the final results")
@@ -320,7 +345,7 @@ def run_single_parent_error_directory_alignment(tree_path: str, pedigree_no_erro
         coalescent_tree_path=tree_path,
         error_pedigrees_folder=error_pedigrees_folder_path,
         error_free_pedigree_path=pedigree_no_errors_path,
-        simulation_folder_path=input_simulation_name)
+        simulation_folder_subpath=input_simulation_name)
     error_pedigree_alignment_comparison.run_alignments()
 
 
@@ -349,62 +374,101 @@ def get_unique_folder(base_name: str, directory: Path = Path.cwd()) -> Path:
     return unique_name
 
 
-def run_specific_error_pedigree_directories(paths: list[str], error_pedigrees_folder_path: str,
-                                            simulation_name: str):
-    current_working_directory = Path.cwd()
-    os.chdir(error_pedigrees_folder_path)
-    os.chdir("..")
-    os.mkdir(simulation_name)
-    simulation_folder_path = Path.cwd() / simulation_name
-    error_pedigrees_simulation_directory = Path.cwd() / simulation_name
-    total_results = ErrorPedigreeAlignmentComparison.ErrorPedigreeAlignmentClassification()
-    for path in paths:
-        os.chdir(path)
-        current_dir = Path.cwd()
-        # Get all files in the current directory
-        files = list(current_dir.glob("*"))
-        # Filter out only files and get the absolute paths
-        files = [file.resolve() for file in files if file.is_file()]
-        if len(files) == 2:
-            pedigree_path = next((file for file in files if file.suffix == ".pedigree"), None)
-            tree_path = next((file for file in files if file != pedigree_path), None)
+def process_path(path_to_process, simulation_folder_path, error_pedigrees_folder_path, simulation_name):
+    absolute_path_to_process = simulation_folder_path / path_to_process
+    files = list(absolute_path_to_process.glob("*"))
+    files = [file.resolve() for file in files if file.is_file()]
 
-            if not pedigree_path or not tree_path:
-                warnings.warn("Either the pedigree or the tree file is missing, skipping the simulation")
-                continue
-        else:
-            warnings.warn(f"The {path} directory does not contain exactly two files. It's impossible to deduct"
-                          f" which data is to be used, skipping the simulation")
-            continue
-        # The simulation name must be unique for every input folder
-        simulation_folder_basename = os.path.basename(path)
-        simulation_folder_unique_name = get_unique_folder(base_name=simulation_folder_basename,
-                                                          directory=Path(error_pedigrees_simulation_directory))
-        simulation_path = str(Path(simulation_name) / Path(simulation_folder_unique_name))
-        error_pedigree_alignment_comparison = ErrorPedigreeAlignmentComparison(
-            coalescent_tree_path=tree_path,
-            error_pedigrees_folder=error_pedigrees_folder_path,
-            error_free_pedigree_path=pedigree_path,
-            simulation_folder_path=simulation_path
-        )
-        tree_results = error_pedigree_alignment_comparison.run_alignments()
-        total_results.add_results(tree_results)
-    os.chdir(simulation_folder_path)
-    total_results_file = open(f"{simulation_name}.txt", "w")
-    total_results_file.write(f"The number of simulations with solutions: {total_results.simulations_with_solutions}\n")
-    total_results_file.write(f"The number of simulations with no solutions: "
-                             f"{total_results.no_solutions_counter}\n")
-    total_results_file.write(f"The number of simulations with only the individual and spouses: "
-                             f"{total_results.only_individual_and_spouses_counter}\n")
-    total_results_file.write(f"The number of simulations with the individual and a non-spouse present: "
-                             f"{total_results.individual_and_non_spouse_present_counter}\n")
-    total_results_file.write(f"The number of simulations without the individual, but with a spouse: "
-                             f"{total_results.individual_not_present_spouse_present_counter}\n")
-    total_results_file.write(f"The number of simulations without the individual and all the spouses: "
-                             f"{total_results.neither_individual_nor_spouse_present_counter}\n")
-    total_results_file.close()
-    os.chdir(current_working_directory)
+    if len(files) == 2:
+        pedigree_path = next((file for file in files if file.suffix == ".pedigree"), None)
+        tree_path = next((file for file in files if file != pedigree_path), None)
+
+        if not pedigree_path or not tree_path:
+            warnings.warn("Either the pedigree or the tree file is missing, skipping the simulation")
+            return None
+    else:
+        warnings.warn(f"The {path_to_process} directory does not contain exactly two files. Skipping.")
+        return None
+
+    simulation_folder_basename = os.path.basename(path_to_process)
+    simulation_folder_unique_name = get_unique_folder(base_name=simulation_folder_basename,
+                                                      directory=simulation_folder_path)
+    simulation_path = str(Path(simulation_name) / Path(simulation_folder_unique_name))
+    error_pedigree_alignment_comparison = ErrorPedigreeAlignmentComparison(
+        coalescent_tree_path=tree_path,
+        error_pedigrees_folder=error_pedigrees_folder_path,
+        error_free_pedigree_path=pedigree_path,
+        simulation_folder_subpath=simulation_path
+    )
+    return error_pedigree_alignment_comparison.run_alignments()
+
+
+def save_error_alignments_to_file(filepath: str,
+                                  error_alignments_results: ErrorPedigreeAlignmentComparison.ErrorPedigreeAlignmentClassification):
+    with open(filepath, "w") as results_file:
+        results_file.write(f"The number of simulations with solutions: "
+                           f"{error_alignments_results.simulations_with_solutions}\n")
+        results_file.write(f"The number of simulations with no solutions: "
+                           f"{error_alignments_results.no_solutions_counter}\n")
+        results_file.write(f"The number of simulations with only the individual and spouses: "
+                           f"{error_alignments_results.only_individual_and_spouses_counter}\n")
+        results_file.write(f"The number of simulations with the individual and a non-spouse present: "
+                           f"{error_alignments_results.individual_and_non_spouse_present_counter}\n")
+        results_file.write(f"The number of simulations without the individual, but with a spouse: "
+                           f"{error_alignments_results.individual_not_present_spouse_present_counter}\n")
+        results_file.write(f"The number of simulations without the individual and all the spouses: "
+                           f"{error_alignments_results.neither_individual_nor_spouse_present_counter}\n")
+        results_file.close()
+
+
+def run_specific_error_pedigree_directories_iterative(paths: list[str], error_pedigrees_folder_path: str,
+                                                      simulation_name: str):
+    error_pedigree_parent_directory = Path(error_pedigrees_folder_path).parent
+    simulation_folder_path = error_pedigree_parent_directory / simulation_name
+    os.mkdir(simulation_folder_path)
+    total_results = ErrorPedigreeAlignmentComparison.ErrorPedigreeAlignmentClassification()
+    for path_to_process in paths:
+        tree_results = process_path(path_to_process=path_to_process,
+                                    simulation_folder_path=simulation_folder_path,
+                                    error_pedigrees_folder_path=error_pedigrees_folder_path,
+                                    simulation_name=simulation_name)
+        if tree_results:
+            total_results.add_results(tree_results)
+
+    total_results_filepath = simulation_folder_path / f"{simulation_name}.txt"
+    save_error_alignments_to_file(total_results_filepath, total_results)
     return total_results
+
+
+def run_specific_error_pedigree_directories_parallel(paths: list[str], error_pedigrees_folder_path: str,
+                                                     simulation_name: str):
+    error_pedigree_parent_directory = Path(error_pedigrees_folder_path).parent
+    simulation_folder_path = error_pedigree_parent_directory / simulation_name
+    os.mkdir(simulation_folder_path)
+
+    total_results = ErrorPedigreeAlignmentComparison.ErrorPedigreeAlignmentClassification()
+    lock = Lock()
+
+    with ProcessPoolExecutor() as executor:
+        futures = [
+            executor.submit(process_path, path, simulation_folder_path, error_pedigrees_folder_path, simulation_name)
+            for path in paths]
+        for future in as_completed(futures):
+            tree_results = future.result()
+            if tree_results:
+                with lock:
+                    total_results.add_results(tree_results)
+    total_results_filepath = simulation_folder_path / f"{simulation_name}.txt"
+    save_error_alignments_to_file(total_results_filepath, total_results)
+    return total_results
+
+
+def run_specific_error_pedigree_directories(paths: list[str], error_pedigrees_folder_path: str,
+                                            simulation_name: str, parallelize: bool = True):
+    if parallelize:
+        return run_specific_error_pedigree_directories_parallel(paths, error_pedigrees_folder_path, simulation_name)
+    return run_specific_error_pedigree_directories_iterative(paths, error_pedigrees_folder_path,
+                                                             simulation_name)
 
 
 def specific_error_pedigree_directories_mode():

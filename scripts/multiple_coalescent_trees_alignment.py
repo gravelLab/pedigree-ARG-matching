@@ -42,8 +42,7 @@ for coalescent_tree_filename in coalescent_trees_folder_files:
         os.mkdir(dir_name)
         os.chdir(dir_name)
         alignment_results = graph_matcher.find_mapping()
-        save_alignment_result_to_files(alignment_results, coalescent_tree, pedigree,
-                                       coalescent_tree_filename)
+        save_alignment_result_to_files(alignment_results, coalescent_tree, pedigree)
         clade_root = next(iter(alignment_results))
         alignments = alignment_results[clade_root]
         if alignments:

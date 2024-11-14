@@ -8,6 +8,7 @@ import os
 import time
 from collections import defaultdict
 from functools import reduce
+from pathlib import Path
 
 import networkx
 
@@ -20,49 +21,17 @@ from alignment.log import print_log
 
 class MatcherLogger:
 
-    def __init__(self, logs_directory_name=logs_default_directory_name):
-        if logs_enabled:
-            time_in_milliseconds = datetime.datetime.now().timestamp() * 1000
-            log_filename = f"{logs_directory_name}/log_{int(time_in_milliseconds)}.txt"
-            if not os.path.exists(logs_directory_name):
-                os.makedirs(logs_directory_name)
-            print_log(f"The filename is {log_filename}")
-            self.file = open(log_filename, 'w')
+    def __init__(self, logs_directory_path=logs_default_directory_name):
+        time_in_milliseconds = datetime.datetime.now().timestamp() * 1000
+        log_filename = Path(logs_directory_path) / f"log_{int(time_in_milliseconds)}.txt"
+        if not os.path.exists(logs_directory_path):
+            os.makedirs(logs_directory_path)
+        print_log(f"The filename is {log_filename}")
+        self.file = open(log_filename, 'w')
 
     def log(self, line: str):
-        if logs_enabled:
-            self.file.write(f"{line}\n")
-            self.file.flush()
-
-    def log_children_domain_space(self, pedigree: PotentialMrcaProcessedGraph,
-                                  coalescent_tree: CoalescentTree,
-                                  coalescent_tree_vertex: int, coalescent_tree_children: [int],
-                                  child_candidate_subtree_matchers_matrix: dict):
-        coalescent_tree_level = coalescent_tree.vertex_to_level_map[coalescent_tree_vertex]
-        pedigree_level = pedigree.vertex_to_level_map[coalescent_tree_vertex]
-        self.log("####################")
-        self.log(f"Processing vertex {coalescent_tree_vertex} in the coalescent tree")
-        self.log(f"Pedigree level: {pedigree_level}")
-        self.log(f"Coalescent tree level: {coalescent_tree_level}")
-        self.log(f"There are {len(coalescent_tree.levels) - coalescent_tree_level} vertices above")
-        self.log(f"There are {len(pedigree.levels)} levels in the pedigree")
-        self.log(f"{coalescent_tree_vertex} has {len(coalescent_tree_children)} children: {coalescent_tree_children}")
-        for child in coalescent_tree_children:
-            child_candidates = list(child_candidate_subtree_matchers_matrix[child])
-            self.log(f"{child} ({len(child_candidate_subtree_matchers_matrix[child])})")
-            level_to_candidate = {level: [x for x in child_candidates if pedigree.vertex_to_level_map[x] == level]
-                                  for level in range(len(pedigree.levels))}
-            for level, vertices in level_to_candidate.items():
-                if vertices:
-                    self.log(f"{level}: {len(vertices)}")
-
-        self.log("--------------------")
-
-    def log_pair_common_ancestors(self, pedigree: PotentialMrcaProcessedGraph, first_pedigree_vertex: int,
-                                  second_pedigree_vertex: int, potential_common_ancestors: [int]):
-        self.log(f"{first_pedigree_vertex} ({pedigree.vertex_to_level_map[first_pedigree_vertex]}), "
-                 f"{second_pedigree_vertex} ({pedigree.vertex_to_level_map[second_pedigree_vertex]}): "
-                 f"{potential_common_ancestors}")
+        self.file.write(f"{line}\n")
+        self.file.flush()
 
     def log_vertex_inference_time(self, coalescent_tree: CoalescentTree,
                                   spent_time: float, focal_vertex_coalescent_id: int, focal_vertex_children: [int],
@@ -75,17 +44,10 @@ class MatcherLogger:
             self.log(f"{child}: {len(child_candidates_map[child])}")
         self.log(f"Time taken for vertex inference: {spent_time}")
         total_candidates_found = len(inference_result)
-        # correct_children_assignment_combinations = 0
-        # for correct_partial_result in inference_result:
-        #     correct_children_assignment_combinations += 1
-        #     (_, valid_candidates) = correct_partial_result
-        #     total_candidates_found += len(valid_candidates)
         self.log(f"Total candidates found: {total_candidates_found}")
-        # self.log(f"Correct children combinations found: {correct_children_assignment_combinations}")
 
     def close(self):
-        if logs_enabled:
-            self.file.close()
+        self.file.close()
 
 
 def get_subtree_matcher_for_coalescent_tree_proband(proband: int, proband_pedigree_ids: [int]):
@@ -105,7 +67,7 @@ class GraphMatcher:
     """
 
     def __init__(self, processed_graph: PotentialMrcaProcessedGraph, coalescent_tree: CoalescentTree,
-                 logger: MatcherLogger, initial_mapping: dict = None):
+                 logger: MatcherLogger = None, initial_mapping: dict = None):
         """
         @param processed_graph (PotentialMrcaProcessedGraph): The preprocessed pedigree graph that stores the
         "access vertices" through which a descendant vertex can reach the ancestor vertex.
@@ -114,7 +76,6 @@ class GraphMatcher:
         @param initial_mapping (dict): The initial mapping between the proband vertices in the processed pedigree to
         the vertices in the coalescent tree.
         """
-        # TODO: Consider changing the API, passing the logger is not elegant
         self.pedigree = processed_graph
         self.coalescent_tree = coalescent_tree
         if initial_mapping is None:
@@ -358,8 +319,9 @@ class GraphMatcher:
         time_taken = inference_end - inference_start
         print_log(f"Inference time: {time_taken}")
         print_log("####################")
-        self.logger.log_vertex_inference_time(self.coalescent_tree, time_taken, focal_vertex, focal_vertex_children,
-                                              vertex_subtree_dict, inference_result)
+        if self.logger:
+            self.logger.log_vertex_inference_time(self.coalescent_tree, time_taken, focal_vertex, focal_vertex_children,
+                                                  vertex_subtree_dict, inference_result)
         result_build_start = time.time()
         candidate_subtree_matcher_dictionary = dict()
         inference_result_keys = list(inference_result)
@@ -534,8 +496,8 @@ class GraphMatcher:
                         dictionary[pmrca_candidate][first_candidate] = []
                     dictionary[pmrca_candidate][first_candidate].append(other_candidate)
         # Letting the GC free the memory if necessary
-        first_second_pair_result = None
-        first_third_pair_result = None
+        del first_second_pair_result
+        del first_third_pair_result
         shared_common_ancestors = first_second_dict.keys() & first_third_dict.keys()
         result = defaultdict(list)
         for shared_common_ancestor in shared_common_ancestors:

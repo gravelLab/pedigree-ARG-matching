@@ -32,7 +32,6 @@ initial_mapping = {
 
 pedigree_path = get_file_path("Specify the path to the pedigree:")
 tree_path = get_file_path("Specify the path to the tree:")
-coalescent_tree_filename = os.path.basename(tree_path)
 coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_path)
 coalescent_tree.reduce_to_ascending_genealogy(probands=initial_mapping.keys())
 coalescent_tree.remove_unary_nodes()
@@ -51,4 +50,4 @@ results = graph_matcher.find_mapping()
 os.mkdir("results")
 os.chdir("results")
 save_alignment_result_to_files(alignment_result=results, coalescent_tree=coalescent_tree,
-                               pedigree=pedigree, coalescent_tree_filename=coalescent_tree_filename)
+                               pedigree=pedigree)
