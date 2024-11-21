@@ -4,7 +4,7 @@ from alignment.graph_matcher import MatcherLogger, GraphMatcher
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from graph.coalescent_tree import CoalescentTree
 from scripts.run_alignment import save_alignment_result_to_files
-from scripts.utility import get_file_path
+from scripts.utility import get_filepath
 
 # initial_mapping = {
 #     0: [99539940, 99539941],
@@ -30,8 +30,8 @@ initial_mapping = {
     11: [100172634, 100172635],
 }
 
-pedigree_path = get_file_path("Specify the path to the pedigree:")
-tree_path = get_file_path("Specify the path to the tree:")
+pedigree_path = get_filepath("Specify the path to the pedigree:")
+tree_path = get_filepath("Specify the path to the tree:")
 coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_path)
 coalescent_tree.reduce_to_ascending_genealogy(probands=initial_mapping.keys())
 coalescent_tree.remove_unary_nodes()

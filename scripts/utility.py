@@ -5,7 +5,7 @@ import random
 from math import ceil
 
 
-def get_file_paths(input_request: str) -> list[str]:
+def get_filepaths(input_request: str) -> list[str]:
     print(input_request)
     paths = []
     while True:
@@ -22,7 +22,7 @@ def get_file_paths(input_request: str) -> list[str]:
     return paths
 
 
-def get_folder_paths(input_request: str) -> list[str]:
+def get_directory_paths(input_request: str) -> list[str]:
     print(input_request)
     paths = []
     while True:
@@ -39,7 +39,7 @@ def get_folder_paths(input_request: str) -> list[str]:
     return paths
 
 
-def get_file_path(input_request: str):
+def get_filepath(input_request: str):
     while True:
         file_path = input(input_request)
         if not os.path.exists(file_path):
@@ -96,6 +96,15 @@ def get_natural_number_input_in_bounds(input_request: str, lower_bound: int, upp
     while True:
         value = get_natural_number_input(input_request)
         if value < lower_bound or value > upper_bound:
+            print("Value out of bounds, try again")
+            continue
+        return value
+
+
+def get_natural_number_with_lower_bound(input_request: str, lower_bound: int):
+    while True:
+        value = get_natural_number_input(input_request)
+        if value < lower_bound:
             print("Value out of bounds, try again")
             continue
         return value

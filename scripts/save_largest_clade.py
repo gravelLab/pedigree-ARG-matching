@@ -3,7 +3,7 @@ from scripts.utility import *
 
 
 def save_largest_clade_and_get_probands():
-    filepath = get_file_path("Specify the path to the coalescent tree:\n")
+    filepath = get_filepath("Specify the path to the coalescent tree:\n")
     coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath)
     largest_clade = coalescent_tree.get_subtree_from_vertices(coalescent_tree.get_largest_clade_by_probands())
     while True:
@@ -17,7 +17,7 @@ def save_largest_clade_and_get_probands():
 
 
 probands = save_largest_clade_and_get_probands()
-pedigree_filepath = get_file_path("Specify the path to the pedigree file:\n")
+pedigree_filepath = get_filepath("Specify the path to the pedigree file:\n")
 print("Processing the graph")
 # genealogical_graph = GenealogicalGraph(pedigree=SimpleGraph.get_pedigree_from_file(filename=pedigree_filepath),
 #                                        probands=probands)

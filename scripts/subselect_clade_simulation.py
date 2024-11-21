@@ -1,10 +1,10 @@
 from graph.coalescent_tree import CoalescentTree, SimpleGraph, GenealogicalGraph
 from scripts.utility import *
 
-filepath = get_file_path("Specify the path to the coalescent tree. It should consist of one clade for more "
+filepath = get_filepath("Specify the path to the coalescent tree. It should consist of one clade for more "
                          "meaningful results:\n")
 coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath)
-pedigree_filepath = get_file_path("Specify the path to the pedigree file:\n")
+pedigree_filepath = get_filepath("Specify the path to the pedigree file:\n")
 simple_graph = SimpleGraph.get_diploid_graph_from_file(filepath=pedigree_filepath)
 coalescent_tree_individuals = {x // 2 for x in coalescent_tree.probands}
 unphased_probands = ([2 * x for x in coalescent_tree_individuals] +

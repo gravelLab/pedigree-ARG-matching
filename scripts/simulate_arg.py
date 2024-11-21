@@ -24,7 +24,7 @@ def save_coalescent_tree(tskit_tree: Tree, individual_id_dict: dict, filename: s
 
 
 # Asking the user for the path to the pedigree
-pedigree_path = get_file_path("Specify the path to the pedigree:")
+pedigree_path = get_filepath("Specify the path to the pedigree:")
 pedigree_file = open(pedigree_path, 'r')
 # Asking for the input parameters
 output_directory_path = input(

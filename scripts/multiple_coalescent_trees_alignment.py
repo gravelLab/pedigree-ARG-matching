@@ -8,7 +8,7 @@ alignment_general_results_filename = "results.txt"
 
 
 def run_interactive_session():
-    pedigree_path = get_file_path("Specify the absolute path to the pedigree:")
+    pedigree_path = get_filepath("Specify the absolute path to the pedigree:")
     coalescent_trees_folder = get_directory_path("Specify the path to the coalescent trees directory:")
     initial_mapping_source_prompt = ("Specify how you want to get the initial mapping:\n"
                                      "1) Read from a file\n"
@@ -17,10 +17,10 @@ def run_interactive_session():
                                                                        lower_bound=1,
                                                                        upper_bound=2)
     if initial_mapping_source_option == 1:
-        initial_mapping_file = get_file_path("Specify the path to the initial mapping:")
+        initial_mapping_file = get_filepath("Specify the path to the initial mapping:")
         initial_mapping = read_mapping_from_file(initial_mapping_file)
     else:
-        initial_coalescent_tree_filepath = get_file_path("Specify the path to the coalescent tree:")
+        initial_coalescent_tree_filepath = get_filepath("Specify the path to the coalescent tree:")
         coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=initial_coalescent_tree_filepath)
         initial_mapping = get_initial_mapping_for_mode(coalescent_tree=coalescent_tree)
         del coalescent_tree
@@ -29,8 +29,8 @@ def run_interactive_session():
     os.mkdir(result_directory)
     pedigree_probands = {y for x in initial_mapping.values() for y in x}
     pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path,
-                                                                         separation_symbol=" ",
-                                                                         missing_parent_notation=["-1"],
+                                                                         separation_symbol="\t",
+                                                                         missing_parent_notation=["0"],
                                                                          initialize_levels=False,
                                                                          initialize_ancestor_maps=False)
     pedigree.reduce_to_ascending_genealogy(pedigree_probands, recalculate_levels=True)

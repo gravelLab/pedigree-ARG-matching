@@ -33,7 +33,7 @@ def run_all_simulations(tree: CoalescentTree):
 
 
 results_directory_paths = get_non_existing_directory_path("Specify the path where the results are to be stored:")
-coalescent_tree_path = get_file_path("Specify the path to the coalescent tree:")
+coalescent_tree_path = get_filepath("Specify the path to the coalescent tree:")
 coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
 possible_error_vertices = [x for x in coalescent_tree.children_map if x in coalescent_tree.parents_map]
 max_error_number = len(possible_error_vertices)

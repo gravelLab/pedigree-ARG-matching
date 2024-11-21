@@ -12,7 +12,7 @@ os.chdir(simulation_root_dir)
 
 simulation_name = get_non_existing_directory_path("Specify the name of the simulation: ")
 simulation_steps = get_natural_number_input("Specify the number of simulation steps: ")
-pedigree_path = get_file_path("Specify the absolute path to the pedigree:")
+pedigree_path = get_filepath("Specify the absolute path to the pedigree:")
 
 os.makedirs(simulation_name)
 os.chdir(simulation_name)

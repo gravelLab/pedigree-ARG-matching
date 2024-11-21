@@ -5,7 +5,7 @@ from scripts.utility import *
 
 os.chdir("pedigrees")
 print("All the path are relevant with regard to the pedigrees folder")
-pedigree_path = get_file_path("Specify the path to the pedigree:")
+pedigree_path = get_filepath("Specify the path to the pedigree:")
 pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path)
 simulation = get_directory_path("Specify the simulation directory in the pedigrees folder:")
 result_directory = input("Specify the name of the directory where the results will be saved:")
