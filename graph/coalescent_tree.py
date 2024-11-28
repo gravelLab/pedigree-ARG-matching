@@ -10,10 +10,10 @@ class CoalescentTree(GenealogicalGraph):
     of the GenealogicalGraph, it calculates the connected components (clades) of the graph.
     """
 
-    def __init__(self, graph: SimpleGraph = None):
+    def __init__(self, graph: SimpleGraph = None, initialize_levels: bool = True):
         if graph is None:
             graph = SimpleGraph()
-        super().__init__(pedigree=graph)
+        super().__init__(pedigree=graph, initialize_levels=initialize_levels)
         self.descendant_writer = DescendantMemoryCache()
         self.initialize_genealogical_graph_from_probands()
 
@@ -61,7 +61,7 @@ class CoalescentTree(GenealogicalGraph):
 
     def remove_unary_nodes(self):
         """
-        Removes all the unary nodes in the coalescent tree and recalculates the levels of the coalescent tree.
+        Removes all the unary nodes in the coalescent tree and recalculates the levels.
         """
         for level in self.levels[1:].__reversed__():
             intermediate_nodes = []
@@ -152,13 +152,13 @@ class CoalescentTree(GenealogicalGraph):
     @staticmethod
     def get_coalescent_tree_from_file(filepath: str, max_parent_number: int = 2,
                                       missing_parent_notation=None, separation_symbol=' ',
-                                      skip_first_line: bool = False):
+                                      skip_first_line: bool = False, initialize_levels: bool = True):
         pedigree: SimpleGraph = SimpleGraph.get_haploid_graph_from_file(filename=filepath,
                                                                         max_parent_number=max_parent_number,
                                                                         missing_parent_notation=missing_parent_notation,
                                                                         separation_symbol=separation_symbol,
                                                                         skip_first_line=skip_first_line)
-        result = CoalescentTree(graph=pedigree)
+        result = CoalescentTree(graph=pedigree, initialize_levels=initialize_levels)
         return result
 
     @staticmethod

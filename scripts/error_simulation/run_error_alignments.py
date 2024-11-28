@@ -7,7 +7,6 @@ import traceback
 import warnings
 from concurrent.futures import as_completed, ProcessPoolExecutor
 from io import UnsupportedOperation
-from threading import Lock
 
 from alignment.graph_matcher import *
 from scripts import utility
@@ -18,6 +17,8 @@ log_directory = "log_dir"
 initial_alignment_dir_name = "initial_alignment"
 general_result_filename = "simulation_result.txt"
 detailed_result_filename = "detailed_simulation_result.txt"
+calculate_distances = False
+calculate_new_root_assignments = False
 
 script_help_description = """
                           This script performs the alignment algorithm between the specified pedigree(s) and
@@ -129,7 +130,7 @@ class ErrorPedigreeAlignmentComparison:
     def log_overall_results(self, number_of_simulation_steps: int):
         number_of_probands = len(self.coalescent_tree.probands)
         non_proband_vertices = len(self.coalescent_tree.vertex_to_level_map) - number_of_probands
-        if self.error_pedigree_results.total_number_of_solutions != 0:
+        if calculate_distances and self.error_pedigree_results.total_number_of_solutions != 0:
             alignments_to_identity_average_distance = (self.total_distance_to_solution
                                                        / self.error_pedigree_results.total_number_of_solutions)
             delta = alignments_to_identity_average_distance - self.initial_average_distance_to_identity
@@ -168,13 +169,14 @@ class ErrorPedigreeAlignmentComparison:
             self.general_result_file.write(
                 f"Average number of individual candidates for the root per simulation with solutions: "
                 f"{self.total_number_of_root_vertex_individual_assignments / self.error_pedigree_results.simulations_with_solutions}\n")
-            self.general_result_file.write(f"New individual root assignments: "
-                                           f"{self.new_individual_assignments_number}\n")
-            self.general_result_file.write(
-                f"Average number of new individual root assignments per simulation with solutions: "
-                f"{self.new_individual_assignments_number / self.error_pedigree_results.simulations_with_solutions}\n")
-            self.general_result_file.write(f"Number of new individual root assignments simulations: "
-                                           f"{self.new_individual_simulations_number}\n")
+            if calculate_new_root_assignments:
+                self.general_result_file.write(f"New individual root assignments: "
+                                               f"{self.new_individual_assignments_number}\n")
+                self.general_result_file.write(
+                    f"Average number of new individual root assignments per simulation with solutions: "
+                    f"{self.new_individual_assignments_number / self.error_pedigree_results.simulations_with_solutions}\n")
+                self.general_result_file.write(f"Number of new individual root assignments simulations: "
+                                               f"{self.new_individual_simulations_number}\n")
 
     def run_initial_alignment(self):
         initial_alignment_path = self.simulation_folder_path / initial_alignment_dir_name
@@ -303,16 +305,17 @@ class ErrorPedigreeAlignmentComparison:
                             f"Number of alignments in this simulation {len(resulting_alignments)}\n")
                         if len(resulting_alignments) > 0:
                             self.error_pedigree_results.total_number_of_solutions += len(resulting_alignments)
-                            self.total_distance_to_solution += sum(
-                                get_alignments_proband_distance_probands_ignored(alignment, identity_solution,
-                                                                                 self.coalescent_tree.probands)
-                                for alignment in resulting_alignments
-                            )
-                            (self.general_result_file.write(
-                                f"New average distance from simulation solutions to the"
-                                f" identity is: "
-                                f"{self.total_distance_to_solution / self.error_pedigree_results.total_number_of_solutions}\n")
-                            )
+                            if calculate_distances:
+                                self.total_distance_to_solution += sum(
+                                    get_alignments_proband_distance_probands_ignored(alignment, identity_solution,
+                                                                                     self.coalescent_tree.probands)
+                                    for alignment in resulting_alignments
+                                )
+                                (self.general_result_file.write(
+                                    f"New average distance from simulation solutions to the"
+                                    f" identity is: "
+                                    f"{self.total_distance_to_solution / self.error_pedigree_results.total_number_of_solutions}\n")
+                                )
                             # Calculate the number of root assignments for this simulation
                             simulation_root_vertex_individual_assignments = {x[root_vertex] // 2 for x in
                                                                              resulting_alignments}
@@ -321,11 +324,12 @@ class ErrorPedigreeAlignmentComparison:
                                                            f"{simulation_root_vertex_individual_assignments}\n")
                             self.total_number_of_root_vertex_individual_assignments += (
                                 len(simulation_root_vertex_individual_assignments))
-                            self.new_individual_assignments_number += len(
-                                {x for x in simulation_root_vertex_individual_assignments
-                                 if x not in initial_root_vertex_individual_assignments})
-                            if self.new_individual_assignments_number > 0:
-                                self.new_individual_simulations_number += 1
+                            if calculate_new_root_assignments:
+                                self.new_individual_assignments_number += len(
+                                    {x for x in simulation_root_vertex_individual_assignments
+                                     if x not in initial_root_vertex_individual_assignments})
+                                if self.new_individual_assignments_number > 0:
+                                    self.new_individual_simulations_number += 1
                             # Classify the simulation result
                             if root_vertex_individual in simulation_root_vertex_individual_assignments:
                                 if simulation_root_vertex_individual_assignments.issubset(individual_and_spouses):
@@ -372,7 +376,7 @@ def single_tree_parent_error_directory_alignment_mode():
     pedigree_no_errors_path = get_filepath("Specify the absolute path to the initial, error-free pedigree:")
     error_pedigrees_folder_path = get_directory_path("Specify the absolute path to the error pedigrees directory:")
     os.chdir(error_pedigrees_folder_path)
-    input_simulation_name = get_non_existing_directory_path("Specify the simulation name:")
+    input_simulation_name = get_non_existing_path("Specify the simulation name:")
     os.chdir(current_working_directory)
     run_single_parent_error_directory_alignment(tree_path=tree_path, pedigree_no_errors_path=pedigree_no_errors_path,
                                                 error_pedigrees_folder_path=error_pedigrees_folder_path,
@@ -465,7 +469,6 @@ def run_specific_error_pedigree_directories_parallel(paths: list[str], error_ped
     os.makedirs(simulation_directory_path)
 
     total_results = ErrorPedigreeAlignmentComparison.ErrorPedigreeAlignmentClassification()
-    lock = Lock()
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = [
@@ -474,9 +477,9 @@ def run_specific_error_pedigree_directories_parallel(paths: list[str], error_ped
         for future in as_completed(futures):
             tree_results = future.result()
             if tree_results:
-                with lock:
-                    total_results.add_results(tree_results)
-    total_results_filepath = simulation_directory_path / f"{simulation_name}.txt"
+                total_results.add_results(tree_results)
+
+    total_results_filepath = simulation_directory_path / f"total_results.txt"
     save_error_alignments_to_file(total_results_filepath, total_results)
     return total_results
 
@@ -499,7 +502,7 @@ def specific_error_pedigree_directories_mode():
     paths = get_directory_paths("Specify the absolute paths to all the tree-pedigree directories")
     error_pedigrees_directory_path = get_directory_path("Specify the absolute path to the error pedigrees directory:")
     os.chdir(error_pedigrees_directory_path)
-    input_simulation_name = get_non_existing_directory_path("Specify the simulation name:")
+    input_simulation_name = get_non_existing_path("Specify the simulation name:")
     os.chdir(current_working_directory)
     run_specific_error_pedigree_directories(paths=paths,
                                             error_pedigrees_folder_path=error_pedigrees_directory_path,
@@ -520,7 +523,7 @@ def children_tree_directories_error_pedigree_directory_mode():
     tree_pedigree_parent_directory_path = get_directory_path("Specify the absolute path to a parent directory to"
                                                              " tree-pedigree directories:")
     os.chdir(error_pedigrees_directory_path)
-    input_simulation_name = get_non_existing_directory_path("Specify the simulation name:")
+    input_simulation_name = get_non_existing_path("Specify the simulation name:")
     tree_pedigree_paths = get_absolute_paths_to_subfolders(tree_pedigree_parent_directory_path)
     os.chdir(current_working_directory)
     parallel_processing = get_yes_or_no("Do you want to parallelize the alignments?")

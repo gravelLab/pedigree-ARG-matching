@@ -76,15 +76,18 @@ class SimpleGraph:
         @brief This method returns all the vertices in the ascending genealogy for the given list of vertices.
         @param vertices The vertices for which the ascending genealogy should be calculated.
         """
-        result = set(vertices)
-        current_level_vertices = set(result)
-        while current_level_vertices:
-            next_level_vertices = set()
-            for vertex in current_level_vertices:
-                parents = self.parents_map.get(vertex, [])
-                result.update(parents)
-                next_level_vertices.update(parents)
-            current_level_vertices = next_level_vertices
+        valid_vertices = {v for v in vertices if v in self.parents_map}
+        result = set()
+        to_process = set(valid_vertices)
+        visited = set()
+        while to_process:
+            current_vertex = to_process.pop()
+            if current_vertex not in visited:
+                visited.add(current_vertex)
+                result.add(current_vertex)
+                # Add unvisited parents to the queue
+                to_process.update(parent for parent in self.parents_map.get(current_vertex, [])
+                                  if parent not in visited)
         return result
 
     def remove_vertex(self, vertex: int):
@@ -148,7 +151,7 @@ class SimpleGraph:
         self.parents_map[child].append(parent)
 
     @staticmethod
-    def get_graph_from_file(filename: str, ploidy: int, max_parent_number: int = 2,
+    def get_graph_from_file(filepath: str, ploidy: int, max_parent_number: int = 2,
                             missing_parent_notation=None, separation_symbol=' ', skip_first_line: bool = False) \
             -> SimpleGraph:
         """!
@@ -156,7 +159,7 @@ class SimpleGraph:
         whether the organisms in the file should be treated as haploid or diploid.
         Notice that the every line of the file must contain at least ploidy + 1 ids, but it can optionally have
         some metadata which is ignored by this class.
-        @param filename The path to the file to be used. The file can optionally start with 1 comment line starting with
+        @param filepath The path to the file to be used. The file can optionally start with 1 comment line starting with
         the '#' symbol.
         @param max_parent_number The maximum number of parents an individual can posses.
         The value must be either 1 or 2.
@@ -184,7 +187,7 @@ class SimpleGraph:
                                                 missing_parent_notation=missing_parent_notation,
                                                 separation_symbol=separation_symbol)
 
-        file = open(filename, 'r')
+        file = open(filepath, 'r')
         lines = file.readlines()
         if skip_first_line or lines[0].__contains__('#'):
             lines.pop(0)
@@ -200,7 +203,7 @@ class SimpleGraph:
         """!
         @brief This method processes the input graph considering that every individual is diploid.
         """
-        return SimpleGraph.get_graph_from_file(filename=filename, ploidy=1,
+        return SimpleGraph.get_graph_from_file(filepath=filename, ploidy=1,
                                                missing_parent_notation=missing_parent_notation,
                                                separation_symbol=separation_symbol,
                                                skip_first_line=skip_first_line)
@@ -223,7 +226,7 @@ class SimpleGraph:
         header does not start with a '#' symbol.
         @return The processed pedigree.
         """
-        return SimpleGraph.get_graph_from_file(filename=filepath, ploidy=2,
+        return SimpleGraph.get_graph_from_file(filepath=filepath, ploidy=2,
                                                max_parent_number=max_parent_number,
                                                missing_parent_notation=missing_parent_notation,
                                                separation_symbol=separation_symbol,

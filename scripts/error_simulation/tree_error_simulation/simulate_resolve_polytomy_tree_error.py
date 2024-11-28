@@ -30,12 +30,9 @@ def run_all_simulations(tree: CoalescentTree, polytomy_vertices: [int],
         tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_absolute_path)
 
 
-def run_interactive_session():
-    result_directory_paths = Path(get_non_existing_directory_path("Specify the path where the"
-                                                                  " results are to be stored:"))
+def run_interactive_single_tree_mode(result_directory_paths: Path):
     coalescent_tree_path = get_filepath("Specify the path to the coalescent tree:")
     coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
-    os.makedirs(result_directory_paths)
     polytomy_parents = (
         parent
         for parent, children in coalescent_tree.children_map.items()
@@ -47,7 +44,9 @@ def run_interactive_session():
         for parent in polytomy_parents
         for vertex in coalescent_tree.children_map[parent]
     ]
-
+    if not possible_error_vertices:
+        print("This coalescent tree has not polytomies to resolve")
+        return
     error_mode_input = ("Specify the error-simulation mode:\n"
                         "1) Perform given number of 1 independent polytomy resolution\n"
                         "2) Generate all the possible 1 polytomy resolutions\n")
@@ -72,6 +71,31 @@ def run_interactive_session():
     else:
         run_all_simulations(tree=coalescent_tree, polytomy_vertices=possible_error_vertices,
                             tree_absolute_path=coalescent_tree_path, result_directory_path=result_directory_paths)
+
+
+def run_interactive_multiple_parent_tree_directories(result_directory_paths: Path):
+    parent_trees_directory = Path(get_directory_path("Specify the path to the parent trees directory:"))
+
+    pass
+
+
+def run_interactive_session():
+    result_directory_paths = Path(get_non_empty_string("Specify the path where the results are to be stored:"))
+    os.makedirs(result_directory_paths, exist_ok=True)
+    mode_prompt = """
+                  Specify the running mode:
+                  1) Run the error simulation for a single tree.
+                  2) Specify the path to a parent directory containing the tree-pedigree subdirectories. The error 
+                  simulation will be performed for all the trees.
+                  """
+    mode = get_natural_number_input_in_bounds(input_request=mode_prompt,
+                                              lower_bound=1,
+                                              upper_bound=2)
+    match mode:
+        case 1:
+            run_interactive_single_tree_mode(result_directory_paths=result_directory_paths)
+        case 2:
+            run_interactive_multiple_parent_tree_directories(result_directory_paths=result_directory_paths)
 
 
 if __name__ == "__main__":

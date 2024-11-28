@@ -53,7 +53,7 @@ def save_clades_by_proband_sizes(pedigree_filepath: str, coalescent_tree_filepat
             os.mkdir(sub_dir_name)
             os.chdir(sub_dir_name)
             coalescent_tree.get_subtree_from_vertices(clade).save_to_file(tree_filename)
-            pedigree.save_ascending_genealogy_to_file(filename=clade_ascending_pedigree_filename, probands=clade)
+            pedigree.save_ascending_genealogy_to_file(filepath=clade_ascending_pedigree_filename, probands=clade)
             os.chdir("..")
         os.chdir("..")
 
@@ -61,7 +61,7 @@ def save_clades_by_proband_sizes(pedigree_filepath: str, coalescent_tree_filepat
 def run_interactive_session():
     pedigree_filepath = get_filepath("Specify the path to the pedigree file:\n")
     coalescent_tree_filepath = get_filepath("Specify the path to the coalescent tree:\n")
-    result_filepath = get_non_existing_directory_path("Specify the path to save the clades to:\n")
+    result_filepath = get_non_existing_path("Specify the path to save the clades to:\n")
     save_clades_by_proband_sizes(pedigree_filepath=pedigree_filepath, coalescent_tree_filepath=coalescent_tree_filepath,
                                  result_filepath=result_filepath)
 

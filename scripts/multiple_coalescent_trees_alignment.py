@@ -25,7 +25,7 @@ def run_interactive_session():
         initial_mapping = get_initial_mapping_for_mode(coalescent_tree=coalescent_tree)
         del coalescent_tree
     os.chdir(coalescent_trees_folder)
-    result_directory = get_non_existing_directory_path("Specify the name of the results directory:")
+    result_directory = get_non_existing_path("Specify the name of the results directory:")
     os.mkdir(result_directory)
     pedigree_probands = {y for x in initial_mapping.values() for y in x}
     pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path,

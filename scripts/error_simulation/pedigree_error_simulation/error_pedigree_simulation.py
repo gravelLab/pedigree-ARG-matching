@@ -10,7 +10,7 @@ error_rate = 0.01
 os.makedirs(simulation_root_dir, exist_ok=True)
 os.chdir(simulation_root_dir)
 
-simulation_name = get_non_existing_directory_path("Specify the name of the simulation: ")
+simulation_name = get_non_existing_path("Specify the name of the simulation: ")
 simulation_steps = get_natural_number_input("Specify the number of simulation steps: ")
 pedigree_path = get_filepath("Specify the absolute path to the pedigree:")
 

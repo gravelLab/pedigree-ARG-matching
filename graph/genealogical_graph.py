@@ -223,10 +223,11 @@ class GenealogicalGraph(SimpleGraph):
         # Update the levels if they have been calculated
         if removed and self.probands:
             self.probands.discard(vertex)
-            vertex_level = self.vertex_to_level_map.pop(vertex)
-            self.levels[vertex_level].remove(vertex)
             if recalculate_levels:
                 self.initialize_vertex_to_level_map()
+            else:
+                vertex_level = self.vertex_to_level_map.pop(vertex)
+                self.levels[vertex_level].remove(vertex)
         return removed
 
     def remove_vertices(self, vertices: [int], recalculate_levels: bool = True):
@@ -236,6 +237,22 @@ class GenealogicalGraph(SimpleGraph):
         @param recalculate_levels: Specified whether the levels are to be recalculated after removing the vertices
         from the graph
         """
+        # vertices_to_remove = frozenset(vertices)
+        # for vertex in vertices_to_remove:
+        #     self.children_map.pop(vertex, None)
+        #     self.parents_map.pop(vertex, None)
+        # for child, current_parents in list(self.parents_map.items()):
+        #     self.parents_map[child] = [x for x in current_parents if x not in vertices_to_remove]
+        # for parent, current_children in list(self.children_map.items()):
+        #     self.children_map[parent] = [x for x in current_children if x not in vertices_to_remove]
+        # if recalculate_levels:
+        #     self.initialize_vertex_to_level_map()
+        # else:
+        #     for vertex in vertices_to_remove:
+        #         self.vertex_to_level_map.pop(vertex, None)
+        #     self.levels = [
+        #         [x for x in level if x not in vertices_to_remove] for level in self.levels
+        #     ]
         for vertex in vertices:
             self.remove_vertex(vertex, False)
         if recalculate_levels:
@@ -243,7 +260,14 @@ class GenealogicalGraph(SimpleGraph):
 
     def get_ascending_genealogy_from_vertices_by_levels(self, vertices: [int]):
         ascending_genealogy = self.get_ascending_genealogy_from_vertices(vertices)
-        ascending_genealogy_by_levels = [[x for x in level if x in ascending_genealogy] for level in self.levels]
+        level_to_ascending_vertices = defaultdict(list)
+        # Group vertices in ascending_genealogy based on their levels
+        for vertex in ascending_genealogy:
+            level = self.vertex_to_level_map[vertex]
+            level_to_ascending_vertices[level].append(vertex)
+        ascending_genealogy_by_levels = [
+            level_to_ascending_vertices.get(i, []) for i in range(len(self.levels))
+        ]
         assert len(ascending_genealogy) == sum(len(sublist) for sublist in ascending_genealogy_by_levels)
         return ascending_genealogy_by_levels
 
@@ -283,9 +307,9 @@ class GenealogicalGraph(SimpleGraph):
         nx.draw_networkx(g, pos, ax=ax, node_size=node_size, with_labels=True)
         plt.savefig("small_graph.png")
 
-    def save_ascending_genealogy_to_file(self, filename: str, probands: [int]):
+    def save_ascending_genealogy_to_file(self, filepath: str, probands: [int]):
         levels = self.get_ascending_genealogy_from_vertices_by_levels(probands)
-        file = open(filename, 'w')
+        file = open(filepath, 'w')
         self.write_levels_to_file(file, levels)
         file.close()
 
@@ -303,7 +327,7 @@ class GenealogicalGraph(SimpleGraph):
     @staticmethod
     def get_diploid_graph_from_file(filepath: str, max_parent_number: int = 2,
                                     missing_parent_notation=None, separation_symbol=' ',
-                                    skip_first_line: bool = False) -> GenealogicalGraph:
+                                    skip_first_line: bool = False, initialize_levels: bool = True) -> GenealogicalGraph:
         """!
         @brief Utility function that can be used for getting a diploid genealogical graph from a file.
         @param filepath The filename from which the graph will be read.
@@ -316,21 +340,22 @@ class GenealogicalGraph(SimpleGraph):
         @param skip_first_line Specifies whether the first line in the file should be skipped. Can be useful if the
         header does not start with a '#' symbol.
         @returns The parsed graph.
+        @param initialize_levels: Specifies whether the levels should be initialized after parsing
         """
         pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filepath=filepath,
                                                                         max_parent_number=max_parent_number,
                                                                         missing_parent_notation=missing_parent_notation,
                                                                         separation_symbol=separation_symbol,
                                                                         skip_first_line=skip_first_line)
-        return GenealogicalGraph(pedigree=pedigree)
+        return GenealogicalGraph(pedigree=pedigree, initialize_levels=initialize_levels)
 
     @staticmethod
-    def get_haploid_graph_from_file(filename: str, max_parent_number: int = 2,
+    def get_haploid_graph_from_file(filepath: str, max_parent_number: int = 2,
                                     missing_parent_notation=None, separation_symbol=' ',
                                     skip_first_line: bool = False) -> GenealogicalGraph:
         """!
         @brief Utility function that can be used for getting a haploid genealogical graph from a file.
-        @param filename The filename from which the graph will be read.
+        @param filepath The filename from which the graph will be read.
         @param max_parent_number The maximum number of parents an individual can posses.
         The value must be either 1 or 2.
         @param missing_parent_notation The list of text sequences representing that the given individual has no parents.
@@ -341,7 +366,7 @@ class GenealogicalGraph(SimpleGraph):
         header does not start with a '#' symbol.
         @returns The parsed graph.
         """
-        pedigree: SimpleGraph = SimpleGraph.get_haploid_graph_from_file(filename=filename,
+        pedigree: SimpleGraph = SimpleGraph.get_haploid_graph_from_file(filename=filepath,
                                                                         max_parent_number=max_parent_number,
                                                                         missing_parent_notation=missing_parent_notation,
                                                                         separation_symbol=separation_symbol,

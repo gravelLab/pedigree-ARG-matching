@@ -21,7 +21,7 @@ pedigree_filepath = get_filepath("Specify the path to the pedigree file:\n")
 print("Processing the graph")
 # genealogical_graph = GenealogicalGraph(pedigree=SimpleGraph.get_pedigree_from_file(filename=pedigree_filepath),
 #                                        probands=probands)
-genealogical_graph = GenealogicalGraph.get_graph_from_file(filename=pedigree_filepath, ploidy=2)
+genealogical_graph = GenealogicalGraph.get_graph_from_file(filepath=pedigree_filepath, ploidy=2)
 result_filepath = input("Specify the path to the resulting file for the ascending genealogy:\n")
 print("Saving the ascending genealogy")
 # genealogical_graph.save_to_file(filename=result_filepath)

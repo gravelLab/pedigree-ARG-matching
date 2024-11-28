@@ -69,13 +69,28 @@ def get_directory_path(input_request: str):
             return file_path
 
 
-def get_non_existing_directory_path(input_request: str):
+def get_non_empty_string(input_request: str) -> str:
     while True:
-        directory_name = input(input_request)
-        if os.path.exists(directory_name):
-            print("The specified directory already exists, try again")
+        response = input(input_request)
+        if not response:
+            print("Specify a non-empty string")
         else:
-            return directory_name
+            return response
+
+
+def get_non_existing_path(input_request: str):
+    while True:
+        directory_path = input(input_request)
+        if os.path.exists(directory_path):
+            print("The specified directory already exists, try again")
+        elif not directory_path:
+            print("Specify a non-empty string")
+        else:
+            return directory_path
+
+
+def get_non_existing_or_empty_directory_path(input_request: str):
+    pass
 
 
 def get_natural_number_input(input_request: str):
@@ -177,3 +192,10 @@ def get_yes_or_no(prompt: str) -> bool:
             return False
         else:
             print("Invalid input. Please enter 'yes' or 'no'.")
+
+
+def read_integers_from_csv_file(filepath):
+    with open(filepath, mode="r") as file:
+        content = file.read().strip()
+        integer_list = [int(value) for value in content.split(",")]
+    return integer_list

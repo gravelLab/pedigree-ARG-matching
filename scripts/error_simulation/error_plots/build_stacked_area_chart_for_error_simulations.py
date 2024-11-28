@@ -1,10 +1,11 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from scripts.utility import get_filepath
+from scripts.utility import get_filepath, get_non_existing_path
 
 # Read the CSV file
 filepath = get_filepath("Specify the path to the data file:")
+result_name = get_non_existing_path("Specify the resulting figure's filepath (without extension):")
 df = pd.read_csv(filepath)
 
 # Define x-axis and values to plot
@@ -16,19 +17,19 @@ cumulative_sum = df[y_columns].cumsum(axis=1)
 # Plot the stacked area chart
 plt.figure(figsize=(10, 6))
 
-colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']  # Example colors for each area
-
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
 # Plot areas between polylines
 for i, col in enumerate(y_columns):
     if i == 0:
         plt.fill_between(x, 0, df[col], color=colors[i], label=col, alpha=0.7)
     else:
-        plt.fill_between(x, cumulative_sum.iloc[:, i-1], cumulative_sum.iloc[:, i], color=colors[i], label=col, alpha=0.7)
+        plt.fill_between(x, cumulative_sum.iloc[:, i-1], cumulative_sum.iloc[:, i], color=colors[i], label=col,
+                         alpha=0.7)
 
 # Add labels and legend
 plt.xlabel("Proband Number")
-plt.ylabel("Values")
-plt.title("Stacked Area Chart")
+plt.ylabel("Alignment number")
+plt.title("Pedigree Error Simulation")
 plt.legend(
     title="Categories",
     loc="upper center",
@@ -44,4 +45,5 @@ plt.tight_layout()
 plt.subplots_adjust(bottom=0.2)  # Add extra space at the bottom
 
 # Display the plot
+plt.savefig(fname=f"{result_name}.png")
 plt.show()
