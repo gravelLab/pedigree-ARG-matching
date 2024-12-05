@@ -8,7 +8,8 @@ from scripts.utility import *
 
 print_enabled = False
 calculate_similarity = False
-extension_skip_list = [".svg", ".pedigree"]
+pedigree_file_extension = ".pedigree"
+extension_skip_list = [".svg", pedigree_file_extension]
 
 
 def get_assignment_likelihood(coalescent_tree: CoalescentTree, alignment: dict, pedigree: SimpleGraph):
@@ -230,27 +231,71 @@ def save_alignment_result_to_files(alignment_result: {int: [dict]}, coalescent_t
         # os.chdir("..")
 
 
-def run_alignment_and_save_results(directory: str, result_directory_name: str,
-                                   pedigree: PotentialMrcaProcessedGraph = None):
-    # os.chdir(directory)
+def process_pedigree_tree_directory(directory: str, result_directory_name: str):
     parent_directory_path = Path(directory)
     result_directory_path = parent_directory_path / result_directory_name
     os.makedirs(result_directory_path)
-    # filename_input = input("Specify the pedigree file:")
+    directory_files = [file for file in os.listdir(directory) if os.path.isfile(os.path.join(directory, file))]
+    if len(directory_files) != 2:
+        raise ValueError(f"The pedigree-tree directory must contain only two files, that is the pedigree and "
+                         f"the coalescent tree. The pedigree file must have the {pedigree_file_extension} extension")
+    pedigree_filename = get_unique_filename_with_specified_extension(directory_path=directory,
+                                                                     extension=pedigree_file_extension)
+    tree_filename = [filename for filename in directory_files if filename != pedigree_filename][0]
+    tree_filepath = parent_directory_path / tree_filename
+    start_preprocessing = time.time()
+    print_log(f"Processing the coalescent tree: {tree_filepath}")
+    coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_filepath)
+    coalescent_tree.remove_unary_nodes()
+    pedigree_filepath = parent_directory_path / pedigree_filename
+    print_log(f"Processing the pedigree: {pedigree_filepath}")
+    pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_filepath,
+                                                                         initialize_levels=False,
+                                                                         initialize_ancestor_maps=False)
+    if default_initial_matching_mode == InitialMatchingMode.PLOID:
+        pedigree_probands = coalescent_tree.get_probands()
+    else:
+        proband_individuals = {proband // 2 for proband in coalescent_tree.get_probands()}
+        probands_all_ploids = [
+            ploid
+            for proband_individual in proband_individuals
+            for ploid in [2 * proband_individual, 2 * proband_individual + 1]
+        ]
+        pedigree_probands = probands_all_ploids
+    pedigree.reduce_to_ascending_genealogy(probands=pedigree_probands,
+                                           recalculate_levels=True)
+    pedigree.initialize_potential_mrca_map()
+    end_preprocessing = time.time()
+    print_log(f"Preprocessing time: {end_preprocessing - start_preprocessing} seconds")
+    alignment_result_path = result_directory_path / tree_filename
+    logs_directory_path = alignment_result_path / logs_default_directory_name
+    os.makedirs(logs_directory_path)
+    logger = MatcherLogger(logs_directory_path=logs_directory_path)
+    graph_matcher = GraphMatcher(coalescent_tree=coalescent_tree, processed_graph=pedigree,
+                                 logger=logger)
+    start_alignment = time.time()
+    print_log("Running the alignment")
+    result = graph_matcher.find_mapping()
+    end_alignment = time.time()
+    print_log(f"Matching time: {end_alignment - start_alignment} seconds")
+    logger.log(f"Matching time: {end_alignment - start_alignment} seconds")
+    save_alignment_result_to_files(alignment_result=result, coalescent_tree=coalescent_tree,
+                                   pedigree=pedigree, directory_path=str(alignment_result_path))
+
+
+def run_alignment_with_multiple_clades_and_save_results(directory: str, result_directory_name: str,
+                                                        pedigree: PotentialMrcaProcessedGraph = None):
+    parent_directory_path = Path(directory)
+    result_directory_path = parent_directory_path / result_directory_name
+    os.makedirs(result_directory_path)
     if pedigree is None:
-        pedigree_files = [file for file in os.listdir(directory) if file.endswith('.pedigree')]
-        if len(pedigree_files) == 0:
-            raise Exception("There are no pedigree files in the directory")
-        if len(pedigree_files) == 2:
-            raise Exception("There are multiple pedigree files in the directory")
-        pedigree_filename = pedigree_files[0]
+        pedigree_filename = get_unique_filename_with_specified_extension(directory_path=directory,
+                                                                         extension=pedigree_file_extension)
         pedigree_filepath = parent_directory_path / pedigree_filename
         start_preprocessing = time.time()
-        potential_mrca_graph = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_filepath)
+        pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_filepath)
         end_preprocessing = time.time()
         print_log(f"Preprocessing time: {end_preprocessing - start_preprocessing} seconds")
-    else:
-        potential_mrca_graph = pedigree
     # Get the current working directory
     current_directory = os.getcwd()
     # Get a list of all files in the current directory
@@ -265,17 +310,14 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str,
         if extension in extension_skip_list or filename == "SKIP":
             continue
         print_log(f"{filename}")
-        # logs_directory_name = f"{result_directory_name}/{filename}/{logs_default_directory_name}"
         alignment_result_path = result_directory_path / filename
         logs_directory_path = alignment_result_path / logs_default_directory_name
         os.makedirs(logs_directory_path)
         logger = MatcherLogger(logs_directory_path=logs_directory_path)
         absolute_path = os.path.abspath(file)
-        coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(
-            filepath=absolute_path,
-            max_parent_number=2 ** 10)
+        coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=absolute_path)
         coalescent_tree.remove_unary_nodes()
-        graph_matcher = GraphMatcher(coalescent_tree=coalescent_tree, processed_graph=potential_mrca_graph,
+        graph_matcher = GraphMatcher(coalescent_tree=coalescent_tree, processed_graph=pedigree,
                                      logger=logger)
         start_alignment = time.time()
         result = graph_matcher.find_mapping()
@@ -284,11 +326,6 @@ def run_alignment_and_save_results(directory: str, result_directory_name: str,
         logger.log(f"Matching time: {end_alignment - start_alignment} seconds")
         total_alignment_time += end_alignment - start_alignment
         count += 1
-
-        # os.chdir(result_directory_name)
-        # os.chdir(filename)
         save_alignment_result_to_files(alignment_result=result, coalescent_tree=coalescent_tree,
-                                       pedigree=potential_mrca_graph, directory_path=str(alignment_result_path))
-        # os.chdir("../..")
+                                       pedigree=pedigree, directory_path=str(alignment_result_path))
     print_log(f"Average inference time {total_alignment_time / count} seconds")
-    # os.chdir("..")

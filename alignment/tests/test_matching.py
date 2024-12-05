@@ -3,6 +3,7 @@ import random
 
 import pytest
 
+from alignment.configuration import MatchingMode
 from alignment.graph_matcher import GraphMatcher, MatcherLogger
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from graph.coalescent_tree import CoalescentTree, SimpleGraph
@@ -52,7 +53,10 @@ def build_descendant_ancestor_paths_dict(graph: SimpleGraph) -> dict[int, dict[i
 
 def verify_pedigree_coalescent_tree_alignment(pedigree: PotentialMrcaProcessedGraph, coalescent_tree: CoalescentTree):
     logger = MatcherLogger()
-    graph_matcher: GraphMatcher = GraphMatcher(pedigree, coalescent_tree, logger)
+    graph_matcher: GraphMatcher = GraphMatcher(processed_graph=pedigree,
+                                               coalescent_tree=coalescent_tree,
+                                               matching_mode=MatchingMode.ALL_ALIGNMENTS,
+                                               logger=logger)
     alignments = graph_matcher.find_mapping()
     coalescent_tree_roots = coalescent_tree.levels[-1]
     for coalescent_tree_root in coalescent_tree_roots:
@@ -221,6 +225,7 @@ def verify_alignment_on_random_small_coalescent_trees(potential_mrca_graph: Pote
         # Flipping the assignments to verify that the symmetry holds
         initial_mapping = {first_proband: [second_proband], second_proband: [first_proband]}
         matcher = GraphMatcher(processed_graph=potential_mrca_graph, coalescent_tree=coalescent_tree,
+                               matching_mode=MatchingMode.ALL_ALIGNMENTS,
                                logger=logger, initial_mapping=initial_mapping)
         result = matcher.find_mapping()
         valid_candidates = {x[root] for x in result[root]}

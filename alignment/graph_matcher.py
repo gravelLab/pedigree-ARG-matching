@@ -17,6 +17,7 @@ from alignment.potential_mrca_processed_graph import *
 from alignment.subtree_matcher import *
 from graph.coalescent_tree import CoalescentTree
 from alignment.log import print_log
+from scripts.utility import dict_has_duplicate_values
 
 
 class MatcherLogger:
@@ -73,6 +74,7 @@ class GraphMatcher:
     """
 
     def __init__(self, processed_graph: PotentialMrcaProcessedGraph, coalescent_tree: CoalescentTree,
+                 matching_mode: MatchingMode = None,
                  logger: MatcherLogger = None, initial_mapping: dict = None):
         """
         @param processed_graph (PotentialMrcaProcessedGraph): The preprocessed pedigree graph that stores the
@@ -84,10 +86,17 @@ class GraphMatcher:
         """
         self.pedigree = processed_graph
         self.coalescent_tree = coalescent_tree
+        if matching_mode is None:
+            matching_mode = current_matching_mode
+        self.matching_mode = matching_mode
         if initial_mapping is None:
             initial_mapping = get_initial_mapping_for_mode(coalescent_tree=self.coalescent_tree)
         self.initial_mapping = initial_mapping
         self.logger = logger
+
+    def log(self, string: str):
+        if self.logger:
+            self.logger.log(string)
 
     def find_mapping(self):
         """!
@@ -106,59 +115,105 @@ class GraphMatcher:
                 coalescent_tree_vertex_to_subtrees[vertex] = self.get_subtrees_from_children(
                     vertex,
                     coalescent_tree_vertex_to_subtrees)
-        # root_assignments = [coalescent_tree_vertex_to_subtrees[x] for x in self.coalescent_tree.levels[-1]]
-        clades = sorted(self.coalescent_tree.get_connected_components(), reverse=True, key=len)
-        print_log("Filtering")
+        # Filtering the map, so that only the assignments for the roots of the clades remain
+        print_log("Filtering the alignments")
+        coalescent_tree_vertex_to_subtrees = {
+            x: value
+            for x, value in coalescent_tree_vertex_to_subtrees.items()
+            if x not in self.coalescent_tree.parents_map
+        }
         start_time = time.time()
-        result_dict = dict()
-        for clade in clades:
-            root_vertices = self.coalescent_tree.get_roots_for_clade(clade)
-            for root_vertex in root_vertices:
-                # TODO: Consider allowing the GraphMatcher to remove the unary nodes from the tree. In this case,
-                #  this is not necessary
-                lowest_non_unary_node = root_vertex
-                while len(self.coalescent_tree.children_map[lowest_non_unary_node]) == 1:
-                    lowest_non_unary_node = self.coalescent_tree.children_map[lowest_non_unary_node][0]
-                    if lowest_non_unary_node not in self.coalescent_tree.children_map:
-                        break
-                if lowest_non_unary_node not in self.coalescent_tree.children_map:
-                    continue
-                clade_alignments = []
-                for root_matcher in coalescent_tree_vertex_to_subtrees[root_vertex].values():
-                    root_matcher: SubtreeMatcher
-                    # TODO: Thoroughly test the filtering version of the verification step. If it is correct,
-                    #  use it instead
-                    # Filtering version
-                    # validation_start = time.time()
-                    # valid_alignments = self.get_verified_subtree_alignments(matcher=root_matcher)
-                    # validation_end = time.time()
-                    # clade_alignments.extend(valid_alignments)
-                    # time_taken = validation_end - validation_start
-                    # if print_enabled:
-                    #     print(f"There are {len(valid_alignments)} valid alignments")
-                    #     print(f"Time spent on validation: {time_taken}.")
-
-                    # valid_alignments = self.get_verified_subtree_alignments_iteratively(root_matcher)
-                    # -----------------------------------------------------------------------------------#
-                    # Brute-force version
-                    alignments = root_matcher.get_all_subtree_alignments()
-                    print_log(f"There are {len(alignments)} alignments for the matcher, filtering the results")
-                    validation_start = time.time()
-                    valid_alignments = [x for x in alignments if
-                                        self.verify_valid_alignment(alignment=x, root_vertex=lowest_non_unary_node)]
-                    validation_end = time.time()
-
-                    clade_alignments.extend(valid_alignments)
-                    time_taken = validation_end - validation_start
-                    print_log(f"There are {len(valid_alignments)} valid alignments")
-                    print_log(f"Time spent on validation: {time_taken}. "
-                              f"Average time taken: {time_taken / len(alignments)}")
-                result_dict[root_vertex] = clade_alignments
+        result_dict = self.filter_alignments(coalescent_tree_vertex_to_subtrees)
         end_time = time.time()
         print_log(f"Time spent on building and filtering the results: {end_time - start_time}")
         return result_dict
 
-    def get_verified_subtree_alignments(self, matcher: SubtreeMatcher):
+    def filter_alignments(self, coalescent_tree_vertex_to_subtrees: dict):
+        if self.matching_mode == MatchingMode.ALL_ALIGNMENTS:
+            return self.filter_alignments_iteratively_recursive_cache(coalescent_tree_vertex_to_subtrees)
+            # return self.filter_alignments_brute_force(coalescent_tree_vertex_to_subtrees)
+        return self.filter_alignments_example_per_root_assignment(coalescent_tree_vertex_to_subtrees)
+
+    def filter_alignments_example_per_root_assignment(self, coalescent_tree_vertex_to_subtrees: dict):
+        result_dict = dict()
+        for clade_root_vertex, clade_root_vertex_assignments in coalescent_tree_vertex_to_subtrees.items():
+            clade_alignments = []
+            root_vertex_matchers: [SubtreeMatcher] = clade_root_vertex_assignments.values()
+            self.log(f"Looking for valid assignments for the root vertex {clade_root_vertex}"
+                     f" There are {len(root_vertex_matchers)}"
+                     f"unverified assignments to the root of the clade")
+            for root_matcher in root_vertex_matchers:
+                assert clade_root_vertex == root_matcher.root_coalescent_tree
+                self.log(f"Finding an example alignment for the assignment "
+                         f"{clade_root_vertex}: {root_matcher.root_pedigree}")
+                alignments = root_matcher.get_all_subtree_alignments()
+                self.log(f"There are {len(alignments)} unverified alignments")
+                for alignment in alignments:
+                    if self.verify_valid_alignment(alignment=alignment,
+                                                   root_vertex=root_matcher.root_coalescent_tree):
+                        clade_alignments.append(alignment)
+                        break
+            result_dict[clade_root_vertex] = clade_alignments
+        return result_dict
+
+    def filter_clade_root_assignments_independently(self, coalescent_tree_vertex_to_subtrees: dict,
+                                                    matcher_filter_function):
+        result_dict = dict()
+        for clade_root_vertex, clade_root_vertex_assignments in coalescent_tree_vertex_to_subtrees.items():
+            clade_alignments = []
+            root_vertex_matchers: [SubtreeMatcher] = clade_root_vertex_assignments.values()
+            self.log(f"Filtering the alignments, there are {len(root_vertex_matchers)}"
+                     f"unverified assignments to the root of the clade")
+            for root_matcher in root_vertex_matchers:
+                self.log(f"Filtering the alignments for the root matcher "
+                         f"{root_matcher.root_pedigree}")
+                validation_start = time.time()
+                valid_alignments = matcher_filter_function(root_matcher)
+                validation_end = time.time()
+                clade_alignments.extend(valid_alignments)
+                time_taken = validation_end - validation_start
+                print_log(f"There are {len(valid_alignments)} valid alignments")
+                print_log(f"Time spent on validation: {time_taken}.")
+                clade_alignments.extend(valid_alignments)
+            result_dict[clade_root_vertex] = clade_alignments
+        return result_dict
+
+    def filter_alignments_brute_force(self, coalescent_tree_vertex_to_subtrees: dict):
+        return self.filter_clade_root_assignments_independently(
+            coalescent_tree_vertex_to_subtrees=coalescent_tree_vertex_to_subtrees,
+            matcher_filter_function=self.get_verified_alignments_brute_force)
+
+    def filter_alignments_product_recursive(self, coalescent_tree_vertex_to_subtrees: dict):
+        return self.filter_clade_root_assignments_independently(
+            coalescent_tree_vertex_to_subtrees=coalescent_tree_vertex_to_subtrees,
+            matcher_filter_function=self.get_verified_alignments_product_recursive)
+
+    def filter_alignments_iteratively_recursive_cache(self, coalescent_tree_vertex_to_subtrees: dict):
+        # TODO: Make a separate non-cache implementation
+        result_dict = dict()
+        sub_alignments_cache = dict()
+        for clade_root_vertex, clade_root_vertex_assignments in coalescent_tree_vertex_to_subtrees.items():
+            clade_alignments = []
+            root_vertex_matchers: [SubtreeMatcher] = clade_root_vertex_assignments.values()
+            self.log(f"Filtering the alignments, there are {len(root_vertex_matchers)}"
+                     f"unverified assignments to the root of the clade")
+            for root_matcher in root_vertex_matchers:
+                self.log(f"Filtering the alignments for the root matcher "
+                         f"{root_matcher.root_pedigree}")
+                validation_start = time.time()
+                valid_alignments = self.get_verified_alignments_iteratively_recursive_cache(
+                                            matcher=root_matcher,
+                                            sub_alignments_cache=sub_alignments_cache)
+                validation_end = time.time()
+                clade_alignments.extend(valid_alignments)
+                time_taken = validation_end - validation_start
+                print_log(f"There are {len(valid_alignments)} valid alignments")
+                print_log(f"Time spent on validation: {time_taken}.")
+                clade_alignments.extend(valid_alignments)
+            result_dict[clade_root_vertex] = clade_alignments
+        return result_dict
+
+    def get_verified_alignments_product_recursive(self, matcher: SubtreeMatcher):
         if matcher.subtree_alignments is not None:
             return matcher.subtree_alignments
         results = []
@@ -168,10 +223,10 @@ class GraphMatcher:
             return [root_assignment_dict]
         # If there are children assignments, loop over all the corresponding children alignments
         for children_assignment in matcher.children_assignments:
-            children_alignments = [self.get_verified_subtree_alignments(matcher=x) for x in
+            children_alignments = [self.get_verified_alignments_product_recursive(matcher=x) for x in
                                    children_assignment.values()]
             search_space = reduce(lambda x, y: x * len(y), children_alignments, 1)
-            print(f"Search space {search_space}")
+            print_log(f"Search space {search_space}")
             for children_dictionaries in product(*children_alignments):
                 new_result = dict(root_assignment_dict)
                 for dictionary in children_dictionaries:
@@ -181,10 +236,10 @@ class GraphMatcher:
         matcher.subtree_alignments = results
         return results
 
-    def get_verified_subtree_alignments_iteratively(self, matcher: SubtreeMatcher, print_debug=True):
-        # TODO: Check if works properly. Add the root assignments to the search space
-        #  When the number of unverified alignments is quite small, this approach can be slower.
-        #  We probably need some
+    def get_verified_alignments_iteratively_recursive_cache(self, matcher: SubtreeMatcher,
+                                                            sub_alignments_cache: dict,
+                                                            print_debug=True):
+        #  When the number of unverified alignments is quite small, this approach can be slower
         if matcher.subtree_alignments is not None:
             return matcher.subtree_alignments
         results = []
@@ -196,49 +251,107 @@ class GraphMatcher:
         for index, children_assignment in enumerate(matcher.children_assignments):
             if print_debug:
                 print(f"Processing assignment {index + 1} of {len(matcher.children_assignments)}")
-            current_valid_alignments = [root_assignment_dict]
-            child_index = 0
+            # current_valid_alignments = [root_assignment_dict]
             children_matchers = sorted(children_assignment.values(),
                                        key=lambda x: x.root_coalescent_tree in self.coalescent_tree.children_map,
                                        reverse=False)
-            for child_matcher in children_matchers:
+            current_valid_alignments = self.get_verified_alignments_iteratively_recursive_cache(
+                                            children_matchers[0], sub_alignments_cache)
+            for child_index, child_matcher in enumerate(children_matchers[1:]):
                 if print_debug:
-                    print(f"Processing child {child_index + 1} "
+                    print(f"Processing child {child_index + 2} "
                           f"of {len(self.coalescent_tree.children_map[matcher.root_coalescent_tree])}")
                     print(f"Current number of sub-alignments is {len(current_valid_alignments)}")
-                new_valid_alignments = []
-                print("#########################")
-                child_mather_alignments = self.get_verified_subtree_alignments_iteratively(matcher=child_matcher)
-                print("#########################")
-                for child_mather_alignment in child_mather_alignments:
-                    for current_valid_alignment in current_valid_alignments:
-                        new_alignment = dict(child_mather_alignment)
-                        new_alignment.update(current_valid_alignment)
-                        if self.verify_valid_alignment(alignment=new_alignment,
-                                                       root_vertex=matcher.root_coalescent_tree):
-                            new_valid_alignments.append(new_alignment)
+                current_children_matchers = children_matchers[:child_index + 2]
+                children_assignment = tuple(
+                    (child_matcher.root_coalescent_tree, child_matcher.root_pedigree)
+                    for child_matcher in current_children_matchers
+                )
+                new_valid_alignments = sub_alignments_cache.get(children_assignment, [])
+                # new_valid_alignments = []
+                if new_valid_alignments:
+                    print("Using cached results")
+                else:
+                    print("#########################")
+                    child_matcher_alignments = self.get_verified_alignments_iteratively_recursive_cache(
+                                                matcher=child_matcher,
+                                                sub_alignments_cache=sub_alignments_cache)
+                    print("#########################")
+                    for child_matcher_alignment in child_matcher_alignments:
+                        for current_valid_alignment in current_valid_alignments:
+                            new_alignment = dict(child_matcher_alignment)
+                            new_alignment.update(current_valid_alignment)
+                            if self.verify_valid_alignment_for_potential_root(alignment=new_alignment):
+                                new_valid_alignments.append(new_alignment)
+                            else:
+                                print("Discard")
+                    sub_alignments_cache[children_assignment] = new_valid_alignments
                 current_valid_alignments = new_valid_alignments
-            results.extend(current_valid_alignments)
+            result_alignments = []
+            for current_valid_alignment in current_valid_alignments:
+                new_alignment = dict(current_valid_alignment)
+                new_alignment.update(root_assignment_dict)
+                if self.verify_valid_alignment_for_potential_root(alignment=new_alignment):
+                    result_alignments.append(new_alignment)
+            results.extend(result_alignments)
         matcher.subtree_alignments = results
         return results
 
-    def verify_valid_alignment(self, alignment: dict, root_vertex=None):
+    def get_verified_alignments_brute_force(self, matcher: SubtreeMatcher):
+        alignments = matcher.get_all_subtree_alignments()
+        print_log(f"There are {len(alignments)} alignments for the matcher, filtering the results")
+        # valid_alignments = [x for x in alignments if
+        #                     self.verify_valid_alignment(alignment=x, root_vertex=matcher.root_coalescent_tree)]
+        valid_alignments = [x for x in alignments if
+                            self.verify_valid_alignment_for_potential_root(alignment=x)]
+        return valid_alignments
+
+    def verify_valid_alignment_for_potential_root(self, alignment: dict):
+        if dict_has_duplicate_values(alignment):
+            return False
+        network_graph = networkx.DiGraph()
+        source_vertex_label = "s"
+        target_vertex_label = "t"
+        proband_number = 0
+        for tree_vertex in alignment:
+            tree_vertex_pedigree = alignment[tree_vertex]
+            tree_vertex_parents = [x for x in self.coalescent_tree.parents_map.get(tree_vertex, []) if x in alignment]
+            if tree_vertex not in self.coalescent_tree.children_map:
+                network_graph.add_edge(source_vertex_label, tree_vertex_pedigree, capacity=1)
+                proband_number += 1
+                if not tree_vertex_parents:
+                    network_graph.add_edge(tree_vertex_pedigree, target_vertex_label, capacity=1)
+                continue
+            children = self.coalescent_tree.children_map[tree_vertex]
+            assert len(children) > 0
+            children_pedigree = [alignment[x] for x in children if alignment.get(x) is not None]
+            # The number of children present in the alignment
+            children_number = len(children_pedigree)
+            self.add_edges_to_mrca_from_descendants(network_graph, tree_vertex_pedigree, children_pedigree)
+            if not tree_vertex_parents:
+                network_graph.add_edge(tree_vertex_pedigree, target_vertex_label, capacity=children_number)
+            else:
+                network_graph.add_edge(tree_vertex_pedigree, target_vertex_label, capacity=children_number - 1)
+        maximum_flow = networkx.maximum_flow_value(flowG=network_graph, _s=source_vertex_label, _t=target_vertex_label)
+        return maximum_flow == proband_number
+
+    def verify_valid_alignment(self, alignment: dict, root_vertex: int):
         """!
         @brief Verifies that the given alignment is correct
         """
-        if len(alignment) != len(set(alignment.values())):
+        if dict_has_duplicate_values(alignment):
             return False
-        if root_vertex is None:
-            root_vertex = self.coalescent_tree.get_root_for_clade(alignment.keys())
+        # if root_vertex is None:
+        #     root_vertex = self.coalescent_tree.get_root_for_clade(alignment.keys())
         network_graph = networkx.DiGraph()
         source_vertex_label = "s"
         target_vertex_label = "t"
         # Adding the edge from the root to the sink vertex
-        children_number = len(self.coalescent_tree.children_map[root_vertex])
-        assert children_number > 0
+        root_vertex_children_number = len(self.coalescent_tree.children_map[root_vertex])
+        assert root_vertex_children_number > 0
         root_vertex_pedigree = alignment[root_vertex]
         network_graph.add_edge(root_vertex_pedigree, target_vertex_label,
-                               capacity=children_number)
+                               capacity=root_vertex_children_number)
         proband_number = 0
         for parent in alignment:
             parent_pedigree = alignment[parent]
@@ -248,7 +361,7 @@ class GraphMatcher:
                 continue
             children = self.coalescent_tree.children_map[parent]
             assert len(children) > 0
-            children_pedigree = [alignment[x] for x in children if x in alignment]
+            children_pedigree = [alignment[x] for x in children if alignment.get(x) is not None]
             # if len(children_pedigree) != len(children):
             #     print("WARNING: not all the children are present in the mapping")
             children_number = len(children_pedigree)

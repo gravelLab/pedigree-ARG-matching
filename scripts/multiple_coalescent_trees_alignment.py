@@ -42,7 +42,7 @@ def run_interactive_session():
     for coalescent_tree_filename in coalescent_trees_folder_files:
         if os.path.isfile(coalescent_tree_filename):  # Ensure it's a file
             coalescent_tree_path = os.path.abspath(coalescent_tree_filename)
-            coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(coalescent_tree_path)
+            coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
             os.chdir(result_directory)
             logger = MatcherLogger()
             graph_matcher = GraphMatcher(processed_graph=pedigree,

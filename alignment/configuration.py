@@ -8,13 +8,13 @@ class InitialMatchingMode(Enum):
 
 class MatchingMode(Enum):
     ALL_ALIGNMENTS = 1,
-    LIKELIHOOD = 2,
+    EXAMPLE_PER_ROOT_ASSIGNMENT = 2,
 
 
 default_initial_matching_mode = InitialMatchingMode.INDIVIDUAL
 current_matching_mode = MatchingMode.ALL_ALIGNMENTS
 
-logs_enabled = False
+logs_enabled = True
 logs_default_directory_name = "logs"
 
-print_enabled = False
+print_enabled = True

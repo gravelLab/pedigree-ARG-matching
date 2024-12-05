@@ -90,6 +90,7 @@ def get_non_existing_path(input_request: str):
 
 
 def get_non_existing_or_empty_directory_path(input_request: str):
+    # TODO: Implement this function and use it for requesting the output directory
     pass
 
 
@@ -143,9 +144,9 @@ def parse_dictionary_from_file(file_path: str):
     return result
 
 
-def read_mapping_from_file(file_path):
+def read_mapping_from_file(filepath):
     parsed_dict = {}
-    with open(file_path, 'r') as file:
+    with open(filepath, 'r') as file:
         for line in file:
             # Split the line on ':' to separate key and value
             key, value = line.strip().split(':')
@@ -194,8 +195,30 @@ def get_yes_or_no(prompt: str) -> bool:
             print("Invalid input. Please enter 'yes' or 'no'.")
 
 
-def read_integers_from_csv_file(filepath):
+def read_integers_from_csv_file(filepath: str):
     with open(filepath, mode="r") as file:
         content = file.read().strip()
         integer_list = [int(value) for value in content.split(",")]
     return integer_list
+
+
+def get_filenames_with_given_extension(directory_path: str, extension: str):
+    return [file for file in os.listdir(directory_path) if file.endswith(extension)]
+
+
+def get_unique_filename_with_specified_extension(directory_path: str, extension: str):
+    files = get_filenames_with_given_extension(directory_path=directory_path, extension=extension)
+    if len(files) == 0:
+        raise Exception(f"There are no {extension} files in the directory")
+    if len(files) == 2:
+        raise Exception(f"There are multiple {extension} files in the directory")
+    return files[0]
+
+
+def dict_has_duplicate_values(dictionary: dict):
+    seen = set()
+    for value in dictionary.values():
+        if value in seen:
+            return True
+        seen.add(value)
+    return False

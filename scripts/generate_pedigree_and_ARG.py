@@ -70,5 +70,4 @@ print("Generated ARG\n")
 first_tree: Tree = arg.first()
 
 generate_and_save_coalescent_tree(0, first_tree)
-arg_parsed: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=arg_filename,
-                                                                          max_parent_number=2 ** 10)
+arg_parsed: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=arg_filename)

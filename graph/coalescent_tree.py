@@ -150,11 +150,11 @@ class CoalescentTree(GenealogicalGraph):
                     file.write(f"{vertex} {' '.join(str(parent) for parent in parents)}\n")
 
     @staticmethod
-    def get_coalescent_tree_from_file(filepath: str, max_parent_number: int = 2,
+    def get_coalescent_tree_from_file(filepath: str,
                                       missing_parent_notation=None, separation_symbol=' ',
                                       skip_first_line: bool = False, initialize_levels: bool = True):
         pedigree: SimpleGraph = SimpleGraph.get_haploid_graph_from_file(filename=filepath,
-                                                                        max_parent_number=max_parent_number,
+                                                                        max_parent_number=1,
                                                                         missing_parent_notation=missing_parent_notation,
                                                                         separation_symbol=separation_symbol,
                                                                         skip_first_line=skip_first_line)

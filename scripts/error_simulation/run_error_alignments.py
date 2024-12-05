@@ -187,7 +187,7 @@ class ErrorPedigreeAlignmentComparison:
         else:
             initial_logger = None
         initial_matcher = GraphMatcher(coalescent_tree=self.coalescent_tree, processed_graph=self.initial_pedigree,
-                                       logger=initial_logger)
+                                       matching_mode=MatchingMode.ALL_ALIGNMENTS, logger=initial_logger)
         initial_result_dict = initial_matcher.find_mapping()
         if self.save_alignments_to_files:
             save_alignment_result_to_files(alignment_result=initial_result_dict,
@@ -240,7 +240,9 @@ class ErrorPedigreeAlignmentComparison:
         del self.initial_pedigree
         # Gathering the statistics about the original alignments
         identity_solution = self.coalescent_tree.get_identity_solution()
-        assert identity_solution in valid_alignments
+        if identity_solution not in valid_alignments:
+            raise ValueError("The identity solution is not present in the resulting"
+                             "alignments with the error-free pedigree")
         initial_average_distance_to_identity = sum(
             get_alignments_proband_distance_probands_ignored(alignment, identity_solution,
                                                              self.coalescent_tree.probands)
@@ -457,7 +459,7 @@ def run_specific_error_pedigree_directories_iterative(paths: list[str], error_pe
         if tree_results:
             total_results.add_results(tree_results)
 
-    total_results_filepath = simulation_folder_path / f"{simulation_name}.txt"
+    total_results_filepath = simulation_folder_path / "total_results.txt"
     save_error_alignments_to_file(total_results_filepath, total_results)
     return total_results
 
@@ -479,7 +481,7 @@ def run_specific_error_pedigree_directories_parallel(paths: list[str], error_ped
             if tree_results:
                 total_results.add_results(tree_results)
 
-    total_results_filepath = simulation_directory_path / f"total_results.txt"
+    total_results_filepath = simulation_directory_path / "total_results.txt"
     save_error_alignments_to_file(total_results_filepath, total_results)
     return total_results
 

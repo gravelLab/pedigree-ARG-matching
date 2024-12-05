@@ -4,7 +4,7 @@ from scripts.utility import *
 
 def save_largest_clade_and_get_probands():
     filepath = get_filepath("Specify the path to the coalescent tree:\n")
-    coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath)
+    coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=filepath)
     largest_clade = coalescent_tree.get_subtree_from_vertices(coalescent_tree.get_largest_clade_by_probands())
     while True:
         try:
