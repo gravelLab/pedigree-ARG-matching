@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 from scipy.stats import poisson
 import random
@@ -81,17 +83,12 @@ def get_non_empty_string(input_request: str) -> str:
 def get_non_existing_path(input_request: str):
     while True:
         directory_path = input(input_request)
-        if os.path.exists(directory_path):
-            print("The specified directory already exists, try again")
-        elif not directory_path:
+        if not directory_path:
             print("Specify a non-empty string")
+        elif os.path.exists(directory_path) and os.listdir(directory_path):
+            print("The specified directory already exists and is not empty, try again")
         else:
             return directory_path
-
-
-def get_non_existing_or_empty_directory_path(input_request: str):
-    # TODO: Implement this function and use it for requesting the output directory
-    pass
 
 
 def get_natural_number_input(input_request: str):
@@ -222,3 +219,16 @@ def dict_has_duplicate_values(dictionary: dict):
             return True
         seen.add(value)
     return False
+
+
+def get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path: str | Path):
+    tree_pedigree_directory_path = Path(tree_pedigree_directory_path)
+    files = list(tree_pedigree_directory_path.glob("*"))
+    files = [file.resolve() for file in files if file.is_file()]
+    if len(files) != 2:
+        return None
+    pedigree_filename = next((file for file in files if file.suffix == ".pedigree"), None)
+    tree_filename = next((file for file in files if file != pedigree_filename), None)
+    pedigree_filepath = tree_pedigree_directory_path / pedigree_filename
+    tree_filepath = tree_pedigree_directory_path / tree_filename
+    return pedigree_filepath, tree_filepath

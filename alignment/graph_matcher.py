@@ -7,6 +7,7 @@ import datetime
 import os
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 from functools import reduce
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from alignment.subtree_matcher import *
 from graph.coalescent_tree import CoalescentTree
 from alignment.log import print_log
 from scripts.utility import dict_has_duplicate_values
+import yaml
 
 
 class MatcherLogger:
@@ -65,6 +67,97 @@ def get_initial_mapping_for_mode(coalescent_tree: CoalescentTree, mode: InitialM
     if mode == InitialMatchingMode.PLOID:
         return {x: [x] for x in coalescent_tree.probands}
     return {x: [2 * (x // 2), (2 * (x // 2) + 1)] for x in coalescent_tree.probands}
+
+
+class YAMLValidationError(Exception):
+    """Custom exception for YAML validation errors."""
+    pass
+
+
+class PloidType(Enum):
+    Paternal = "P"
+    Maternal = "M"
+    Unphased = "U"
+
+
+@dataclass
+class InitialAssignment:
+    coalescent_id: int
+    pedigree_id: int
+    ploid_type: PloidType
+
+
+def validate_and_parse_yaml(file_path: str) -> dict[int, InitialAssignment]:
+    """
+    Validates the specified YAML file and parses it into a dictionary mapping
+    coalescent_id to an InitialAssignment object.
+
+    :param file_path: Path to the YAML file.
+    :return: Dictionary where keys are coalescent_ids and values are InitialAssignment objects.
+    :raises: YAMLValidationError if the file is invalid.
+    """
+    required_keys = {"initial_assignments", "coalescent_tree_path", "pedigree_path"}
+
+    try:
+        # Load the YAML file
+        with open(file_path, 'r') as f:
+            data = yaml.safe_load(f)
+
+        # Check if all required keys are present
+        if not required_keys.issubset(data.keys()):
+            raise YAMLValidationError(f"Missing required keys. Expected: {required_keys}, Found: {data.keys()}")
+
+        # Validate "initial_assignments" format
+        if not isinstance(data["initial_assignments"], list):
+            raise YAMLValidationError("initial_assignments should be a list.")
+
+        coalescent_dict = {}
+
+        for entry in data["initial_assignments"]:
+            if not isinstance(entry, dict):
+                raise YAMLValidationError(f"Each entry in initial_assignments must be a dictionary. Found: {entry}")
+            if not {"coalescent_id", "pedigree_id", "ploid_type"}.issubset(entry.keys()):
+                raise YAMLValidationError(f"Missing keys in initial_assignments entry. Found: {entry.keys()}")
+
+            # Validate and convert ploid_type
+            try:
+                ploid_type = PloidType(entry["ploid_type"])
+            except ValueError:
+                raise YAMLValidationError(
+                    f"Invalid ploid_type: {entry['ploid_type']}. Must be one of {[e.value for e in PloidType]}"
+                )
+
+            # Validate coalescent_id uniqueness
+            coalescent_id = int(entry["coalescent_id"])
+
+            # Check if coalescent_id already exists
+            if coalescent_id in coalescent_dict:
+                raise YAMLValidationError(f"Duplicate coalescent_id found: {coalescent_id}")
+
+            # Create InitialAssignment object
+            initial_assignment = InitialAssignment(
+                coalescent_id=coalescent_id,
+                pedigree_id=int(entry["pedigree_id"]),
+                ploid_type=ploid_type
+            )
+
+            # Add to the dictionary
+            coalescent_dict[coalescent_id] = initial_assignment
+
+        # Validate paths
+        if not os.path.isfile(data["coalescent_tree_path"]):
+            raise YAMLValidationError(f"Invalid coalescent_tree_path: {data['coalescent_tree_path']}")
+        if not os.path.isfile(data["pedigree_path"]):
+            raise YAMLValidationError(f"Invalid pedigree_path: {data['pedigree_path']}")
+
+        return coalescent_dict
+
+    except FileNotFoundError:
+        raise YAMLValidationError(f"File not found: {file_path}")
+    except yaml.YAMLError as e:
+        raise YAMLValidationError(f"Error parsing YAML file: {e}")
+    except Exception as e:
+        raise YAMLValidationError(f"Unexpected error: {e}")
 
 
 class GraphMatcher:
@@ -130,8 +223,8 @@ class GraphMatcher:
 
     def filter_alignments(self, coalescent_tree_vertex_to_subtrees: dict):
         if self.matching_mode == MatchingMode.ALL_ALIGNMENTS:
-            return self.filter_alignments_iteratively_recursive_cache(coalescent_tree_vertex_to_subtrees)
-            # return self.filter_alignments_brute_force(coalescent_tree_vertex_to_subtrees)
+            # return self.filter_alignments_iteratively_recursive_cache(coalescent_tree_vertex_to_subtrees)
+            return self.filter_alignments_brute_force(coalescent_tree_vertex_to_subtrees)
         return self.filter_alignments_example_per_root_assignment(coalescent_tree_vertex_to_subtrees)
 
     def filter_alignments_example_per_root_assignment(self, coalescent_tree_vertex_to_subtrees: dict):
@@ -202,8 +295,8 @@ class GraphMatcher:
                          f"{root_matcher.root_pedigree}")
                 validation_start = time.time()
                 valid_alignments = self.get_verified_alignments_iteratively_recursive_cache(
-                                            matcher=root_matcher,
-                                            sub_alignments_cache=sub_alignments_cache)
+                    matcher=root_matcher,
+                    sub_alignments_cache=sub_alignments_cache)
                 validation_end = time.time()
                 clade_alignments.extend(valid_alignments)
                 time_taken = validation_end - validation_start
@@ -256,7 +349,7 @@ class GraphMatcher:
                                        key=lambda x: x.root_coalescent_tree in self.coalescent_tree.children_map,
                                        reverse=False)
             current_valid_alignments = self.get_verified_alignments_iteratively_recursive_cache(
-                                            children_matchers[0], sub_alignments_cache)
+                children_matchers[0], sub_alignments_cache)
             for child_index, child_matcher in enumerate(children_matchers[1:]):
                 if print_debug:
                     print(f"Processing child {child_index + 2} "
@@ -274,8 +367,8 @@ class GraphMatcher:
                 else:
                     print("#########################")
                     child_matcher_alignments = self.get_verified_alignments_iteratively_recursive_cache(
-                                                matcher=child_matcher,
-                                                sub_alignments_cache=sub_alignments_cache)
+                        matcher=child_matcher,
+                        sub_alignments_cache=sub_alignments_cache)
                     print("#########################")
                     for child_matcher_alignment in child_matcher_alignments:
                         for current_valid_alignment in current_valid_alignments:

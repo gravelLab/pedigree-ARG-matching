@@ -1,0 +1,16 @@
+initial_assignments:
+  - coalescent_id: 1
+    pedigree_id: 11
+    ploid_type: P
+  - coalescent_id: 2
+    pedigree_id: 11
+    ploid_type: M
+  - coalescent_id: 3
+    pedigree_id: 12
+    ploid_type: U
+  - coalescent_id: 4
+    pedigree_id: 14
+    ploid_type: M
+coalescent_tree_path: "C:\\Users\\kot21\\PycharmProjects\\pedigree-ARG-matching\\pedigrees\\balsac_clades_probands_2_20_examples_10\\cartegene_ascending_unphased\\2\\0\\clade"
+pedigree_path: "C:\\Users\\kot21\\PycharmProjects\\pedigree-ARG-matching\\pedigrees\\balsac_clades_probands_2_20_examples_10\\cartegene_ascending_unphased\\2\\0\\pedigree.pedigree
+"

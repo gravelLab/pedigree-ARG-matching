@@ -83,11 +83,18 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
 
     @staticmethod
     def get_processed_graph_from_file(filepath: str, missing_parent_notation=None, separation_symbol=' ',
-                                      initialize_ancestor_maps: bool = True,
-                                      initialize_levels: bool = True
+                                      preprocess_graph: bool = True,
+                                      probands: [int] = None
                                       ):
-        pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filepath,
+        pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filepath=filepath,
                                                                         missing_parent_notation=missing_parent_notation,
                                                                         separation_symbol=separation_symbol)
-        return PotentialMrcaProcessedGraph(pedigree=pedigree, initialize_levels=initialize_levels,
-                                           initialize_ancestor_maps=initialize_ancestor_maps)
+        if pedigree is None:
+            return PotentialMrcaProcessedGraph(pedigree=pedigree, initialize_levels=preprocess_graph,
+                                               initialize_ancestor_maps=preprocess_graph)
+        unprocessed_graph = PotentialMrcaProcessedGraph(pedigree=pedigree, initialize_levels=False,
+                                                        initialize_ancestor_maps=False)
+        unprocessed_graph.reduce_to_ascending_genealogy(probands=probands, recalculate_levels=preprocess_graph)
+        if preprocess_graph:
+            unprocessed_graph.initialize_potential_mrca_map()
+        return unprocessed_graph

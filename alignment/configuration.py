@@ -12,7 +12,7 @@ class MatchingMode(Enum):
 
 
 default_initial_matching_mode = InitialMatchingMode.INDIVIDUAL
-current_matching_mode = MatchingMode.ALL_ALIGNMENTS
+current_matching_mode = MatchingMode.EXAMPLE_PER_ROOT_ASSIGNMENT
 
 logs_enabled = True
 logs_default_directory_name = "logs"

@@ -250,8 +250,7 @@ def process_pedigree_tree_directory(directory: str, result_directory_name: str):
     pedigree_filepath = parent_directory_path / pedigree_filename
     print_log(f"Processing the pedigree: {pedigree_filepath}")
     pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_filepath,
-                                                                         initialize_levels=False,
-                                                                         initialize_ancestor_maps=False)
+                                                                         preprocess_graph=False)
     if default_initial_matching_mode == InitialMatchingMode.PLOID:
         pedigree_probands = coalescent_tree.get_probands()
     else:

@@ -7,3 +7,5 @@ msprime>=1.2.0
 pytest>=8.0.2
 networkx>=3.2.1
 scipy>=1.12.0
+PyYAML>=6.0.2
+setuptools>=70.0.0

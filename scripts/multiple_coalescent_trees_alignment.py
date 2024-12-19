@@ -31,8 +31,8 @@ def run_interactive_session():
     pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path,
                                                                          separation_symbol="\t",
                                                                          missing_parent_notation=["0"],
-                                                                         initialize_levels=False,
-                                                                         initialize_ancestor_maps=False)
+                                                                         preprocess_graph=False
+                                                                         )
     pedigree.reduce_to_ascending_genealogy(pedigree_probands, recalculate_levels=True)
     pedigree.initialize_potential_mrca_map()
 
