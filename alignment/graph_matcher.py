@@ -158,13 +158,8 @@ def validate_and_parse_yaml(filepath: str) -> dict[int, [int]]:
             # Add to the dictionary
             coalescent_dict[coalescent_id] = pedigree_processed_ids
         return coalescent_dict
-
-    except FileNotFoundError:
-        raise YAMLValidationError(f"File not found: {filepath}")
     except yaml.YAMLError as e:
         raise YAMLValidationError(f"Error parsing YAML file: {e}")
-    except Exception as e:
-        raise YAMLValidationError(f"Unexpected error: {e}")
 
 
 class GraphMatcher:

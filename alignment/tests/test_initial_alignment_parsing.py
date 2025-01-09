@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,7 @@ from alignment.graph_matcher import validate_and_parse_yaml, YAMLValidationError
 
 @pytest.fixture
 def correct_initial_alignment_directory_name() -> Path:
-    return Path("initial_alignments")
+    return Path(os.path.dirname(os.path.abspath(__file__))) / "initial_alignments"
 
 
 @pytest.fixture
