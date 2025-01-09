@@ -87,73 +87,80 @@ class InitialAssignment:
     ploid_type: PloidType
 
 
-def validate_and_parse_yaml(file_path: str) -> dict[int, InitialAssignment]:
+def validate_and_parse_yaml(filepath: str) -> dict[int, [int]]:
     """
     Validates the specified YAML file and parses it into a dictionary mapping
     coalescent_id to an InitialAssignment object.
 
-    :param file_path: Path to the YAML file.
+    :param filepath: Path to the YAML file.
     :return: Dictionary where keys are coalescent_ids and values are InitialAssignment objects.
     :raises: YAMLValidationError if the file is invalid.
     """
-    required_keys = {"initial_assignments", "coalescent_tree_path", "pedigree_path"}
-
+    initial_assignments_key = "initial_assignments"
+    pedigree_ids_key = "pedigree_ids"
+    root_required_keys = {initial_assignments_key, "coalescent_tree_path", "pedigree_path"}
+    initial_assignments_required_keys = {"coalescent_id", "pedigree_ids"}
     try:
         # Load the YAML file
-        with open(file_path, 'r') as f:
+        with open(filepath, 'r') as f:
             data = yaml.safe_load(f)
 
         # Check if all required keys are present
-        if not required_keys.issubset(data.keys()):
-            raise YAMLValidationError(f"Missing required keys. Expected: {required_keys}, Found: {data.keys()}")
+        if not root_required_keys.issubset(data.keys()):
+            raise YAMLValidationError(f"Missing required keys. Expected: {root_required_keys}, Found: {data.keys()}")
 
         # Validate "initial_assignments" format
-        if not isinstance(data["initial_assignments"], list):
+        if not isinstance(data[initial_assignments_key], list):
             raise YAMLValidationError("initial_assignments should be a list.")
 
         coalescent_dict = {}
 
-        for entry in data["initial_assignments"]:
+        for entry in data[initial_assignments_key]:
             if not isinstance(entry, dict):
                 raise YAMLValidationError(f"Each entry in initial_assignments must be a dictionary. Found: {entry}")
-            if not {"coalescent_id", "pedigree_id", "ploid_type"}.issubset(entry.keys()):
+            if not initial_assignments_required_keys.issubset(entry.keys()):
                 raise YAMLValidationError(f"Missing keys in initial_assignments entry. Found: {entry.keys()}")
 
-            # Validate and convert ploid_type
-            try:
-                ploid_type = PloidType(entry["ploid_type"])
-            except ValueError:
-                raise YAMLValidationError(
-                    f"Invalid ploid_type: {entry['ploid_type']}. Must be one of {[e.value for e in PloidType]}"
-                )
-
             # Validate coalescent_id uniqueness
-            coalescent_id = int(entry["coalescent_id"])
+            try:
+                coalescent_id = int(entry["coalescent_id"])
+            except ValueError:
+                raise YAMLValidationError(f"Invalid coalescent id: {entry['coalescent_id']}")
 
             # Check if coalescent_id already exists
             if coalescent_id in coalescent_dict:
                 raise YAMLValidationError(f"Duplicate coalescent_id found: {coalescent_id}")
 
-            # Create InitialAssignment object
-            initial_assignment = InitialAssignment(
-                coalescent_id=coalescent_id,
-                pedigree_id=int(entry["pedigree_id"]),
-                ploid_type=ploid_type
-            )
-
+            pedigree_unprocessed_ids = entry[pedigree_ids_key]
+            pedigree_processed_ids = []
+            for pedigree_id in pedigree_unprocessed_ids:
+                if not pedigree_id:
+                    raise YAMLValidationError(f"Pedigree id is empty")
+                try:
+                    ploid_type = PloidType(pedigree_id[-1])
+                except ValueError:
+                    raise YAMLValidationError(
+                        f"Invalid ploid_type: {entry['ploid_type']}. Must be one of {[e.value for e in PloidType]}"
+                    )
+                try:
+                    unprocessed_pedigree_id = int(pedigree_id[:-1])
+                except ValueError:
+                    raise YAMLValidationError(f"Invalid pedigree id {pedigree_id[:-1]}")
+                if unprocessed_pedigree_id < 0:
+                    raise YAMLValidationError(f"Negative pedigree id {unprocessed_pedigree_id}")
+                if ploid_type == PloidType.Paternal:
+                    processed_pedigree_id = 2 * unprocessed_pedigree_id
+                else:
+                    processed_pedigree_id = 2 * unprocessed_pedigree_id + 1
+                pedigree_processed_ids.append(processed_pedigree_id)
+            if not pedigree_processed_ids:
+                raise YAMLValidationError(f"No pedigree ids specified for {coalescent_id}")
             # Add to the dictionary
-            coalescent_dict[coalescent_id] = initial_assignment
-
-        # Validate paths
-        if not os.path.isfile(data["coalescent_tree_path"]):
-            raise YAMLValidationError(f"Invalid coalescent_tree_path: {data['coalescent_tree_path']}")
-        if not os.path.isfile(data["pedigree_path"]):
-            raise YAMLValidationError(f"Invalid pedigree_path: {data['pedigree_path']}")
-
+            coalescent_dict[coalescent_id] = pedigree_processed_ids
         return coalescent_dict
 
     except FileNotFoundError:
-        raise YAMLValidationError(f"File not found: {file_path}")
+        raise YAMLValidationError(f"File not found: {filepath}")
     except yaml.YAMLError as e:
         raise YAMLValidationError(f"Error parsing YAML file: {e}")
     except Exception as e:

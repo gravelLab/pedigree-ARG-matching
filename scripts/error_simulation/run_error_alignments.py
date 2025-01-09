@@ -18,6 +18,8 @@ log_directory = "log_dir"
 initial_alignment_dir_name = "initial_alignment"
 general_result_filename = "simulation_result.txt"
 detailed_result_filename = "detailed_simulation_result.txt"
+line_content_divider = "------------------------------------\n"
+line_section_divider = "#####################################\n"
 
 script_help_description = """
                           This script performs the alignment algorithm between the specified pedigree(s) and
@@ -75,6 +77,18 @@ class ErrorPedigreeAlignmentClassification:
         # The next fields keep track of the initial and new assignments to the root vertex
         self.total_number_of_root_vertex_individual_assignments = 0
         self.initial_root_vertex_individual_assignments_number = 0
+        self.root_assignment_occurrences = defaultdict(int)
+
+    def _add_root_assigment_dictionary(self, other_root_assignment_occurrences):
+        for key, value in other_root_assignment_occurrences.items():
+            if key in self.root_assignment_occurrences:
+                self.root_assignment_occurrences[key] += value
+            else:
+                self.root_assignment_occurrences[key] = value
+
+    def add_root_assignments(self, root_assignments: [int]):
+        for root_assignment in root_assignments:
+            self.root_assignment_occurrences[root_assignment] += 1
 
     def add_results(self, other_result: ErrorPedigreeAlignmentClassification):
         self.simulations_with_solutions += other_result.simulations_with_solutions
@@ -88,6 +102,7 @@ class ErrorPedigreeAlignmentClassification:
         self.total_number_of_root_vertex_individual_assignments += (
             other_result.total_number_of_root_vertex_individual_assignments)
         self.total_simulation_number += other_result.total_simulation_number
+        self._add_root_assigment_dictionary(other_result.root_assignment_occurrences)
 
 
 class ErrorAlignmentResultsFilesAccess:
@@ -103,22 +118,29 @@ class ErrorAlignmentResultsFilesAccess:
         self.general_result_file = open(self.general_result_filepath, 'a')
         self.detailed_result_file = open(self.detailed_result_filepath, 'a')
 
-    def log_solutions(self, alignments: list[dict]):
+    def log_solutions_to_detailed_results_file(self, alignments: list[dict]):
         # Saving the information about the alignments into the detailed file
-        self.detailed_result_file.write("#####################################\n")
+        self.detailed_result_file.write(line_section_divider)
         self.detailed_result_file.write(f"Simulation {self.simulation_step}\n")
-        self.detailed_result_file.write(f"Number of incorrect alignments in this simulation: {len(alignments)}\n")
-        for incorrect_alignment in alignments:
-            self.detailed_result_file.write("------------------------------------\n")
-            self.detailed_result_file.write(f"{incorrect_alignment}\n")
-            self.detailed_result_file.write("------------------------------------\n")
-        self.detailed_result_file.write("#####################################\n")
+        self.detailed_result_file.write(f"Number of alignments in this simulation: {len(alignments)}\n")
+        for alignment in alignments:
+            self.detailed_result_file.write(line_content_divider)
+            self.detailed_result_file.write(f"{alignment}\n")
+            self.detailed_result_file.write(line_content_divider)
+        self.detailed_result_file.write(line_section_divider)
         self.detailed_result_file.flush()
+
+    def log_solutions_to_general_results_file(self, alignments: list[dict]):
         # Saving the information about the alignments into the general file
-        self.general_result_file.write("#####################################\n")
+        self.general_result_file.write(line_section_divider)
         self.general_result_file.write(f"Simulation step: {self.simulation_step}\n")
         self.general_result_file.write(
             f"Number of alignments in this simulation {len(alignments)}\n")
+        self.general_result_file.flush()
+
+    def log_solutions(self, alignments: list[dict]):
+        self.log_solutions_to_detailed_results_file(alignments)
+        self.log_solutions_to_general_results_file(alignments)
         self.simulation_step += 1
 
     def close_files(self):
@@ -213,6 +235,7 @@ class ErrorAlignmentTask:
             self.files_access.close_files()
             self.error_results.total_number_of_root_vertex_individual_assignments += (
                 len(simulation_root_vertex_individual_assignments))
+            self.error_results.add_root_assignments(simulation_root_vertex_individual_assignments)
             # Classify the simulation result
             if self.root_vertex_individual_id in simulation_root_vertex_individual_assignments:
                 if simulation_root_vertex_individual_assignments.issubset(
@@ -275,7 +298,7 @@ class BaseErrorAlignmentComparison(ABC):
         general_result_file.write(f"The path to the initial, error-free pedigree is:"
                                   f" {self.initial_pedigree_path}\n")
         general_result_file.write(f"The path to the coalescent tree is: {self.initial_coalescent_tree_path}\n")
-        general_result_file.write("#####################################\n")
+        general_result_file.write(line_section_divider)
         general_result_file.close()
 
     def log_overall_results(self):
@@ -295,7 +318,7 @@ class BaseErrorAlignmentComparison(ABC):
                                   f"{self.error_comparison_results.individual_not_present_spouse_present_counter}\n")
         general_result_file.write(f"The number of simulations without the individual and all the spouses: "
                                   f"{self.error_comparison_results.neither_individual_nor_spouse_present_counter}\n")
-        general_result_file.write("----------------------------------------------------------------------\n")
+        general_result_file.write(line_content_divider)
         general_result_file.write(f"Initial number of individual candidates for the root: "
                                   f"{self.error_comparison_results.initial_root_vertex_individual_assignments_number}\n")
         if self.error_comparison_results.simulations_with_solutions != 0:
@@ -313,7 +336,7 @@ class BaseErrorAlignmentComparison(ABC):
         general_result_file = open(self.file_access.general_result_filepath, 'a')
         general_result_file.write(f"The number of probands is {number_of_probands}\n")
         general_result_file.write(f"The number of non-proband vertices is: {non_proband_vertices}\n")
-        general_result_file.write("----------------------------------------------------------------------\n")
+        general_result_file.write(line_content_divider)
         if default_initial_matching_mode == InitialMatchingMode.PLOID:
             ascending_genealogy_probands = coalescent_tree.probands
         else:
@@ -577,7 +600,15 @@ def save_error_alignments_to_file(filepath: str, error_alignments_results: Error
                            f"{error_alignments_results.individual_not_present_spouse_present_counter}\n")
         results_file.write(f"The number of simulations without the individual and all the spouses: "
                            f"{error_alignments_results.neither_individual_nor_spouse_present_counter}\n")
-        results_file.close()
+        results_file.write(line_section_divider)
+        results_file.write("The number of root assignment candidates' occurrences\n"
+                           "The format is "
+                           "'{root_assignment}: {occurrences} ({occurrences / number_simulations_with_solutions})':\n")
+        sorted_assignment_occurrences_dict = dict(sorted(error_alignments_results.root_assignment_occurrences.items(),
+                                                         key=lambda item: item[1], reverse=True))
+        for root_assignment, occurrences in sorted_assignment_occurrences_dict.items():
+            occurrences_portion = occurrences / error_alignments_results.simulations_with_solutions
+            results_file.write(f"{root_assignment}: {occurrences} ({occurrences_portion})\n")
 
 
 def run_specific_error_pedigree_directories_iterative(paths: list[str], error_pedigrees_folder_path: str,
@@ -687,8 +718,8 @@ def get_absolute_paths_to_subfolders(directory_path: str) -> list[str]:
 def children_tree_directories_error_pedigree_directory_mode():
     current_working_directory = Path.cwd()
     error_pedigrees_directory_path = get_directory_path("Specify the absolute path to the error pedigrees directory:")
-    tree_pedigree_parent_directory_path = get_directory_path("Specify the absolute path to a parent directory to"
-                                                             " tree-pedigree directories:")
+    tree_pedigree_parent_directory_path = get_directory_path("Specify the absolute path to a parent directory "
+                                                             "containing tree-pedigree directories:")
     os.chdir(error_pedigrees_directory_path)
     input_simulation_name = get_non_existing_path("Specify the simulation subpath:")
     tree_pedigree_paths = get_absolute_paths_to_subfolders(tree_pedigree_parent_directory_path)

@@ -37,8 +37,7 @@ coalescent_tree.reduce_to_ascending_genealogy(probands=initial_mapping.keys())
 coalescent_tree.remove_unary_nodes()
 pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path, separation_symbol='\t',
                                                                      missing_parent_notation=["0"],
-                                                                     initialize_levels=False,
-                                                                     initialize_ancestor_maps=False
+                                                                     preprocess_graph=False
                                                                      )
 pedigree_probands = {y for x in initial_mapping.values() for y in x}
 pedigree.reduce_to_ascending_genealogy(probands=pedigree_probands, recalculate_levels=True)

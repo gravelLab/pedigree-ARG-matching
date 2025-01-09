@@ -1,0 +1,11 @@
+initial_assignments:
+  - coalescent_id: 1
+    pedigree_ids: [-11P]
+  - coalescent_id: 2
+    pedigree_ids: [11M]
+  - coalescent_id: 3
+    pedigree_ids: [12P, 13M, 13P]
+  - coalescent_id: 4
+    pedigree_ids: [14M, 15P, 19M]
+coalescent_tree_path: ""
+pedigree_path: ""
