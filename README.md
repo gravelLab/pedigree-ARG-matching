@@ -12,7 +12,7 @@ In other words, the goal is to find valid extensions of the initial assignments 
 
 ## Documentation
 
-The documentation for the project can be found here: 
+The documentation for the project can be found [here](https://gravellab.github.io/pedigree-ARG-matching/).
 
 ## Installation
 
