@@ -192,12 +192,13 @@ class ErrorAlignmentTask:
         if self.simulation_subdirectory_path:
             os.mkdir(self.simulation_subdirectory_path)
             log_directory_path = str(self.simulation_subdirectory_path / logs_default_directory_name)
-            logger = MatcherLogger(logs_directory_path=log_directory_path)
         else:
-            logger = None
+            log_directory_path = None
+        initial_mapping = get_initial_simulation_mapping_for_mode(coalescent_tree=coalescent_tree)
         matcher = GraphMatcher(coalescent_tree=coalescent_tree,
                                processed_graph=pedigree,
-                               logger=logger)
+                               logs_path=log_directory_path,
+                               initial_mapping=initial_mapping)
         result = matcher.find_mapping()
         if not self.coalescent_vertex_id:
             number_of_clades = len(result)
@@ -260,11 +261,11 @@ def run_initial_alignment(coalescent_tree: CoalescentTree, initial_pedigree: Pot
     os.mkdir(result_filepath)
     if save_alignments_to_files:
         log_directory_path = result_filepath / logs_default_directory_name
-        initial_logger = MatcherLogger(logs_directory_path=log_directory_path)
     else:
-        initial_logger = None
+        log_directory_path = None
+    initial_mapping = get_initial_simulation_mapping_for_mode(coalescent_tree=coalescent_tree)
     initial_matcher = GraphMatcher(coalescent_tree=coalescent_tree, processed_graph=initial_pedigree,
-                                   logger=initial_logger)
+                                   initial_mapping=initial_mapping, logs_path=log_directory_path)
     initial_result_dict = initial_matcher.find_mapping()
     if save_alignments_to_files:
         save_alignment_result_to_files(alignment_result=initial_result_dict,

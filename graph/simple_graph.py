@@ -25,6 +25,11 @@ class SimpleGraph:
         self.parents_map = parents_map
         self.vertices_number = vertices_number
 
+    def __contains__(self, item):
+        if not isinstance(item, int):
+            return False
+        return item in self.children_map or item in self.parents_map
+
     def get_connected_components(self):
         """!
         This method returns the connected components of the graph.
@@ -253,6 +258,8 @@ class SimpleGraph:
         if child in self.parents_map:
             warnings.warn(f"Individual {child} is specified multiple times in the graph."
                           f"The previous parents are {self.parents_map[child]}, new values: {parents}", UserWarning)
+        else:
+            self.vertices_number += 1
         for parent in parents:
             if parent not in missing_parent_notation:
                 self.add_edge(parent=parent, child=child)
@@ -289,7 +296,9 @@ class SimpleGraph:
                 parent = int(parent)
                 self.add_edge(2 * parent, child_ploid)
                 self.add_edge(2 * parent + 1, child_ploid)
-                child_ploid += 1
+            else:
+                self.parents_map[child_ploid] = list()
+            child_ploid += 1
 
     def get_vertices(self) -> set[int]:
         return set(self.parents_map).union(self.children_map)

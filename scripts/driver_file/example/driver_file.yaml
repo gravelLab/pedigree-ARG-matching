@@ -1,0 +1,18 @@
+initial_assignments:
+  - coalescent_id: 1
+    pedigree_ids: [10P, 10M, 11M, 11P]
+  - coalescent_id: 2
+    pedigree_ids: [12M, 12P]
+  - coalescent_id: 3
+    pedigree_ids: [15P, 15M]
+coalescent_tree:
+  path: "example_tree"
+  missing_parent_notation: ""
+  separation_symbol: ";"
+  skip_first_line: true
+pedigree:
+  path: "example_pedigree.pedigree"
+  missing_parent_notation: "-1"
+  separation_symbol: " "
+  skip_first_line: false
+output_path: "example_output"

@@ -16,12 +16,26 @@ class SubtreeMatcher:
 
     def __init__(self, root_coalescent_tree: int, root_pedigree: int,
                  children_assignments: [{int: SubtreeMatcher}] = None):
+        """
+        Initializes the SubtreeMatcher object.
+
+        Args:
+
+            root_coalescent_tree (int): Represents the vertex id of the root of the coalescent tree
+            root_pedigree (int): Represents the vertex in the pedigree to which root_coalescent_tree
+            can be mapped.
+            children_assignments ([{int: SubtreeMatcher}]): The dictionaries representing the assignments to the children
+            vertices which make root_pedigree a valid assignment to root_coalescent_tree
+        """
         self.root_coalescent_tree = root_coalescent_tree
         self.root_pedigree = root_pedigree
         self.children_assignments = children_assignments
         self.subtree_alignments = None
 
     def get_all_subtree_alignments(self):
+        """
+        Builds all the distinct valid alignment for the coalescent vertex subclade.
+        """
         if self.subtree_alignments is not None:
             return self.subtree_alignments
         results = []
@@ -39,19 +53,3 @@ class SubtreeMatcher:
                 results.append(new_result)
         self.subtree_alignments = results
         return results
-
-
-class AlignmentsIterator:
-    def __init__(self, root_coalescent_tree: int, vertex_subtree_matchers: {int: [SubtreeMatcher]},
-                 vertex_to_dictionaries: {int: [dict]} = None):
-        if root_coalescent_tree not in vertex_subtree_matchers:
-            raise Exception("The root coalescent tree has no available matchings")
-        self.root_coalescent_tree = root_coalescent_tree
-        self.root_matchers = vertex_subtree_matchers[root_coalescent_tree]
-        self.vertex_subtree_matchers = vertex_subtree_matchers
-        self.subtree_matcher_counter = 0
-        self.subtree_matchers_iterators = None
-        # The cache that stores all the alignments for the given vertex in the coalescent tree
-        if vertex_to_dictionaries is None:
-            vertex_to_dictionaries = dict()
-        self.vertex_to_dictionaries = vertex_to_dictionaries

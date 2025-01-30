@@ -198,6 +198,8 @@ class GenealogicalGraph(SimpleGraph):
         """!
         @brief Returns the graph's probands.
         """
+        if self.probands is None:
+            self.initialize_probands()
         return self.probands
 
     def remove_edge(self, parent: int, child: int, recalculate_levels: bool = True):

@@ -1,7 +1,8 @@
 from collections import defaultdict
 
-from graph.genealogical_graph import GenealogicalGraph, SimpleGraph, DescendantMemoryCache
 from tskit import TreeSequence, Tree
+
+from graph.genealogical_graph import GenealogicalGraph, SimpleGraph
 
 
 class CoalescentTree(GenealogicalGraph):
@@ -14,7 +15,8 @@ class CoalescentTree(GenealogicalGraph):
         if graph is None:
             graph = SimpleGraph()
         super().__init__(pedigree=graph, initialize_levels=initialize_levels)
-        self.descendant_writer = DescendantMemoryCache()
+        # TODO: Refactor the code, so that the descendants can be calculated without the levels
+        self.initialize_vertex_to_level_map()
         self.initialize_genealogical_graph_from_probands()
 
     def get_vertex_parent(self, child: int):
@@ -153,12 +155,12 @@ class CoalescentTree(GenealogicalGraph):
     def get_coalescent_tree_from_file(filepath: str,
                                       missing_parent_notation=None, separation_symbol=' ',
                                       skip_first_line: bool = False, initialize_levels: bool = True):
-        pedigree: SimpleGraph = SimpleGraph.get_haploid_graph_from_file(filename=filepath,
-                                                                        max_parent_number=1,
-                                                                        missing_parent_notation=missing_parent_notation,
-                                                                        separation_symbol=separation_symbol,
-                                                                        skip_first_line=skip_first_line)
-        result = CoalescentTree(graph=pedigree, initialize_levels=initialize_levels)
+        graph: SimpleGraph = SimpleGraph.get_haploid_graph_from_file(filename=filepath,
+                                                                     max_parent_number=1,
+                                                                     missing_parent_notation=missing_parent_notation,
+                                                                     separation_symbol=separation_symbol,
+                                                                     skip_first_line=skip_first_line)
+        result = CoalescentTree(graph=graph, initialize_levels=initialize_levels)
         return result
 
     @staticmethod

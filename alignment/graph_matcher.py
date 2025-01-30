@@ -1,11 +1,9 @@
-"""!
-@file graph_matcher.py
-@brief This file contains the GraphMatcher class which performs the divide-and-conquer alignment algorithm.
-"""
+from __future__ import annotations
 
 import datetime
 import os
 import time
+from builtins import int
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import reduce
@@ -20,53 +18,40 @@ from graph.coalescent_tree import CoalescentTree
 from alignment.log import print_log
 from scripts.utility import dict_has_duplicate_values
 import yaml
-
-
-class MatcherLogger:
-
-    def __init__(self, logs_directory_path=logs_default_directory_name):
-        time_in_milliseconds = datetime.datetime.now().timestamp() * 1000
-        log_filename = Path(logs_directory_path) / f"log_{int(time_in_milliseconds)}.txt"
-        if not os.path.exists(logs_directory_path):
-            os.makedirs(logs_directory_path)
-        print_log(f"The filename is {log_filename}")
-        self.file = open(log_filename, 'w')
-
-    def log(self, line: str):
-        self.file.write(f"{line}\n")
-        self.file.flush()
-
-    def log_vertex_inference_time(self, coalescent_tree: CoalescentTree,
-                                  spent_time: float, focal_vertex_coalescent_id: int, focal_vertex_children: [int],
-                                  child_candidates_map: {int: [int]}, inference_result):
-        self.log(f"Vertex level: {coalescent_tree.vertex_to_level_map[focal_vertex_coalescent_id]}")
-        self.log(f"Solving the inference for {focal_vertex_coalescent_id} which has {len(focal_vertex_children)} "
-                 f"children")
-        self.log(f"The children's domain:")
-        for child in focal_vertex_children:
-            self.log(f"{child}: {len(child_candidates_map[child])}")
-        self.log(f"Time taken for vertex inference: {spent_time}")
-        total_candidates_found = len(inference_result)
-        self.log(f"Total candidates found: {total_candidates_found}")
-
-    def close(self):
-        self.file.close()
+from itertools import chain
 
 
 def get_subtree_matcher_for_coalescent_tree_proband(proband: int, proband_pedigree_ids: [int]):
     """
-    @brief Helper function returning the valid sub-alignments for a proband (which is simply one identity alignment).
-    @param proband The id of the proband in the coalescent tree
-    @param proband_pedigree_ids The ids of the corresponding vertices in the pedigree
+    Helper function returning the valid sub-alignments for a proband (which is simply one identity alignment).
+
+    Args:
+        proband (int): The id of the proband in the coalescent tree
+        proband_pedigree_ids ([int]): The ids of the corresponding vertices in the pedigree
     """
     return {proband_pedigree_id: SubtreeMatcher(root_coalescent_tree=proband, root_pedigree=proband_pedigree_id)
             for proband_pedigree_id in proband_pedigree_ids}
 
 
-def get_initial_mapping_for_mode(coalescent_tree: CoalescentTree, mode: InitialMatchingMode = current_matching_mode):
+def get_initial_simulation_mapping_for_mode(coalescent_tree: CoalescentTree,
+                                            mode: InitialMatchingMode = default_matching_mode):
     if mode == InitialMatchingMode.PLOID:
-        return {x: [x] for x in coalescent_tree.probands}
-    return {x: [2 * (x // 2), (2 * (x // 2) + 1)] for x in coalescent_tree.probands}
+        return {x: [x] for x in coalescent_tree.get_probands()}
+    return {x: [2 * (x // 2), (2 * (x // 2) + 1)] for x in coalescent_tree.get_probands()}
+
+
+def get_pedigree_simulation_probands_for_alignment_mode(coalescent_tree: CoalescentTree,
+                                                        alignment_mode: InitialMatchingMode = default_initial_matching_mode):
+    # Returns the corresponding probands ids for a pedigree for the current matching mode
+    if alignment_mode == InitialMatchingMode.PLOID:
+        return coalescent_tree.get_probands()
+    proband_individuals = {proband // 2 for proband in coalescent_tree.get_probands()}
+    probands_all_ploids = [
+        ploid
+        for proband_individual in proband_individuals
+        for ploid in [2 * proband_individual, 2 * proband_individual + 1]
+    ]
+    return probands_all_ploids
 
 
 class YAMLValidationError(Exception):
@@ -77,129 +62,358 @@ class YAMLValidationError(Exception):
 class PloidType(Enum):
     Paternal = "P"
     Maternal = "M"
-    Unphased = "U"
 
 
 @dataclass
-class InitialAssignment:
-    coalescent_id: int
-    pedigree_id: int
-    ploid_type: PloidType
+class GraphParsingRules:
+    filepath: str | Path
+    missing_parent_notation: str
+    separation_symbol: str
+    skip_first_line: bool
+
+    @staticmethod
+    def parse_graph_parsing_rules(yaml_dict: dict) -> GraphParsingRules:
+        path = yaml_dict[path_key]
+        separation_symbol = default_separation_symbol
+        missing_parent_notation = default_missing_parent_notation
+        skip_first_line = default_skip_first_line
+        if separation_symbol_key in yaml_dict:
+            separation_symbol = yaml_dict[separation_symbol_key]
+        if missing_parent_notation_key in yaml_dict:
+            missing_parent_notation = yaml_dict[missing_parent_notation_key]
+        if skip_first_line_key in yaml_dict:
+            skip_first_line = yaml_dict[skip_first_line_key]
+        return GraphParsingRules(
+            filepath=path,
+            separation_symbol=separation_symbol,
+            missing_parent_notation=missing_parent_notation,
+            skip_first_line=skip_first_line
+        )
 
 
-def validate_and_parse_yaml(filepath: str) -> dict[int, [int]]:
-    """
-    Validates the specified YAML file and parses it into a dictionary mapping
-    coalescent_id to an InitialAssignment object.
+@dataclass
+class ParsedDriverFile:
+    pedigree_parsing_rules: GraphParsingRules
+    coalescent_tree_parsing_rules: GraphParsingRules
+    initial_assignments: dict[int, [int]]
+    output_path: str | Path
+    driver_file_path: str | Path
 
-    :param filepath: Path to the YAML file.
-    :return: Dictionary where keys are coalescent_ids and values are InitialAssignment objects.
-    :raises: YAMLValidationError if the file is invalid.
-    """
-    initial_assignments_key = "initial_assignments"
-    pedigree_ids_key = "pedigree_ids"
-    root_required_keys = {initial_assignments_key, "coalescent_tree_path", "pedigree_path"}
-    initial_assignments_required_keys = {"coalescent_id", "pedigree_ids"}
-    try:
-        # Load the YAML file
-        with open(filepath, 'r') as f:
-            data = yaml.safe_load(f)
+    def _identify_path(self, path: str | Path):
+        # Firstly, verify is the path is valid for the current working directory
+        if os.path.exists(path):
+            return Path(path)
+        # Otherwise, try appending it to the driver's absolute path. This allows the user to specify
+        # a relative path regarding the driver file's location
+        driver_relative_path = Path(self.driver_file_path).parent / path
+        if os.path.exists(driver_relative_path):
+            return driver_relative_path
+        return None
 
-        # Check if all required keys are present
-        if not root_required_keys.issubset(data.keys()):
-            raise YAMLValidationError(f"Missing required keys. Expected: {root_required_keys}, Found: {data.keys()}")
+    def identify_pedigree_path(self):
+        return self._identify_path(self.pedigree_parsing_rules.filepath)
 
-        # Validate "initial_assignments" format
-        if not isinstance(data[initial_assignments_key], list):
-            raise YAMLValidationError("initial_assignments should be a list.")
+    def identify_coalescent_tree_path(self):
+        return self._identify_path(self.coalescent_tree_parsing_rules.filepath)
 
-        coalescent_dict = {}
+    @staticmethod
+    def parse_driver_file_and_validate_initial_assignments(filepath: str | Path) -> ParsedDriverFile:
+        """
+        Validates the specified YAML file and parses it into a dictionary mapping
+        coalescent_id to an InitialAssignment object.
 
-        for entry in data[initial_assignments_key]:
-            if not isinstance(entry, dict):
-                raise YAMLValidationError(f"Each entry in initial_assignments must be a dictionary. Found: {entry}")
-            if not initial_assignments_required_keys.issubset(entry.keys()):
-                raise YAMLValidationError(f"Missing keys in initial_assignments entry. Found: {entry.keys()}")
+        Args:
+            filepath (str | Path): Path to the YAML file.
+        Returns:
+            Dictionary where keys are coalescent_ids and values are InitialAssignment objects.
+        Raises:
+             YAMLValidationError: if the file is invalid.
+        """
+        root_required_keys = {initial_assignments_key, coalescent_tree_key, pedigree_key, output_path_key}
+        initial_assignments_required_keys = {"coalescent_id", "pedigree_ids"}
+        try:
+            # Load the YAML file
+            with open(filepath, 'r') as f:
+                data = yaml.safe_load(f)
 
-            # Validate coalescent_id uniqueness
-            try:
-                coalescent_id = int(entry["coalescent_id"])
-            except ValueError:
-                raise YAMLValidationError(f"Invalid coalescent id: {entry['coalescent_id']}")
+            # Check if all required keys are present
+            if not root_required_keys.issubset(data.keys()):
+                raise YAMLValidationError(
+                    f"Missing required keys. Expected: {root_required_keys}, Found: {data.keys()}")
 
-            # Check if coalescent_id already exists
-            if coalescent_id in coalescent_dict:
-                raise YAMLValidationError(f"Duplicate coalescent_id found: {coalescent_id}")
+            # Parse the parsing data for the pedigree and the tree
+            pedigree_parsing_data = data[pedigree_key]
+            coalescent_tree_parsing_data = data[coalescent_tree_key]
+            parsing_data = [("pedigree", pedigree_parsing_data), ("coalescent_tree", coalescent_tree_parsing_data)]
+            for data_name, graph_data in parsing_data:
+                if path_key not in graph_data:
+                    raise YAMLValidationError(f"The path for the {data_name} is not specified")
+            pedigree_parsing_rules = GraphParsingRules.parse_graph_parsing_rules(pedigree_parsing_data)
+            coalescent_tree_parsing_rules = GraphParsingRules.parse_graph_parsing_rules(coalescent_tree_parsing_data)
+            output_path = data[output_path_key]
+            # Validate "initial_assignments" format
+            if not isinstance(data[initial_assignments_key], list):
+                raise YAMLValidationError("initial_assignments should be a list.")
 
-            pedigree_unprocessed_ids = entry[pedigree_ids_key]
-            pedigree_processed_ids = []
-            for pedigree_id in pedigree_unprocessed_ids:
-                if not pedigree_id:
-                    raise YAMLValidationError(f"Pedigree id is empty")
+            initial_assignments_dictionary = {}
+
+            for entry in data[initial_assignments_key]:
+                if not isinstance(entry, dict):
+                    raise YAMLValidationError(f"Each entry in initial_assignments must be a dictionary. Found: {entry}")
+                if not initial_assignments_required_keys.issubset(entry.keys()):
+                    raise YAMLValidationError(f"Missing keys in initial_assignments entry. Found: {entry.keys()}")
+
+                # Validate coalescent_id uniqueness
                 try:
-                    ploid_type = PloidType(pedigree_id[-1])
+                    coalescent_id = int(entry[coalescent_id_key])
                 except ValueError:
-                    raise YAMLValidationError(
-                        f"Invalid ploid_type: {entry['ploid_type']}. Must be one of {[e.value for e in PloidType]}"
-                    )
-                try:
-                    unprocessed_pedigree_id = int(pedigree_id[:-1])
-                except ValueError:
-                    raise YAMLValidationError(f"Invalid pedigree id {pedigree_id[:-1]}")
-                if unprocessed_pedigree_id < 0:
-                    raise YAMLValidationError(f"Negative pedigree id {unprocessed_pedigree_id}")
-                if ploid_type == PloidType.Paternal:
-                    processed_pedigree_id = 2 * unprocessed_pedigree_id
-                else:
-                    processed_pedigree_id = 2 * unprocessed_pedigree_id + 1
-                pedigree_processed_ids.append(processed_pedigree_id)
-            if not pedigree_processed_ids:
-                raise YAMLValidationError(f"No pedigree ids specified for {coalescent_id}")
-            # Add to the dictionary
-            coalescent_dict[coalescent_id] = pedigree_processed_ids
-        return coalescent_dict
-    except yaml.YAMLError as e:
-        raise YAMLValidationError(f"Error parsing YAML file: {e}")
+                    raise YAMLValidationError(f"Invalid coalescent id: {entry[coalescent_id_key]}")
+
+                # Check if coalescent_id already exists
+                if coalescent_id in initial_assignments_dictionary:
+                    raise YAMLValidationError(f"Duplicate coalescent_id found: {coalescent_id}")
+
+                pedigree_unprocessed_ids = entry[pedigree_ids_key]
+                pedigree_processed_ids = []
+                for pedigree_id in pedigree_unprocessed_ids:
+                    if not pedigree_id:
+                        raise YAMLValidationError(f"Pedigree id is empty")
+                    try:
+                        ploid_type = PloidType(pedigree_id[-1])
+                    except ValueError:
+                        raise YAMLValidationError(
+                            f"Invalid ploid_type: {entry['ploid_type']}. Must be one of {[e.value for e in PloidType]}"
+                        )
+                    try:
+                        unprocessed_pedigree_id = int(pedigree_id[:-1])
+                    except ValueError:
+                        raise YAMLValidationError(f"Invalid pedigree id {pedigree_id[:-1]}")
+                    if unprocessed_pedigree_id < 0:
+                        raise YAMLValidationError(f"Negative pedigree id {unprocessed_pedigree_id}")
+                    if ploid_type == PloidType.Paternal:
+                        processed_pedigree_id = 2 * unprocessed_pedigree_id
+                    else:
+                        processed_pedigree_id = 2 * unprocessed_pedigree_id + 1
+                    pedigree_processed_ids.append(processed_pedigree_id)
+                if not pedigree_processed_ids:
+                    raise YAMLValidationError(f"No pedigree ids specified for {coalescent_id}")
+                # Add to the dictionary
+                initial_assignments_dictionary[coalescent_id] = pedigree_processed_ids
+            return ParsedDriverFile(pedigree_parsing_rules=pedigree_parsing_rules,
+                                    coalescent_tree_parsing_rules=coalescent_tree_parsing_rules,
+                                    initial_assignments=initial_assignments_dictionary,
+                                    driver_file_path=filepath,
+                                    output_path=output_path
+                                    )
+        except yaml.YAMLError as e:
+            raise YAMLValidationError(f"Error parsing YAML file: {e}")
+
+
+@dataclass
+class ProcessedDriverFile:
+    pedigree: PotentialMrcaProcessedGraph
+    coalescent_tree: CoalescentTree
+    output_path: str | Path
+    initial_assignments: dict[int, [int]]
+
+    def preprocess_graphs_for_alignment(self):
+        self.preprocess_pedigree()
+        self.preprocess_coalescent_tree()
+
+    def get_pedigree_probands_for_alignment(self):
+        return list(chain.from_iterable(self.initial_assignments.values()))
+
+    def preprocess_pedigree(self):
+        pedigree_probands = self.get_pedigree_probands_for_alignment()
+        self.pedigree.reduce_to_ascending_genealogy(probands=pedigree_probands, recalculate_levels=True)
+        self.pedigree.initialize_vertex_to_level_map()
+        self.pedigree.initialize_potential_mrca_map()
+
+    def preprocess_coalescent_tree(self):
+        self.coalescent_tree.initialize_vertex_to_level_map()
+        self.coalescent_tree.remove_unary_nodes()
+
+    @staticmethod
+    def finish_driver_file_processing(parsed_driver_file: ParsedDriverFile) -> ProcessedDriverFile:
+        pedigree_path = parsed_driver_file.identify_pedigree_path()
+        if not pedigree_path:
+            raise ValueError(f"The specified pedigree file cannot be found: "
+                             f"{parsed_driver_file.pedigree_parsing_rules.filepath}")
+        coalescent_tree_path = parsed_driver_file.identify_coalescent_tree_path()
+        if not coalescent_tree_path:
+            raise ValueError(f"The specified coalescent tree file cannot be found:"
+                             f" {parsed_driver_file.coalescent_tree_parsing_rules.filepath}")
+        # Parse the coalescent tree
+        tree_missing_parent_notation = parsed_driver_file.coalescent_tree_parsing_rules.missing_parent_notation
+        tree_separation_symbol = parsed_driver_file.coalescent_tree_parsing_rules.separation_symbol
+        tree_skip_first_line = parsed_driver_file.coalescent_tree_parsing_rules.skip_first_line
+        coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(
+            filepath=coalescent_tree_path,
+            initialize_levels=False,
+            missing_parent_notation=[tree_missing_parent_notation],
+            separation_symbol=tree_separation_symbol,
+            skip_first_line=tree_skip_first_line
+        )
+        # Parse the pedigree
+        pedigree_missing_parent_notation = parsed_driver_file.pedigree_parsing_rules.missing_parent_notation
+        pedigree_separation_symbol = parsed_driver_file.pedigree_parsing_rules.separation_symbol
+        pedigree_skip_first_line = parsed_driver_file.pedigree_parsing_rules.skip_first_line
+        pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(
+            filepath=pedigree_path,
+            preprocess_graph=False,
+            missing_parent_notation=[pedigree_missing_parent_notation],
+            separation_symbol=pedigree_separation_symbol,
+            skip_first_line=pedigree_skip_first_line
+        )
+        initial_assignments = parsed_driver_file.initial_assignments
+        # Calculate the leaf vertices in the coalescent tree for which mapping isn't specified
+        coalescent_tree_probands = coalescent_tree.get_probands()
+        tree_leaf_vertices_missing_assignments = set(initial_assignments.keys()).difference(coalescent_tree_probands)
+        if tree_leaf_vertices_missing_assignments:
+            raise YAMLValidationError("Missing initial assignments for tree's leaf vertices "
+                                      f"{tree_leaf_vertices_missing_assignments}")
+        for coalescent_vertex, pedigree_vertices in initial_assignments.items():
+            if coalescent_vertex not in coalescent_tree_probands:
+                raise ValueError(f"The specified coalescent vertex {coalescent_vertex} either does not exist or isn't"
+                                 f"a leaf vertex")
+            for pedigree_vertex in pedigree_vertices:
+                if pedigree_vertex not in pedigree:
+                    raise ValueError(f"The specified pedigree vertex {pedigree_vertex} does not exist")
+        return ProcessedDriverFile(
+            coalescent_tree=coalescent_tree,
+            pedigree=pedigree,
+            initial_assignments=initial_assignments,
+            output_path=parsed_driver_file.output_path,
+        )
+
+    @staticmethod
+    def process_driver_file(filepath: str | Path) -> ProcessedDriverFile:
+        parsed_driver_file = ParsedDriverFile.parse_driver_file_and_validate_initial_assignments(filepath=filepath)
+        return ProcessedDriverFile.finish_driver_file_processing(parsed_driver_file=parsed_driver_file)
+
+
+# YAML keys used in the driver file
+initial_assignments_key = "initial_assignments"
+coalescent_tree_key = "coalescent_tree"
+pedigree_key = "pedigree"
+coalescent_id_key = "coalescent_id"
+path_key = "path"
+pedigree_ids_key = "pedigree_ids"
+separation_symbol_key = "separation_symbol"
+missing_parent_notation_key = "missing_parent_notation"
+skip_first_line_key = "skip_first_line"
+output_path_key = "output_path"
 
 
 class GraphMatcher:
-    """!
+    """
     This class runs the divide-and-conquer alignment algorithm on the given preprocessed pedigree and the coalescent
     tree.
     """
 
+    class MatcherLogger:
+
+        def __init__(self, logs_directory_path=logs_default_directory_name):
+            """
+            Initializes the logger and creates the log file.
+
+            Args:
+                logs_directory_path: The directory where the logs will be stored.
+            """
+            time_in_milliseconds = datetime.datetime.now().timestamp() * 1000
+            log_filename = Path(logs_directory_path) / f"log_{int(time_in_milliseconds)}.txt"
+            if not os.path.exists(logs_directory_path):
+                os.makedirs(logs_directory_path)
+            print_log(f"The filename is {log_filename}")
+            self.file = open(log_filename, 'w')
+
+        def log(self, line: str):
+            """
+            Logs the passed line and flushes the buffer.
+
+            Args:
+                line (str): The line to log.
+            """
+            self.file.write(f"{line}\n")
+            self.file.flush()
+
+        def log_vertex_inference_time(self, coalescent_tree: CoalescentTree,
+                                      spent_time: float, focal_vertex_coalescent_id: int, focal_vertex_children: [int],
+                                      child_candidates_map: {int: [int]}, inference_result):
+            """
+            Logs the time spent on the coalescent vertex inference as well as the inference results themselves.
+
+            Args:
+
+                coalescent_tree (CoalescentTree): The coalescent tree.
+                spent_time (float): The time spent on the inference.
+                focal_vertex_coalescent_id (int): The coalescent vertex id for which the inference has been done.
+                focal_vertex_children (list[int]): The coalescent vertex children vertices.
+                child_candidates_map (dict[int, [int]]): Dictionary mapping every focal's child vertex to the list
+                 of its pedigree candidates.
+                inference_result: The list of candidates for the focal vertex.
+            """
+            self.log(f"Vertex level: {coalescent_tree.vertex_to_level_map[focal_vertex_coalescent_id]}")
+            self.log(f"Solving the inference for {focal_vertex_coalescent_id} which has {len(focal_vertex_children)} "
+                     f"children")
+            self.log(f"The children's domain:")
+            for child in focal_vertex_children:
+                self.log(f"{child}: {len(child_candidates_map[child])}")
+            self.log(f"Time taken for vertex inference: {spent_time}")
+            total_candidates_found = len(inference_result)
+            self.log(f"Total candidates found: {total_candidates_found}")
+
+        def close(self):
+            """
+            Closes the log file.
+            """
+            self.file.close()
+
     def __init__(self, processed_graph: PotentialMrcaProcessedGraph, coalescent_tree: CoalescentTree,
-                 matching_mode: MatchingMode = None,
-                 logger: MatcherLogger = None, initial_mapping: dict = None):
+                 initial_mapping: dict[int, [int]], logs_path: str | Path = None,
+                 matching_mode: MatchingMode = default_matching_mode):
         """
-        @param processed_graph (PotentialMrcaProcessedGraph): The preprocessed pedigree graph that stores the
-        "access vertices" through which a descendant vertex can reach the ancestor vertex.
-        @param coalescent_tree (CoalescentTree): The coalescent tree with which the processed_graph is to be aligned.
-        @param logger (MatcherLogger): The logger instance to log steps of the algorithm
-        @param initial_mapping (dict): The initial mapping between the proband vertices in the processed pedigree to
-        the vertices in the coalescent tree.
+        Initializes the GraphMatcher object.
+
+        Args:
+            processed_graph (PotentialMrcaProcessedGraph): The preprocessed pedigree graph that stores the
+                "access vertices" through which a descendant vertex can reach the ancestor vertex.
+            coalescent_tree (CoalescentTree): The coalescent tree with which the processed_graph is to be aligned.
+            initial_mapping (dict[int, [int]]): The initial mapping between the proband vertices in the processed
+                pedigree to the vertices in the coalescent tree.
+            logs_path (str | Path): The path where the log file should be stored. None specifies that no logs
+                should be stored.
+            matching_mode (MatchingMode): The matching mode to use.
         """
         self.pedigree = processed_graph
         self.coalescent_tree = coalescent_tree
-        if matching_mode is None:
-            matching_mode = current_matching_mode
-        self.matching_mode = matching_mode
-        if initial_mapping is None:
-            initial_mapping = get_initial_mapping_for_mode(coalescent_tree=self.coalescent_tree)
         self.initial_mapping = initial_mapping
-        self.logger = logger
+        self.output_path = logs_path
+        self.matching_mode = matching_mode
+        if logs_path and logs_enabled:
+            self.logger = GraphMatcher.MatcherLogger(logs_directory_path=logs_path)
+        else:
+            self.logger = None
 
     def log(self, string: str):
+        """
+        Logs the given string if the logs are enabled. Does nothing otherwise.
+
+        Args:
+            string (str): The string to log.
+        """
         if self.logger:
             self.logger.log(string)
 
     def find_mapping(self):
-        """!
-        @brief   This method finds all the valid mapping between the given processed pedigree and
-                 every sub-clade within the coalescent tree
-        @return  Dictionary that maps every clade root vertex in the coalescent tree to the list of valid alignments for
-                 the sub-clade where the chosen vertex is the root.
-                 The alignments are represented as a list of SubtreeMatcher objects
+        """
+        This method finds all the valid mapping between the given processed pedigree and
+        every sub-clade within the coalescent tree.
+
+        Returns:
+              Dictionary that maps every clade root vertex in the coalescent tree to the list of valid alignments for
+              the sub-clade where the chosen vertex is the root.
+              The alignments are represented as a list of SubtreeMatcher objects
         """
         coalescent_tree_vertex_to_subtrees = dict()
         for vertex in self.coalescent_tree.levels[0]:
@@ -265,7 +479,6 @@ class GraphMatcher:
                 validation_start = time.time()
                 valid_alignments = matcher_filter_function(root_matcher)
                 validation_end = time.time()
-                clade_alignments.extend(valid_alignments)
                 time_taken = validation_end - validation_start
                 print_log(f"There are {len(valid_alignments)} valid alignments")
                 print_log(f"Time spent on validation: {time_taken}.")
@@ -430,9 +643,16 @@ class GraphMatcher:
         maximum_flow = networkx.maximum_flow_value(flowG=network_graph, _s=source_vertex_label, _t=target_vertex_label)
         return maximum_flow == proband_number
 
-    def verify_valid_alignment(self, alignment: dict, root_vertex: int):
-        """!
-        @brief Verifies that the given alignment is correct
+    def verify_valid_alignment(self, alignment: dict[int, int], root_vertex: int):
+        """
+        Verifies that the given alignment is correct.
+
+        Args:
+            alignment (dict): The alignment to be verified.
+            root_vertex (int): The root vertex of the aligned clade.
+
+        Returns:
+            Whether the given alignment is correct.
         """
         if dict_has_duplicate_values(alignment):
             return False
@@ -468,10 +688,12 @@ class GraphMatcher:
 
     def add_edges_to_mrca_from_descendants(self, flow_network: networkx.DiGraph, mrca: int, descendant_vertices: [int]):
         """
-        :param flow_network:
-        :param mrca:
-        :param descendant_vertices:
-        :return:
+        Adds all the paths from the given descendant vertices to the specified mrca to the specified graph.
+
+        Args:
+            flow_network (networkx.DiGraph): The graph to which the edges are added.
+            mrca (int): The mrca of the descendant vertices.
+            descendant_vertices (list[int]): The descendant vertices sharing the mrca.
         """
         mrca_access_label = f"{mrca}'"
         flow_network.add_edge(mrca_access_label, mrca, capacity=len(descendant_vertices))
@@ -497,12 +719,17 @@ class GraphMatcher:
                 current_level_vertices = next_level_vertices
 
     def get_subtrees_from_children(self, focal_vertex: int, vertex_subtree_dict: {int: {int: SubtreeMatcher}}):
-        """!
-        @brief This method finds all the valid alignments for the sub-clade where the given focal_vertex is the root.
-        @param focal_vertex The root of the sub-clade for which the inference is to be performed
-        @param vertex_subtree_dict The dictionary containing all the valid alignment for the focal vertex
-        @return The list of all the valid sub-clade alignments for the specified focal vertex. The resulting
-                list consists of SubtreeMatcher subtree_matcher.SubtreeMatcher objects
+        """
+        Finds all the valid alignments for the sub-clade where the given focal_vertex is the root.
+
+        Args:
+            focal_vertex: The root of the sub-clade for which the inference is to be performed.
+            vertex_subtree_dict (dict[int, [int]]): The dictionary containing all the valid alignment for
+             the focal vertex.
+
+        Returns:
+             The list of all the valid sub-clade alignments for the specified focal vertex. The resulting
+             list consists of SubtreeMatcher subtree_matcher.SubtreeMatcher objects.
         """
         focal_vertex_children: [int] = self.coalescent_tree.children_map[focal_vertex]
         if not focal_vertex_children:
@@ -572,12 +799,16 @@ class GraphMatcher:
     # ----------------------------------------- Alignment logic ------------------------------------------------------
 
     def verify_pmrca_for_vertex_pair(self, first_vertex: int, second_vertex: int, common_ancestor: int):
-        """!
-        @brief This function verifies that the given vertex is a potential mrca for the given pair of vertices.
-        @param first_vertex The first vertex from the pair.
-        @param second_vertex The second vertex from the pair.
-        @param common_ancestor A common ancestor of the given pair of vertices that is being verified.
-        @return True if the given vertex is potential mrca for the given pair of vertices, False otherwise.
+        """
+        Verifies that the given vertex is a potential mrca for the given pair of vertices.
+
+        Args:
+            first_vertex (int): The first vertex from the pair.
+            second_vertex (int): The second vertex from the pair.
+            common_ancestor (int): A common ancestor of the given pair of vertices that is being verified.
+
+        Returns:
+            True if the given vertex is potential mrca for the given pair of vertices, False otherwise.
         """
         first_vertex_access_vertices = self.pedigree.vertex_to_ancestor_map[first_vertex][common_ancestor]
         return not (len(first_vertex_access_vertices) == 1 and
@@ -586,17 +817,21 @@ class GraphMatcher:
 
     def triplet_condition_holds(self, first_vertex: int, second_vertex: int, third_vertex: int,
                                 potential_mrca_candidate: int):
-        """!
-        @brief This function verifies that the potential mrca candidate satisfies all the conditions involving the
-        third vertex. More specifically, it verifies that the
-        <a href="https://en.wikipedia.org/wiki/Hall%27s_marriage_theorem">Hall's condition</a> is satisfied for the
+        """
+        Verifies that the potential MRCA candidate satisfies all the conditions involving the
+        third vertex. More specifically, it verifies that the `Hall's condition
+        <https://en.wikipedia.org/wiki/Hall%27s_marriage_theorem>`_ is satisfied for the
         triplet (first_vertex, second_vertex, third_vertex).
-        @param first_vertex: The first vertex from the triplet.
-        @param second_vertex: The second vertex from the triplet.
-        @param third_vertex: The third vertex from the triplet.
-        @param potential_mrca_candidate: A common ancestor of the given triplet of vertices that satisfies the
-        Hall's condition for the (first_vertex, second_vertex) pair.
-        @return True if potential mrca candidate is indeed a potential mrca, False otherwise.
+
+        Args:
+            first_vertex: The first vertex from the triplet.
+            second_vertex: The second vertex from the triplet.
+            third_vertex: The third vertex from the triplet.
+            potential_mrca_candidate: A common ancestor of the given triplet of vertices that satisfies the
+             Hall's condition for the (first_vertex, second_vertex) pair.
+
+        Returns:
+             True if potential mrca candidate is indeed a potential mrca, False otherwise.
         """
         first_vertex_access = self.pedigree.vertex_to_ancestor_map[first_vertex][potential_mrca_candidate]
         if len(first_vertex_access) > 2:
@@ -618,12 +853,16 @@ class GraphMatcher:
         return False
 
     def filter_common_ancestors_for_vertex_pair(self, first_candidate: int, second_candidate: int):
-        """!
-        @brief Finds the pmracs vertices for the given vertex pair. Important: This method does not
-        check whether the passed vertices are different
-        @param first_candidate: The first vertex id
-        @param second_candidate: The second vertex id
-        @return: The list of pmracs for the given vertices
+        """
+        Finds the pmracs vertices for the given vertex pair. Important: This method does not check whether the passed
+        vertices are different.
+
+        Args:
+            first_candidate (int): The first vertex id.
+            second_candidate (int): The second vertex id.
+
+        Returns:
+             The list of pmracs for the given vertices.
         """
         verified_ancestors = []
         if (not self.pedigree.parents_map.get(first_candidate, []) or
@@ -645,14 +884,18 @@ class GraphMatcher:
         return verified_ancestors
 
     def get_pmracs_for_vertex_pair(self, first: int, second: int, coalescent_vertex_to_candidates: {int: [int]}):
-        """!
-        @brief Explores the possible candidates for the given coalescent vertices and finds the corresponding pmracs
-        @param first: The first coalescent vertex id
-        @param second: The second coalescent vertex id
-        @param coalescent_vertex_to_candidates: A dictionary mapping coalescent vertex ids to the list of pedigree
-        vertices
-        @return The dictionary mapping a valid pmrca id to the corresponding pedigree assignments for the passed
-        coalescent vertices
+        """
+        Explores the possible candidates for the given coalescent vertices and finds the corresponding pmracs.
+
+        Args:
+            first: The first coalescent vertex id.
+            second: The second coalescent vertex id.
+            coalescent_vertex_to_candidates (dict[int, [int]]): A dictionary mapping coalescent vertex ids to the list
+             of pedigree vertices.
+
+        Returns:
+            The dictionary mapping a valid pmrca id to the corresponding pedigree assignments for the passed
+            coalescent vertices.
         """
         result = defaultdict(list)
         first_vertex_candidates = coalescent_vertex_to_candidates[first]
@@ -672,15 +915,19 @@ class GraphMatcher:
 
     def get_pmracs_for_vertex_triple_iterative(self, first: int, second: int, third: int,
                                                coalescent_vertex_to_candidates: {int: [int]}):
-        """!
-        @brief Explores the possible candidates for the given coalescent vertices and finds the corresponding pmracs
-        @param first: The first coalescent vertex
-        @param second:The second coalescent vertex
-        @param third: The third coalescent vertex
-        @param coalescent_vertex_to_candidates: A dictionary mapping coalescent vertex ids to the list of pedigree
-        vertices
-        @return The dictionary mapping a valid pmrca id to the corresponding pedigree assignments for the passed
-        coalescent vertices
+        """
+        Explores the possible candidates for the given coalescent vertices and finds the corresponding pmracs.
+
+        Args:
+            first: The first coalescent vertex.
+            second:The second coalescent vertex.
+            third: The third coalescent vertex.
+            coalescent_vertex_to_candidates (dict[int, [int]]): A dictionary mapping coalescent vertex ids to the list
+             of pedigree vertices.
+
+        Returns:
+             The dictionary mapping a valid pmrca id to the corresponding pedigree assignments for the passed
+             coalescent vertices.
         """
         triplet_cache = dict()
 
@@ -727,12 +974,16 @@ class GraphMatcher:
 
     def get_pmracs_for_vertices(self, vertices_coalescent_ids: [int],
                                 coalescent_vertex_to_candidates: {int: [int]}):
-        """!
-        @brief This function calculates the potential most recent common ancestor (pmrca) for the given vertices.
-        @param vertices_coalescent_ids The ids for the coalescent vertices.
-        @param coalescent_vertex_to_candidates: A dictionary mapping an id of a coalescent vertex to the list of
-        ids of pedigree vertices that can be assigned to this coalescent vertex.
-        @return All the valid pmracs for the given vertices.
+        """
+        This function calculates the potential most recent common ancestor (pmrca) for the given vertices.
+
+        Args:
+            vertices_coalescent_ids ([int]): The ids for the coalescent vertices.
+            coalescent_vertex_to_candidates (dict[int, [int]]): A dictionary mapping an id of a coalescent vertex to the
+             list of ids of pedigree vertices that can be assigned to this coalescent vertex.
+
+        Returns:
+             All the valid pmracs for the given vertices.
         """
         vertices_length = len(vertices_coalescent_ids)
         vertices_coalescent_ids = sorted(vertices_coalescent_ids,
@@ -754,11 +1005,15 @@ class GraphMatcher:
     def get_pmracs_for_vertices_dfs(self, vertices_coalescent_ids: [int],
                                     coalescent_vertex_to_candidates: {int: [int]}):
         """
-        Explores the search graph in a dfs manner storing the results only for the currently explored branch
-        @param vertices_coalescent_ids: The ids for the coalescent vertices.
-        @param coalescent_vertex_to_candidates: A dictionary mapping an id of a coalescent vertex to the list of
-        ids of pedigree vertices that can be assigned to this coalescent vertex.
-        @return: All the valid pmracs for the given vertices.
+        Explores the search graph in a dfs manner storing the results only for the currently explored branch.
+
+        Args:
+            vertices_coalescent_ids (list[int]): The ids for the coalescent vertices.
+            coalescent_vertex_to_candidates (dict[int, [int]]): A dictionary mapping an id of a coalescent vertex to
+             the list of ids of pedigree vertices that can be assigned to this coalescent vertex.
+
+        Returns:
+            All the valid pmracs for the given vertices.
         """
         result = []
         vertices_length = len(vertices_coalescent_ids)

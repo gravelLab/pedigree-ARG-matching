@@ -12,7 +12,11 @@ class MatchingMode(Enum):
 
 
 default_initial_matching_mode = InitialMatchingMode.INDIVIDUAL
-current_matching_mode = MatchingMode.EXAMPLE_PER_ROOT_ASSIGNMENT
+default_matching_mode = MatchingMode.EXAMPLE_PER_ROOT_ASSIGNMENT
+
+default_missing_parent_notation = "-1"
+default_separation_symbol = " "
+default_skip_first_line = False
 
 logs_enabled = True
 logs_default_directory_name = "logs"

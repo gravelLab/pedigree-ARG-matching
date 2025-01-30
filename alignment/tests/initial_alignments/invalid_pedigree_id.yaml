@@ -7,5 +7,14 @@ initial_assignments:
     pedigree_ids: [12P, 13M, 13P]
   - coalescent_id: 4
     pedigree_ids: [14M, P, 19M]
-coalescent_tree_path: ""
-pedigree_path: ""
+coalescent_tree:
+  path: "example_coalescent_tree"
+  missing_parent_notation: "-1"
+  separation_symbol: " "
+  skip_first_line: false
+pedigree:
+  path: "example_pedigree.pedigree"
+  missing_parent_notation: "-1"
+  separation_symbol: " "
+  skip_first_line: false
+output_path: "example"

@@ -1,17 +1,16 @@
 from graph.genealogical_graph import GenealogicalGraph, SimpleGraph
 
-graph_build_time = 0
-last_threshold = 10
-
 
 class PotentialMrcaProcessedGraph(GenealogicalGraph):
     """
     This class represents a preprocessed pedigree graph. Apart from having the usual parents and children mappings,
     it also contains the following information about the pedigree:
-        1) The assignments of every vertex to its level. The vertex level is defined to be the length of longest
-        path from a proband vertex to the vertex being considered.
-        2) A dictionary of dictionaries (a matrix) that maps a vertex u to a dictionary whose keys the u's ancestors
-        and the values are the "access vertices" through which u can reach the particular ancestor.
+
+    1) The assignments of every vertex to its level. The vertex level is defined to be the length of longest
+    path from a proband vertex to the vertex being considered.
+
+    2) A dictionary of dictionaries (a matrix) that maps a vertex u to a dictionary whose keys the u's ancestors
+    and the values are the "access vertices" through which u can reach the particular ancestor.
     """
 
     def __init__(self, pedigree: SimpleGraph, probands: [int] = None, initialize_ancestor_maps: bool = True,
@@ -23,8 +22,8 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         # self.inference_cache = dict()
 
     def initialize_potential_mrca_map(self):
-        """!
-        @brief This method preprocesses the pedigree and stores the so called "access-to-ancestor" matrix which is
+        """
+        This method preprocesses the pedigree and stores the so called "access-to-ancestor" matrix which is
         used during the alignment process. This matrix maps a pair (descendant, ancestor) to the list of the ancestor's
         children vertices through which the descendant can reach the ancestor.
          """
@@ -34,15 +33,19 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         tuple_reuse_map = dict()
 
         def append_child(child_value: int, children_tuple=None):
-            """!
-            @brief This is a helper function that appends the child_value to the passed children_tuple.
+            """
+            This is a helper function that appends the child_value to the passed children_tuple.
             The main problem within this preprocessing is that different descendants of the same ancestor vertex
             can climb to this ancestor through the same children. Therefore, in this case, we should reuse the same
             children tuple (through which those descendants climb to the ancestor)
             to save a significant amount of memory.
-            @param child_value: A new integer to be appended to the tuple.
-            @param children_tuple: The tuple to which the value should be appended.
-            @return: The resulting tuple where child_value is added as the last element of the new tuple.
+
+            Args:
+                child_value: A new integer to be appended to the tuple.
+                children_tuple: The tuple to which the value should be appended.
+
+            Returns:
+                The resulting tuple where child_value is added as the last element of the new tuple.
             """
             if children_tuple is None:
                 children_tuple = tuple()
@@ -76,19 +79,38 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         pass
 
     def get_vertex_ancestors(self, vertex: int):
-        """!
-        @brief Returns the vertex's ancestors.
+        """
+        Returns the vertex's ancestors.
+
+        Args:
+            vertex (int): The vertex for which the ancestors should be returned.
         """
         return self.vertex_to_ancestor_map[vertex].keys()
 
     @staticmethod
     def get_processed_graph_from_file(filepath: str, missing_parent_notation=None, separation_symbol=' ',
                                       preprocess_graph: bool = True,
-                                      probands: [int] = None
+                                      probands: [int] = None,
+                                      skip_first_line: bool = False
                                       ):
+        """
+        Parses the pedigree file and builds the graph.
+
+        Args:
+
+            filepath: The path to the pedigree file.
+            missing_parent_notation: String representing an unspecified parent.
+            separation_symbol: The sting used to separate columns in the input file.
+            preprocess_graph: Specifies whether the graph should be preprocessed for the alignment algorithm.
+            probands: If specified, the parsed graph is reduced to the ascending genealogy of the specified probands.
+            skip_first_line: Specifies whether the first line should be skipped.
+
+        Returns:
+        """
         pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filepath=filepath,
                                                                         missing_parent_notation=missing_parent_notation,
-                                                                        separation_symbol=separation_symbol)
+                                                                        separation_symbol=separation_symbol,
+                                                                        skip_first_line=skip_first_line)
         if probands is None:
             return PotentialMrcaProcessedGraph(pedigree=pedigree, initialize_levels=preprocess_graph,
                                                initialize_ancestor_maps=preprocess_graph)

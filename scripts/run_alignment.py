@@ -190,7 +190,7 @@ def save_statistics_to_file(alignment_result: {int: [dict]}, coalescent_tree: Co
 
 
 def save_alignment_result_to_files(alignment_result: {int: [dict]}, coalescent_tree: CoalescentTree,
-                                   pedigree: GenealogicalGraph, directory_path: str = ""):
+                                   pedigree: GenealogicalGraph, directory_path: str | Path = ""):
     result_parent_directory = Path(directory_path)
     for clade_root in alignment_result:
         # TODO: Draw an image?
@@ -249,37 +249,28 @@ def process_pedigree_tree_directory(directory: str, result_directory_name: str):
     coalescent_tree.remove_unary_nodes()
     pedigree_filepath = parent_directory_path / pedigree_filename
     print_log(f"Processing the pedigree: {pedigree_filepath}")
+    pedigree_probands = get_pedigree_simulation_probands_for_alignment_mode(coalescent_tree=coalescent_tree)
     pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_filepath,
-                                                                         preprocess_graph=False)
-    if default_initial_matching_mode == InitialMatchingMode.PLOID:
-        pedigree_probands = coalescent_tree.get_probands()
-    else:
-        proband_individuals = {proband // 2 for proband in coalescent_tree.get_probands()}
-        probands_all_ploids = [
-            ploid
-            for proband_individual in proband_individuals
-            for ploid in [2 * proband_individual, 2 * proband_individual + 1]
-        ]
-        pedigree_probands = probands_all_ploids
-    pedigree.reduce_to_ascending_genealogy(probands=pedigree_probands,
-                                           recalculate_levels=True)
-    pedigree.initialize_potential_mrca_map()
+                                                                         probands=pedigree_probands,
+                                                                         preprocess_graph=True)
     end_preprocessing = time.time()
     print_log(f"Preprocessing time: {end_preprocessing - start_preprocessing} seconds")
+    initial_mapping = get_initial_simulation_mapping_for_mode(coalescent_tree=coalescent_tree)
     alignment_result_path = result_directory_path / tree_filename
-    logs_directory_path = alignment_result_path / logs_default_directory_name
-    os.makedirs(logs_directory_path)
-    logger = MatcherLogger(logs_directory_path=logs_directory_path)
     graph_matcher = GraphMatcher(coalescent_tree=coalescent_tree, processed_graph=pedigree,
-                                 logger=logger)
+                                 initial_mapping=initial_mapping, logs_path=alignment_result_path)
+    run_alignments_and_save_results(graph_matcher=graph_matcher)
+
+
+def run_alignments_and_save_results(graph_matcher: GraphMatcher):
     start_alignment = time.time()
     print_log("Running the alignment")
     result = graph_matcher.find_mapping()
     end_alignment = time.time()
     print_log(f"Matching time: {end_alignment - start_alignment} seconds")
-    logger.log(f"Matching time: {end_alignment - start_alignment} seconds")
-    save_alignment_result_to_files(alignment_result=result, coalescent_tree=coalescent_tree,
-                                   pedigree=pedigree, directory_path=str(alignment_result_path))
+    graph_matcher.log(f"Matching time: {end_alignment - start_alignment} seconds")
+    save_alignment_result_to_files(alignment_result=result, coalescent_tree=graph_matcher.coalescent_tree,
+                                   pedigree=graph_matcher.pedigree, directory_path=graph_matcher.output_path)
 
 
 def run_alignment_with_multiple_clades_and_save_results(directory: str, result_directory_name: str,
@@ -310,19 +301,17 @@ def run_alignment_with_multiple_clades_and_save_results(directory: str, result_d
             continue
         print_log(f"{filename}")
         alignment_result_path = result_directory_path / filename
-        logs_directory_path = alignment_result_path / logs_default_directory_name
-        os.makedirs(logs_directory_path)
-        logger = MatcherLogger(logs_directory_path=logs_directory_path)
         absolute_path = os.path.abspath(file)
         coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=absolute_path)
         coalescent_tree.remove_unary_nodes()
+        initial_mapping = get_initial_simulation_mapping_for_mode(coalescent_tree=coalescent_tree)
         graph_matcher = GraphMatcher(coalescent_tree=coalescent_tree, processed_graph=pedigree,
-                                     logger=logger)
+                                     logs_path=alignment_result_path, initial_mapping=initial_mapping)
         start_alignment = time.time()
         result = graph_matcher.find_mapping()
         end_alignment = time.time()
         print_log(f"Matching time: {end_alignment - start_alignment} seconds")
-        logger.log(f"Matching time: {end_alignment - start_alignment} seconds")
+        graph_matcher.log(f"Matching time: {end_alignment - start_alignment} seconds")
         total_alignment_time += end_alignment - start_alignment
         count += 1
         save_alignment_result_to_files(alignment_result=result, coalescent_tree=coalescent_tree,
