@@ -6,12 +6,12 @@ initial_assignments:
   - coalescent_id: 3
     pedigree_ids: [15P, 15M]
 coalescent_tree:
-  path: "example_tree"
+  path: "example_data/example_tree"
   missing_parent_notation: ""
   separation_symbol: ";"
   skip_first_line: true
 pedigree:
-  path: "example_pedigree.pedigree"
+  path: "example_data/example_pedigree.pedigree"
   missing_parent_notation: "-1"
   separation_symbol: " "
   skip_first_line: false
