@@ -41,7 +41,8 @@ def get_initial_simulation_mapping_for_mode(coalescent_tree: CoalescentTree,
 
 
 def get_pedigree_simulation_probands_for_alignment_mode(coalescent_tree: CoalescentTree,
-                                                        alignment_mode: InitialMatchingMode = default_initial_matching_mode):
+                                                        alignment_mode: InitialMatchingMode =
+                                                        default_initial_matching_mode):
     # Returns the corresponding probands ids for a pedigree for the current matching mode
     if alignment_mode == InitialMatchingMode.PLOID:
         return coalescent_tree.get_probands()
@@ -98,6 +99,7 @@ class ParsedDriverFile:
     initial_assignments: dict[int, [int]]
     output_path: str | Path
     driver_file_path: str | Path
+    alignment_mode: MatchingMode
 
     def _identify_path(self, path: str | Path):
         # Firstly, verify is the path is valid for the current working directory
@@ -151,12 +153,16 @@ class ParsedDriverFile:
             pedigree_parsing_rules = GraphParsingRules.parse_graph_parsing_rules(pedigree_parsing_data)
             coalescent_tree_parsing_rules = GraphParsingRules.parse_graph_parsing_rules(coalescent_tree_parsing_data)
             output_path = data[output_path_key]
+            if not output_path:
+                raise YAMLValidationError("Output path is empty")
+            # Verifying if the specified path is absolute. If not, the specified path is treated as a relative path
+            # with regard to the driver's file location
+            if not os.path.isabs(output_path):
+                output_path = Path(filepath).parent / output_path
             # Validate "initial_assignments" format
             if not isinstance(data[initial_assignments_key], list):
                 raise YAMLValidationError("initial_assignments should be a list.")
-
             initial_assignments_dictionary = {}
-
             for entry in data[initial_assignments_key]:
                 if not isinstance(entry, dict):
                     raise YAMLValidationError(f"Each entry in initial_assignments must be a dictionary. Found: {entry}")
@@ -199,11 +205,18 @@ class ParsedDriverFile:
                     raise YAMLValidationError(f"No pedigree ids specified for {coalescent_id}")
                 # Add to the dictionary
                 initial_assignments_dictionary[coalescent_id] = pedigree_processed_ids
+            alignment_mode = MatchingMode.ALL_ALIGNMENTS
+            if alignment_mode_key in data:
+                specified_alignment_mode = data[alignment_mode_key]
+                if specified_alignment_mode not in alignment_mode_dict:
+                    raise YAMLValidationError("Invalid alignment mode specified")
+                alignment_mode = alignment_mode_dict[specified_alignment_mode]
             return ParsedDriverFile(pedigree_parsing_rules=pedigree_parsing_rules,
                                     coalescent_tree_parsing_rules=coalescent_tree_parsing_rules,
                                     initial_assignments=initial_assignments_dictionary,
                                     driver_file_path=filepath,
-                                    output_path=output_path
+                                    output_path=output_path,
+                                    alignment_mode=alignment_mode
                                     )
         except yaml.YAMLError as e:
             raise YAMLValidationError(f"Error parsing YAML file: {e}")
@@ -215,6 +228,7 @@ class ProcessedDriverFile:
     coalescent_tree: CoalescentTree
     output_path: str | Path
     initial_assignments: dict[int, [int]]
+    alignment_mode: MatchingMode
 
     def preprocess_graphs_for_alignment(self):
         self.preprocess_pedigree()
@@ -284,6 +298,7 @@ class ProcessedDriverFile:
             pedigree=pedigree,
             initial_assignments=initial_assignments,
             output_path=parsed_driver_file.output_path,
+            alignment_mode=parsed_driver_file.alignment_mode
         )
 
     @staticmethod
@@ -303,6 +318,12 @@ separation_symbol_key = "separation_symbol"
 missing_parent_notation_key = "missing_parent_notation"
 skip_first_line_key = "skip_first_line"
 output_path_key = "output_path"
+alignment_mode_key = "alignment_mode"
+
+alignment_mode_dict = {
+    "default": MatchingMode.ALL_ALIGNMENTS,
+    "example_per_root_assignment": MatchingMode.EXAMPLE_PER_ROOT_ASSIGNMENT
+}
 
 
 class GraphMatcher:
@@ -388,7 +409,6 @@ class GraphMatcher:
         self.pedigree = processed_graph
         self.coalescent_tree = coalescent_tree
         self.initial_mapping = initial_mapping
-        self.output_path = logs_path
         self.matching_mode = matching_mode
         if logs_path and logs_enabled:
             self.logger = GraphMatcher.MatcherLogger(logs_directory_path=logs_path)

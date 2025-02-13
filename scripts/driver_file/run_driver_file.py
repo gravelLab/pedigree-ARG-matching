@@ -20,8 +20,8 @@ def main():
                                  processed_graph=processed_driver_file.pedigree,
                                  initial_mapping=processed_driver_file.initial_assignments,
                                  logs_path=processed_driver_file.output_path,
-                                 matching_mode=MatchingMode.ALL_ALIGNMENTS)
-    run_alignments_and_save_results(graph_matcher=graph_matcher)
+                                 matching_mode=processed_driver_file.alignment_mode)
+    run_alignments_and_save_results(graph_matcher=graph_matcher, output_path=processed_driver_file.output_path)
 
 
 if __name__ == "__main__":

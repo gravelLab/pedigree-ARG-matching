@@ -16,3 +16,4 @@ pedigree:
   separation_symbol: " "
   skip_first_line: false
 output_path: "example_output"
+alignment_mode: "default"

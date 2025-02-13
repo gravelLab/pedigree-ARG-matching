@@ -6,6 +6,8 @@ from scripts.utility import get_filepath, get_non_existing_path
 def main():
     filepath = get_filepath("Specify the path to the data file:")
     result_name = get_non_existing_path("Specify the resulting figure's filepath (without extension):")
+    title = input("Specify the title of the figure:")
+
     df = pd.read_csv(filepath)
 
     # Define x-axis and values to plot
@@ -36,7 +38,7 @@ def main():
 
     plt.xlabel("Proband Number", fontsize=16)
     plt.ylabel("Percentage (%)", fontsize=16)
-    plt.title("Pedigree Error Simulation (Percentage View)", fontsize=16)
+    plt.title(title, fontsize=16)
 
     # Set y-axis limits explicitly
     plt.ylim(0, 100)
@@ -71,7 +73,7 @@ def main():
     plt.tight_layout()
 
     # Save and display the plot
-    plt.savefig(fname=f"{result_name}.png")
+    plt.savefig(fname=f"{result_name}.svg")
     plt.show()
 
 

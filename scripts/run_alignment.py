@@ -28,13 +28,20 @@ def get_assignment_likelihood(coalescent_tree: CoalescentTree, alignment: dict, 
     return total_length
 
 
+def convert_ploid_id_to_individual(ploid_id: int):
+    individual_id = ploid_id // 2
+    ploid_type = PloidType.Paternal.value if ploid_id % 2 == 0 else PloidType.Maternal.value
+    return f"{individual_id}{ploid_type}"
+
+
 def save_alignment_result_to_file(coalescent_tree: CoalescentTree, pedigree: GenealogicalGraph,
                                   dictionary_filepath: str, alignment: dict):
     alignment_likelihood = get_assignment_likelihood(coalescent_tree, alignment, pedigree)
     dictionary_file = open(dictionary_filepath, 'w')
     dictionary_file.write(f"Approximated alignment length: {alignment_likelihood}\n")
     for key, value in alignment.items():
-        dictionary_file.write(f"{key}: {value}\n")
+        converted_value = convert_ploid_id_to_individual(value)
+        dictionary_file.write(f"{key}: {converted_value}\n")
     dictionary_file.close()
     return alignment_likelihood
 
@@ -262,7 +269,7 @@ def process_pedigree_tree_directory(directory: str, result_directory_name: str):
     run_alignments_and_save_results(graph_matcher=graph_matcher)
 
 
-def run_alignments_and_save_results(graph_matcher: GraphMatcher):
+def run_alignments_and_save_results(graph_matcher: GraphMatcher, output_path: str | Path):
     start_alignment = time.time()
     print_log("Running the alignment")
     result = graph_matcher.find_mapping()
@@ -270,7 +277,7 @@ def run_alignments_and_save_results(graph_matcher: GraphMatcher):
     print_log(f"Matching time: {end_alignment - start_alignment} seconds")
     graph_matcher.log(f"Matching time: {end_alignment - start_alignment} seconds")
     save_alignment_result_to_files(alignment_result=result, coalescent_tree=graph_matcher.coalescent_tree,
-                                   pedigree=graph_matcher.pedigree, directory_path=graph_matcher.output_path)
+                                   pedigree=graph_matcher.pedigree, directory_path=output_path)
 
 
 def run_alignment_with_multiple_clades_and_save_results(directory: str, result_directory_name: str,

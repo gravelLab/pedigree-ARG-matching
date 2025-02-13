@@ -66,7 +66,8 @@ The driver file is a YAML file that specifies the input data in the following us
      missing_parent_notation: "-1"
      separation_symbol: " "
      skip_first_line: false
-   output_path: "example"
+   output_path: "example_output"
+   alignment_mode: "default"
 
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -96,43 +97,23 @@ The ``pedigree`` and ``coalescent_tree`` sections describe the parsing rules use
 
    graph_parsing_rules:
      path: "example_coalescent_tree"
-     missing_parent_notation (optional): "-1"
-     separation_symbol (optional): " "
-     skip_first_line (optional): false
+     missing_parent_notation: "-1"        # (optional)
+     separation_symbol: " "               # (optional)
+     skip_first_line: false               # (optional)
 
 - **path**: Specifies the path to the file to be parsed.
+  The program resolves this path using the following logic:
 
-The program resolves this path using the following logic:
-  1. If the path is an absolute path or a valid relative path from the current working directory (CWD), the file is used directly.
+  1. If the path is an absolute path or a valid relative path from the current working directory (CWD), this file is used directly.
   2. Otherwise, the program treats the path as relative to the driver file's location.
 
 Once the file is located, the program checks for any user-specified parsing rules. Below are the customizable options:
 
-- **missing_parent_notation**: The sequence of characters used to denote an unknown parent. The default value is ``"-1"``.
-- **separation_symbol**: The sequence of characters used to separate the columns in the input file. The default value is ``" "``.
-- **skip_first_line**: Indicates whether the first line in the file should be skipped. This can be useful when the file includes a header. The default value is ``false``.
+- **missing_parent_notation** *(optional)*: The sequence of characters used to denote an unknown parent. The default value is ``"-1"``.
 
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Pedigree Parsing Logic
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- **separation_symbol** *(optional)*: The sequence of characters used to separate the columns in the input file. The default value is ``" "``.
 
-The algorithm maps coalescent vertices to pedigree **ploids** by generating ploid IDs for every individual in the pedigree.
-
-""""""""""""""""""""""""""""
-Ploid ID Calculation
-""""""""""""""""""""""""""""
-
-For each pedigree individual with ID ``n``, the corresponding pedigree ploid IDs are:
-
-- ``2 * n`` → Paternal ploid
-- ``2 * n + 1`` → Maternal ploid
-
-To retrieve the individual ID and ploid parent type from a given ploid ID ``m``:
-
-- Individual ID: ``m // 2``
-- Parent Type: ``m % 2`` (``0`` for paternal, ``1`` for maternal)
-
----------------------------------------------------------------
+- **skip_first_line** *(optional)*: Indicates whether the first line in the file should be skipped. This can be useful when the file includes a header. The default value is ``false``.
 
 """"""""""""""""""""""""""""""
 Pedigree File Structure
@@ -172,10 +153,25 @@ To parse this file, use the following YAML configuration:
 
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Alignment mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You can also optionally specify the **alignment mode** that the algorithm will use by using the ``alignment_mode``
+option in the input file. There are two possible modes that you can use:
+
+1. ``default`` — Uses the default alignment approach and finds all the valid alignments between
+the pedigree and the tree. This is the default mode.
+
+2. ``example_per_root_assignment`` — Finds only one alignment per a valid ploid pedigree candidate. In other words,
+it only finds a subset of all the valid alignments. This can be useful when you care only about possible clade root
+assignments and want to avoid generating a large number of alignments.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Output
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``output_path`` field specifies where the results of the alignment should be stored.
+The ``output_path`` field specifies where the results of the alignment should be stored. You can either specify an
+absolute path or a relative path. If you specify a relative path, it will be interpreted relative to the
+driver file's location.
 
 ---------------------------------------------------------------
 
@@ -264,15 +260,14 @@ Alignment Format
 Each alignment result is stored as a separate plain text file with a simple structure.
 The file consists of two sections:
 
-1. **Statistical Data** – A block containing relevant statistics.
-2. **Alignment Data** – A mapping of coalescent vertex IDs to pedigree ploid IDs.
+1. **Statistical Data** — A block containing relevant statistics.
+2. **Alignment Data** — A mapping of coalescent vertex IDs to pedigree ploid IDs.
 
-The alignment data follows the format ``{coalescent_vertex_id}: {pedigree_ploid_id}``
+The alignment data follows the format ``{coalescent_vertex_id}: {pedigree_individual_id}{ploid_type}``
 
-- **coalescent_vertex_id** – The coalescent vertex ID.
-- **pedigree_ploid_id** – The ploid ID to which the coalescent vertex is mapped.
-
-For details on how pedigree ploid IDs are generated, refer to the :ref:`Ploid ID Calculation`.
+- **coalescent_vertex_id** — The coalescent vertex ID.
+- **pedigree_individual_id** — The individual's ID to which the coalescent vertex is mapped.
+- **ploid_type** — The ploid type.
 
 **Example File Structure:**
 
@@ -281,18 +276,12 @@ For details on how pedigree ploid IDs are generated, refer to the :ref:`Ploid ID
     // Statistical data
     ...
     // Alignment
-    48273217: 48273232
-    48951023: 48951022
-    99796362: 99796362
-    48087661: 48087661
-    98415561: 98415561
-    99897771: 99897771
-    48863718: 48863718
-    99744483: 99744483
-    99326428: 99326428
-    48531357: 48531356
-    99551936: 99551936
-    100237346: 100237346
+    5: 1M
+    3: 15M
+    4: 3P
+    2: 12M
+    1: 10P
+
 
 
 .. toctree::
