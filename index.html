@@ -1,0 +1,707 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="./" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Pedigree-ARG matching &#8212; pedigree-ARG-matching 1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/sphinx-book-theme.css?v=a3416100" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="_static/documentation_options.js?v=a681ed88"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'index';</script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Simulating errors" href="simulating_errors.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="#">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">pedigree-ARG-matching 1.0 documentation</p>
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="simulating_errors.html">Simulating errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="error_alignments.html">Error alignments</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="api.html">API Documentation</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="graph_matcher.html">GraphMatcher</a></li>
+<li class="toctree-l2"><a class="reference internal" href="potential_mrca_processed_graph.html">PotentialMrcaProcessedGraph</a></li>
+<li class="toctree-l2"><a class="reference internal" href="subtree_matcher.html">SubtreeMatcher</a></li>
+</ul>
+</details></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+
+
+
+<div class="dropdown dropdown-download-buttons">
+  <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Download this page">
+    <i class="fas fa-download"></i>
+  </button>
+  <ul class="dropdown-menu">
+      
+      
+      
+      <li><a href="_sources/index.rst" target="_blank"
+   class="btn btn-sm btn-download-source-button dropdown-item"
+   title="Download source file"
+   data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file"></i>
+  </span>
+<span class="btn__text-container">.rst</span>
+</a>
+</li>
+      
+      
+      
+      
+      <li>
+<button onclick="window.print()"
+  class="btn btn-sm btn-download-pdf-button dropdown-item"
+  title="Print to PDF"
+  data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file-pdf"></i>
+  </span>
+<span class="btn__text-container">.pdf</span>
+</button>
+</li>
+      
+  </ul>
+</div>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button>
+
+
+<button class="btn btn-sm pst-navbar-icon search-button search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+</button>
+<button class="sidebar-toggle secondary-toggle btn btn-sm" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>Pedigree-ARG matching</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#">Pedigree-ARG matching</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#problem-definition">Problem definition</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#installation">Installation</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#running-the-alignment">Running the alignment</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#driver-file">Driver file</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#initial-assignments">Initial Assignments</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#graph-parsing-rules">Graph Parsing Rules</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#pedigree-file-structure">Pedigree File Structure</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-input-file">Example Input File</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#alignment-mode">Alignment mode</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#output">Output</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-the-alignment-script">Running the alignment script</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#example">Example</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#output-format">Output format</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#alignment-format">Alignment Format</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="pedigree-arg-matching">
+<h1>Pedigree-ARG matching<a class="headerlink" href="#pedigree-arg-matching" title="Link to this heading">#</a></h1>
+<p>This project addresses the alignment problem between a pedigree and an Ancestral Recombination Graph (ARG) that describes genetic transmissions within a given pedigree.</p>
+</section>
+<section id="problem-definition">
+<h1>Problem definition<a class="headerlink" href="#problem-definition" title="Link to this heading">#</a></h1>
+<p>Specifically, given the following inputs:</p>
+<ol class="arabic simple">
+<li><p><strong>The Pedigree</strong> <span class="math notranslate nohighlight">\(P\)</span>;</p></li>
+<li><p><strong>The ARG</strong> <span class="math notranslate nohighlight">\(A\)</span>: An ARG with a set of leaf vertices <span class="math notranslate nohighlight">\(L\)</span>, representing genetic transmissions within <span class="math notranslate nohighlight">\(P\)</span>;</p></li>
+<li><p><strong>Initial Assignments</strong>: A mapping <span class="math notranslate nohighlight">\(f: V(L) \to 2^{P} \setminus \emptyset\)</span>, specifying initial relationships between ARG leaves and pedigree vertices,</p></li>
+</ol>
+<p>the algorithm computes all possible <strong>alignments</strong> between <span class="math notranslate nohighlight">\(A\)</span> and <span class="math notranslate nohighlight">\(P\)</span>. An alignment is a function that assigns every vertex in the ARG to a vertex in the pedigree.</p>
+<p>Formally, it is defined as <span class="math notranslate nohighlight">\(h: V(A) \to 2^{P} \setminus \emptyset\)</span>.</p>
+<p>In other words, the goal is to find valid extensions of the initial assignments provided as input.</p>
+</section>
+<section id="installation">
+<h1>Installation<a class="headerlink" href="#installation" title="Link to this heading">#</a></h1>
+<p>To install:</p>
+<ol class="arabic simple">
+<li><p>Clone this repository.</p></li>
+<li><p>In your local copy, open a terminal.</p></li>
+<li><p>Run <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">.</span></code>.</p></li>
+</ol>
+</section>
+<section id="running-the-alignment">
+<h1>Running the alignment<a class="headerlink" href="#running-the-alignment" title="Link to this heading">#</a></h1>
+<p>The most convenient way of running this software is by using the driver file.</p>
+<section id="driver-file">
+<h2>Driver file<a class="headerlink" href="#driver-file" title="Link to this heading">#</a></h2>
+<p>The driver file is a YAML file that specifies the input data in the following user-friendly format:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">initial_assignments</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">coalescent_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">    </span><span class="nt">pedigree_ids</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">11P</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">coalescent_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="w">    </span><span class="nt">pedigree_ids</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">11M</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">coalescent_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">    </span><span class="nt">pedigree_ids</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">12P</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">13M</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">13P</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">coalescent_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
+<span class="w">    </span><span class="nt">pedigree_ids</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">14M</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">15P</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">19M</span><span class="p p-Indicator">]</span>
+<span class="nt">coalescent_tree</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;example_coalescent_tree&quot;</span>
+<span class="w">  </span><span class="nt">missing_parent_notation</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;-1&quot;</span>
+<span class="w">  </span><span class="nt">separation_symbol</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;</span><span class="nv"> </span><span class="s">&quot;</span>
+<span class="w">  </span><span class="nt">skip_first_line</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="nt">pedigree</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;example_pedigree.pedigree&quot;</span>
+<span class="w">  </span><span class="nt">missing_parent_notation</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;-1&quot;</span>
+<span class="w">  </span><span class="nt">separation_symbol</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;</span><span class="nv"> </span><span class="s">&quot;</span>
+<span class="w">  </span><span class="nt">skip_first_line</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="nt">output_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;example_output&quot;</span>
+<span class="nt">alignment_mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;default&quot;</span>
+</pre></div>
+</div>
+<section id="initial-assignments">
+<h3>Initial Assignments<a class="headerlink" href="#initial-assignments" title="Link to this heading">#</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">initial_assignments</span></code> field specifies the initial mapping for the leaf vertices in the coalescent tree. Each object in the list must include two fields: <code class="docutils literal notranslate"><span class="pre">coalescent_id</span></code> and <code class="docutils literal notranslate"><span class="pre">pedigree_ids</span></code>.</p>
+<ul class="simple">
+<li><p><strong>coalescent_id</strong>: Specifies the ID of the coalescent node in the tree.</p></li>
+<li><p><strong>pedigree_ids</strong>: A list of values denoting the ploids in the pedigree to which the specified <code class="docutils literal notranslate"><span class="pre">coalescent_id</span></code> can be mapped.</p></li>
+</ul>
+<dl class="simple">
+<dt>Each ploid is represented by the pedigree ID followed by one of the two ploid types:</dt><dd><ul class="simple">
+<li><p><strong>P</strong>: Represents the paternal ploid.</p></li>
+<li><p><strong>M</strong>: Represents the maternal ploid.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>All leaf vertices, and only the leaf vertices, must have their initial mappings specified.</p>
+</div>
+</section>
+<section id="graph-parsing-rules">
+<h3>Graph Parsing Rules<a class="headerlink" href="#graph-parsing-rules" title="Link to this heading">#</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">pedigree</span></code> and <code class="docutils literal notranslate"><span class="pre">coalescent_tree</span></code> sections describe the parsing rules used by the program. The general structure is as follows:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">graph_parsing_rules</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;example_coalescent_tree&quot;</span>
+<span class="w">  </span><span class="nt">missing_parent_notation</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;-1&quot;</span><span class="w">        </span><span class="c1"># (optional)</span>
+<span class="w">  </span><span class="nt">separation_symbol</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;</span><span class="nv"> </span><span class="s">&quot;</span><span class="w">               </span><span class="c1"># (optional)</span>
+<span class="w">  </span><span class="nt">skip_first_line</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">               </span><span class="c1"># (optional)</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><strong>path</strong>: Specifies the path to the file to be parsed.
+The program resolves this path using the following logic:</p>
+<ol class="arabic simple">
+<li><p>If the path is an absolute path or a valid relative path from the current working directory (CWD), this file is used directly.</p></li>
+<li><p>Otherwise, the program treats the path as relative to the driver file’s location.</p></li>
+</ol>
+</li>
+</ul>
+<p>Once the file is located, the program checks for any user-specified parsing rules. Below are the customizable options:</p>
+<ul class="simple">
+<li><p><strong>missing_parent_notation</strong> <em>(optional)</em>: The sequence of characters used to denote an unknown parent. The default value is <code class="docutils literal notranslate"><span class="pre">&quot;-1&quot;</span></code>.</p></li>
+<li><p><strong>separation_symbol</strong> <em>(optional)</em>: The sequence of characters used to separate the columns in the input file. The default value is <code class="docutils literal notranslate"><span class="pre">&quot;</span> <span class="pre">&quot;</span></code>.</p></li>
+<li><p><strong>skip_first_line</strong> <em>(optional)</em>: Indicates whether the first line in the file should be skipped. This can be useful when the file includes a header. The default value is <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p></li>
+</ul>
+<section id="pedigree-file-structure">
+<h4>Pedigree File Structure<a class="headerlink" href="#pedigree-file-structure" title="Link to this heading">#</a></h4>
+<p>When parsing the pedigree file, the program assumes the following column structure:</p>
+<ul class="simple">
+<li><p><strong>First column</strong> → Child ID</p></li>
+<li><p><strong>Second column</strong> → Father ID</p></li>
+<li><p><strong>Third column</strong> → Mother ID</p></li>
+</ul>
+<p>Any additional columns in the file are ignored.</p>
+</section>
+<hr class="docutils" />
+<section id="example-input-file">
+<h4>Example Input File<a class="headerlink" href="#example-input-file" title="Link to this heading">#</a></h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span># id parent0 parent1
+0;;
+1;;2
+2;3;;
+3;4;5
+</pre></div>
+</div>
+<p>To parse this file, use the following YAML configuration:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">pedigree</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;example_pedigree_path&quot;</span>
+<span class="w">  </span><span class="nt">missing_parent_notation</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&quot;</span>
+<span class="w">  </span><span class="nt">separation_symbol</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;;&quot;</span>
+<span class="w">  </span><span class="nt">skip_first_line</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="alignment-mode">
+<h3>Alignment mode<a class="headerlink" href="#alignment-mode" title="Link to this heading">#</a></h3>
+<p>You can also optionally specify the <strong>alignment mode</strong> that the algorithm will use by using the <code class="docutils literal notranslate"><span class="pre">alignment_mode</span></code>
+option in the input file. There are two possible modes that you can use:</p>
+<p>1. <code class="docutils literal notranslate"><span class="pre">default</span></code> — Uses the default alignment approach and finds all the valid alignments between
+the pedigree and the tree. This is the default mode.</p>
+<p>2. <code class="docutils literal notranslate"><span class="pre">example_per_root_assignment</span></code> — Finds only one alignment per a valid ploid pedigree candidate. In other words,
+it only finds a subset of all the valid alignments. This can be useful when you care only about possible clade root
+assignments and want to avoid generating a large number of alignments.</p>
+</section>
+<section id="output">
+<h3>Output<a class="headerlink" href="#output" title="Link to this heading">#</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">output_path</span></code> field specifies where the results of the alignment should be stored. You can either specify an
+absolute path or a relative path. If you specify a relative path, it will be interpreted relative to the
+driver file’s location.</p>
+<hr class="docutils" />
+<p>As you can see, the driver file allows us to specify all the required input for the algorithm, as specified in
+the Problem statement, in a customizable and a user-friendly way.</p>
+</section>
+</section>
+<section id="running-the-alignment-script">
+<h2>Running the alignment script<a class="headerlink" href="#running-the-alignment-script" title="Link to this heading">#</a></h2>
+<p>You can now use the driver file that you’ve created by running the <code class="docutils literal notranslate"><span class="pre">scripts/driver_file/run_driver_file.py</span></code>. You can
+either run the script without any arguments and get prompted by the program, or use the <code class="docutils literal notranslate"><span class="pre">-f</span></code> flag for specifying
+the driver file’s location.</p>
+<section id="example">
+<h3>Example<a class="headerlink" href="#example" title="Link to this heading">#</a></h3>
+<p>The repository contains one small example for you to get started under <code class="docutils literal notranslate"><span class="pre">scripts/driver_file/example</span></code> which contains
+a small pedigree, a coalescent tree and the driver file. The input graphs are depicted below:</p>
+<figure class="align-center" id="id1">
+<img alt="Pedigree" src="_images/pedigree.svg" />
+<figcaption>
+<p><span class="caption-text">Example pedigree</span><a class="headerlink" href="#id1" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+<hr class="docutils" />
+<figure class="align-center" id="id2">
+<a class="reference internal image-reference" href="_images/tree.svg"><img alt="Coalescent tree" src="_images/tree.svg" style="height: 400px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Example coalescent tree</span><a class="headerlink" href="#id2" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+<p>The initial mapping is given as follows:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">1</span></code> can be mapped to any ploid of <code class="docutils literal notranslate"><span class="pre">10</span></code> and <code class="docutils literal notranslate"><span class="pre">11</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">2</span></code> can be mapped to any ploid of <code class="docutils literal notranslate"><span class="pre">12</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">3</span></code> can be mapped to any ploid of <code class="docutils literal notranslate"><span class="pre">15</span></code>.</p></li>
+</ul>
+<p>After running the script, you should get 8 valid alignments in the end. You can run the example by installing the
+library and running the following command from the root directory:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/driver_file/run_driver_file.py<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;scripts/driver_file/example/driver_file.yaml&quot;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="output-format">
+<h2>Output format<a class="headerlink" href="#output-format" title="Link to this heading">#</a></h2>
+<p>The algorithm saves the alignment results in the directory specified by <code class="docutils literal notranslate"><span class="pre">output_path</span></code>.
+For every clade in the coalescent tree, a separate folder will be created, named after the clade root’s ID.</p>
+<p>Inside each clade folder:</p>
+<ol class="arabic simple">
+<li><p><strong>Alignment Files</strong>:</p>
+<ul class="simple">
+<li><p>The folder will contain a set of alignment files, where each file represents a distinct alignment.</p></li>
+<li><p>Two alignments are considered distinct if there is at least one coalescent vertex that is mapped differently.</p></li>
+<li><p>Each alignment file will be named as <code class="docutils literal notranslate"><span class="pre">alignment_{id}</span></code>, where <code class="docutils literal notranslate"><span class="pre">{id}</span></code> is a sequential counter identifying the alignment.</p></li>
+</ul>
+</li>
+<li><p><strong>Statistics File</strong>:</p>
+<ul class="simple">
+<li><p>A file named <code class="docutils literal notranslate"><span class="pre">clade_{root_id}</span></code> will also be included. This file aggregates the data and provides statistical insights about the alignments.</p></li>
+</ul>
+</li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>No Alignments</strong></p>
+<p>If no alignments are generated, it indicates that the input data contains errors, and no solutions exist for the given input.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>Alignment Similarity</strong></p>
+<p>A high number of alignments does not necessarily mean high variability. Many alignments might be very similar.
+To evaluate the true diversity of alignments, refer to the statistics file, which provides the number of
+possibilities for each coalescent vertex.</p>
+</div>
+<section id="alignment-format">
+<h3>Alignment Format<a class="headerlink" href="#alignment-format" title="Link to this heading">#</a></h3>
+<p>Each alignment result is stored as a separate plain text file with a simple structure.
+The file consists of two sections:</p>
+<ol class="arabic simple">
+<li><p><strong>Statistical Data</strong> — A block containing relevant statistics.</p></li>
+<li><p><strong>Alignment Data</strong> — A mapping of coalescent vertex IDs to pedigree ploid IDs.</p></li>
+</ol>
+<p>The alignment data follows the format <code class="docutils literal notranslate"><span class="pre">{coalescent_vertex_id}:</span> <span class="pre">{pedigree_individual_id}{ploid_type}</span></code></p>
+<ul class="simple">
+<li><p><strong>coalescent_vertex_id</strong> — The coalescent vertex ID.</p></li>
+<li><p><strong>pedigree_individual_id</strong> — The individual’s ID to which the coalescent vertex is mapped.</p></li>
+<li><p><strong>ploid_type</strong> — The ploid type.</p></li>
+</ul>
+<p><strong>Example File Structure:</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>// Statistical data
+...
+// Alignment
+5: 1M
+3: 15M
+4: 3P
+2: 12M
+1: 10P
+</pre></div>
+</div>
+<div class="toctree-wrapper compound">
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="simulating_errors.html">Simulating errors</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="simulating_errors.html#simulating-pedigree-errors">Simulating pedigree errors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="simulating_errors.html#simulating-coalescent-tree-errors">Simulating coalescent tree errors</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="error_alignments.html">Error alignments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API Documentation</a></li>
+</ul>
+</div>
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="right-next"
+       href="simulating_errors.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Simulating errors</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#">Pedigree-ARG matching</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#problem-definition">Problem definition</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#installation">Installation</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#running-the-alignment">Running the alignment</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#driver-file">Driver file</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#initial-assignments">Initial Assignments</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#graph-parsing-rules">Graph Parsing Rules</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#pedigree-file-structure">Pedigree File Structure</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-input-file">Example Input File</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#alignment-mode">Alignment mode</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#output">Output</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#running-the-alignment-script">Running the alignment script</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#example">Example</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#output-format">Output format</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#alignment-format">Alignment Format</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Andrii Serdiuk, Simon Gravel
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2024, Andrii Serdiuk and Simon Gravel.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>
