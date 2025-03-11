@@ -5,14 +5,13 @@ import os.path
 import sys
 import traceback
 import warnings
+from abc import ABC, abstractmethod
 from concurrent.futures import as_completed, ProcessPoolExecutor
-from io import UnsupportedOperation
 
 from alignment.graph_matcher import *
 from scripts import utility
 from scripts.run_alignment import save_alignment_result_to_files
 from scripts.utility import *
-from abc import ABC, abstractmethod
 
 log_directory = "log_dir"
 initial_alignment_dir_name = "initial_alignment"
@@ -167,23 +166,17 @@ class ErrorAlignmentTask:
             error_results = ErrorPedigreeAlignmentClassification()
         self.error_results = error_results
         self.simulation_subdirectory_path = simulation_subdirectory_path
-        self.root_vertex_individual_id = root_vertex_individual_id
-        self.root_vertex_pedigree_individual_and_spouses = root_vertex_pedigree_individual_and_spouses
-        self.coalescent_vertex_id = coalescent_vertex_id
+        # self.root_vertex_individual_id = root_vertex_individual_id
+        # self.root_vertex_pedigree_individual_and_spouses = root_vertex_pedigree_individual_and_spouses
+        # self.coalescent_vertex_id = coalescent_vertex_id
 
     def run(self):
         print(f"Parsing {self.pedigree_path} [{self.coalescent_tree_path}]")
         coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=self.coalescent_tree_path)
-        if default_initial_matching_mode == InitialMatchingMode.PLOID:
-            ascending_genealogy_probands = coalescent_tree.probands
-        else:
-            proband_individuals = {proband // 2 for proband in coalescent_tree.probands}
-            probands_all_ploids = [
-                ploid
-                for proband_individual in proband_individuals
-                for ploid in [2 * proband_individual, 2 * proband_individual + 1]
-            ]
-            ascending_genealogy_probands = probands_all_ploids
+        coalescent_tree.remove_unary_nodes()
+        ascending_genealogy_probands = get_pedigree_simulation_probands_for_alignment_mode(
+            coalescent_tree=coalescent_tree
+        )
         pedigree = (PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=self.pedigree_path,
                                                                               preprocess_graph=True,
                                                                               probands=ascending_genealogy_probands
@@ -200,21 +193,22 @@ class ErrorAlignmentTask:
                                logs_path=log_directory_path,
                                initial_mapping=initial_mapping)
         result = matcher.find_mapping()
-        if not self.coalescent_vertex_id:
-            number_of_clades = len(result)
-            if number_of_clades != 1:
-                raise UnsupportedOperation("The current version of the script supports trees with only one clade")
-            root_vertex_id = next(iter(result))
-        else:
-            root_vertex_id = self.coalescent_vertex_id
-        # root_vertex_individual = root_vertex // 2
-        # root_vertex_children_all_ploids = [
-        #     child_ploid
-        #     for child in pedigree.children_map[root_vertex]
-        #     for child_ploid in [2 * (child // 2), 2 * (child // 2) + 1]
-        # ]
-        # individual_and_spouses = {p // 2 for child_ploid in root_vertex_children_all_ploids
-        #                           for p in pedigree.parents_map.get(child_ploid, [])}
+        root_vertex_id = coalescent_tree.get_root_vertex()
+        # if not self.coalescent_vertex_id:
+        #     number_of_clades = len(result)
+        #     if number_of_clades != 1:
+        #         raise UnsupportedOperation("The current version of the script supports trees with only one clade")
+        #     root_vertex_id = next(iter(result))
+        # else:
+        #     root_vertex_id = self.coalescent_vertex_id
+        root_vertex_individual_id = root_vertex_id // 2
+        root_vertex_children_all_ploids = [
+            child_ploid
+            for child in pedigree.children_map[root_vertex_id]
+            for child_ploid in [2 * (child // 2), 2 * (child // 2) + 1]
+        ]
+        root_vertex_pedigree_individual_and_spouses = {p // 2 for child_ploid in root_vertex_children_all_ploids
+                                                       for p in pedigree.parents_map.get(child_ploid, [])}
         if self.simulation_subdirectory_path:
             alignments_dir_path = str(self.simulation_subdirectory_path)
             save_alignment_result_to_files(alignment_result=result,
@@ -238,15 +232,15 @@ class ErrorAlignmentTask:
                 len(simulation_root_vertex_individual_assignments))
             self.error_results.add_root_assignments(simulation_root_vertex_individual_assignments)
             # Classify the simulation result
-            if self.root_vertex_individual_id in simulation_root_vertex_individual_assignments:
+            if root_vertex_individual_id in simulation_root_vertex_individual_assignments:
                 if simulation_root_vertex_individual_assignments.issubset(
-                        self.root_vertex_pedigree_individual_and_spouses):
+                        root_vertex_pedigree_individual_and_spouses):
                     self.error_results.only_individual_and_spouses_counter += 1
                 else:
                     self.error_results.individual_and_non_spouse_present_counter += 1
             else:
                 if simulation_root_vertex_individual_assignments.intersection(
-                        self.root_vertex_pedigree_individual_and_spouses):
+                        root_vertex_pedigree_individual_and_spouses):
                     self.error_results.individual_not_present_spouse_present_counter += 1
                 else:
                     self.error_results.neither_individual_nor_spouse_present_counter += 1
@@ -338,55 +332,45 @@ class BaseErrorAlignmentComparison(ABC):
         general_result_file.write(f"The number of probands is {number_of_probands}\n")
         general_result_file.write(f"The number of non-proband vertices is: {non_proband_vertices}\n")
         general_result_file.write(line_content_divider)
-        if default_initial_matching_mode == InitialMatchingMode.PLOID:
-            ascending_genealogy_probands = coalescent_tree.probands
-        else:
-            proband_individuals = {proband // 2 for proband in coalescent_tree.probands}
-            probands_all_ploids = [
-                ploid
-                for proband_individual in proband_individuals
-                for ploid in [2 * proband_individual, 2 * proband_individual + 1]
-            ]
-            ascending_genealogy_probands = probands_all_ploids
+        ascending_genealogy_probands = get_pedigree_simulation_probands_for_alignment_mode(
+            coalescent_tree=coalescent_tree
+        )
+        should_run_initial_alignment = False
         initial_pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(
             filepath=self.initial_pedigree_path,
             probands=ascending_genealogy_probands,
-            preprocess_graph=True
+            preprocess_graph=should_run_initial_alignment
         )
-        initial_result_dict = run_initial_alignment(coalescent_tree=coalescent_tree,
-                                                    initial_pedigree=initial_pedigree,
-                                                    save_alignments_to_files=self.save_alignments_to_files,
-                                                    result_filepath=initial_alignment_result_path)
-        number_of_clades = len(initial_result_dict)
-        if number_of_clades != 1:
-            raise UnsupportedOperation("The current version of the script supports trees with only one clade")
-        root_vertex = next(iter(initial_result_dict))
+        root_vertex = coalescent_tree.get_root_vertex()
         root_vertex_individual = root_vertex // 2
         root_vertex_children_all_ploids = [
             child_ploid
             for child in initial_pedigree.children_map[root_vertex]
             for child_ploid in [2 * (child // 2), 2 * (child // 2) + 1]
         ]
-        # In the phased case, we cannot guarantee that the other ploid of every root vertex
-        # child ploid is present in the graph
         individual_and_spouses = {p // 2 for child_ploid in root_vertex_children_all_ploids
                                   for p in initial_pedigree.parents_map.get(child_ploid, [])}
         assert individual_and_spouses, "Invalid pedigree"
-        valid_alignments = [d for lst in initial_result_dict.values() for d in lst]
-        # Log the general information about the graphs and the initial alignment
-        general_result_file.write(f"Total number of initial alignments is: {len(valid_alignments)}\n")
-        # Calculating the number of individuals to which the clade's root is assigned
-        initial_root_vertex_individual_assignments = {x[root_vertex] // 2 for x in valid_alignments}
-        self.error_comparison_results.initial_root_vertex_individual_assignments_number = (
-            len(initial_root_vertex_individual_assignments)
-        )
-        general_result_file.write(f"Number of individual assignments for the root: "
-                                  f"{self.error_comparison_results.initial_root_vertex_individual_assignments_number}\n"
-                                  )
+        if should_run_initial_alignment:
+            initial_result_dict = run_initial_alignment(coalescent_tree=coalescent_tree,
+                                                        initial_pedigree=initial_pedigree,
+                                                        save_alignments_to_files=self.save_alignments_to_files,
+                                                        result_filepath=initial_alignment_result_path)
+            valid_alignments = [d for lst in initial_result_dict.values() for d in lst]
+            # Log the general information about the graphs and the initial alignment
+            general_result_file.write(f"Total number of initial alignments is: {len(valid_alignments)}\n")
+            # Calculating the number of individuals to which the clade's root is assigned
+            initial_root_vertex_individual_assignments = {x[root_vertex] // 2 for x in valid_alignments}
+            self.error_comparison_results.initial_root_vertex_individual_assignments_number = (
+                len(initial_root_vertex_individual_assignments)
+            )
+            general_result_file.write(f"Number of individual assignments for the root: "
+                                      f"{self.error_comparison_results.initial_root_vertex_individual_assignments_number}\n"
+                                      )
+            general_result_file.write(
+                f"Individual assignments for the root: {initial_root_vertex_individual_assignments}\n")
         general_result_file.write(f"Clade root individual: {root_vertex_individual}\n")
         general_result_file.write(f"Clade root and their spouses: {individual_and_spouses}\n")
-        general_result_file.write(
-            f"Individual assignments for the root: {initial_root_vertex_individual_assignments}\n")
         general_result_file.flush()
         general_result_file.close()
         return root_vertex, root_vertex_individual, individual_and_spouses
@@ -475,6 +459,8 @@ class ErrorTreesAlignmentComparison(BaseErrorAlignmentComparison):
             if not os.path.isfile(coalescent_tree_filepath):
                 continue
             simulation_subdirectory_path = self.simulation_folder_path / coalescent_tree_file
+            # TODO: We're passing the root vertex information for the root of the initial coalescent tree
+            #  which may be different from the root of the modified tree. Consider not passing this information at all
             alignment_task = ErrorAlignmentTask(
                 pedigree_path=self.initial_pedigree_path,
                 coalescent_tree_path=coalescent_tree_filepath,

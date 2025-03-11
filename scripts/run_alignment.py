@@ -266,7 +266,7 @@ def process_pedigree_tree_directory(directory: str, result_directory_name: str):
     alignment_result_path = result_directory_path / tree_filename
     graph_matcher = GraphMatcher(coalescent_tree=coalescent_tree, processed_graph=pedigree,
                                  initial_mapping=initial_mapping, logs_path=alignment_result_path)
-    run_alignments_and_save_results(graph_matcher=graph_matcher)
+    run_alignments_and_save_results(graph_matcher=graph_matcher, output_path=alignment_result_path)
 
 
 def run_alignments_and_save_results(graph_matcher: GraphMatcher, output_path: str | Path):

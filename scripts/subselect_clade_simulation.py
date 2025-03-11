@@ -1,41 +1,50 @@
+from alignment.configuration import InitialMatchingMode
+from alignment.graph_matcher import get_pedigree_simulation_probands_for_alignment_mode
 from graph.coalescent_tree import CoalescentTree, SimpleGraph, GenealogicalGraph
 from scripts.utility import *
 
-filepath = get_filepath("Specify the path to the coalescent tree. It should consist of one clade for more "
-                        "meaningful results:\n")
-coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=filepath)
-pedigree_filepath = get_filepath("Specify the path to the pedigree file:\n")
-simple_graph = SimpleGraph.get_diploid_graph_from_file(filepath=pedigree_filepath)
-coalescent_tree_individuals = {x // 2 for x in coalescent_tree.probands}
-unphased_probands = ([2 * x for x in coalescent_tree_individuals] +
-                     [2 * x + 1 for x in coalescent_tree_individuals])
-genealogical_graph = GenealogicalGraph(pedigree=simple_graph, probands=unphased_probands)
-# print("Processing the graph")
-# genealogical_graph = GenealogicalGraph(pedigree=Graph.get_pedigree_from_file(filename=pedigree_filepath),
-#                                        probands=coalescent_tree.probands)
-# print("The pedigree has been processed")
-simulation_dir_name = get_non_existing_path("Specify the name for the simulation directory:\n")
-os.makedirs(simulation_dir_name)
-os.chdir(simulation_dir_name)
-proband_number = len(coalescent_tree.probands)
-probands = list(coalescent_tree.probands)
-reduction_step = 300
-tests_per_step = 14
-values_for_simulation = [value for value in range(7638, 100, -400) if value > 100]
-values_for_simulation.extend([value for value in range(100, 9, -10) if value > 9])
 
-for probands_left in values_for_simulation:
-    os.makedirs(f"{probands_left}")
-    os.chdir(f"{probands_left}")
-    for i in range(tests_per_step):
-        print(f"Running {i + 1} simulation")
-        random_probands = random.sample(probands, probands_left)
-        os.makedirs(f"{i}")
-        os.chdir(f"{i}")
-        coalescent_tree.save_ascending_genealogy_to_file(filepath="clade", probands=random_probands)
-        probands_corresponding_individuals = {x // 2 for x in random_probands}
-        unphased_probands = ([2 * x for x in probands_corresponding_individuals] +
-                             [2 * x + 1 for x in probands_corresponding_individuals])
-        genealogical_graph.save_ascending_genealogy_to_file(filepath=f"{i}.pedigree", probands=unphased_probands)
+def run_interactive_session():
+    filepath = get_filepath("Specify the path to the coalescent tree. It should consist of one clade for more "
+                            "meaningful results:\n")
+    coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=filepath)
+    pedigree_filepath = get_filepath("Specify the path to the pedigree file:\n")
+    simple_graph = SimpleGraph.get_diploid_graph_from_file(filepath=pedigree_filepath)
+    pedigree_probands = get_pedigree_simulation_probands_for_alignment_mode(
+                                                                coalescent_tree=coalescent_tree,
+                                                                alignment_mode=InitialMatchingMode.INDIVIDUAL
+    )
+    saving_format = get_natural_number_input_in_bounds("Specify the output format:\n"
+                                                       "1) Tree-pedigree directories\n"
+                                                       "2) Trees grouped by proband size\n", 1, 2)
+    genealogical_graph = GenealogicalGraph(pedigree=simple_graph, probands=pedigree_probands)
+    simulation_dir_name = get_non_existing_path("Specify the name for the simulation directory:\n")
+    os.makedirs(simulation_dir_name)
+    os.chdir(simulation_dir_name)
+    probands = list(coalescent_tree.probands)
+    tests_per_step = 100
+    values_for_simulation = []
+    values_for_simulation.extend([value for value in range(100, 9, -10) if value > 9])
+
+    for probands_left in values_for_simulation:
+        os.makedirs(f"{probands_left}")
+        os.chdir(f"{probands_left}")
+        for i in range(tests_per_step):
+            print(f"Running {i + 1} simulation")
+            random_probands = random.sample(probands, probands_left)
+            probands_corresponding_individuals = {x // 2 for x in random_probands}
+            unphased_probands = ([2 * x for x in probands_corresponding_individuals] +
+                                 [2 * x + 1 for x in probands_corresponding_individuals])
+            if saving_format == 1:
+                os.makedirs(f"{i}")
+                os.chdir(f"{i}")
+                coalescent_tree.save_ascending_genealogy_to_file(filepath="clade", probands=random_probands)
+                genealogical_graph.save_ascending_genealogy_to_file(filepath=f"{i}.pedigree", probands=unphased_probands)
+                os.chdir("..")
+            else:
+                coalescent_tree.save_ascending_genealogy_to_file(filepath=f"{i}", probands=random_probands)
         os.chdir("..")
-    os.chdir("..")
+
+
+if __name__ == '__main__':
+    run_interactive_session()

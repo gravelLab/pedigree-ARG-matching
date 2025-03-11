@@ -23,7 +23,7 @@ def main():
     # Calculate cumulative sum for stacked plot
     cumulative_sum = df[y_columns].cumsum(axis=1)
 
-    plt.figure(figsize=(17, 8))
+    plt.figure(figsize=(27.16, 14))
 
     colors = ['#898989', '#00452c', '#00965f', '#f1c338', '#be5103']
     handles = []
@@ -36,9 +36,9 @@ def main():
                                     label=col, alpha=0.7)
         handles.append(fill)
 
-    plt.xlabel("Proband Number", fontsize=16)
-    plt.ylabel("Percentage (%)", fontsize=16)
-    plt.title(title, fontsize=16)
+    plt.xlabel("Proband Number", fontsize=20)
+    plt.ylabel("Percentage (%)", fontsize=20)
+    plt.title(title, fontsize=20)
 
     # Set y-axis limits explicitly
     plt.ylim(0, 100)
@@ -57,20 +57,28 @@ def main():
         grouped_handles,
         legend_labels,
         title="Categories",
-        title_fontsize=14,
+        title_fontsize=28,
         loc="upper center",
         bbox_to_anchor=(0.5, -0.15),
         ncol=3,
         columnspacing=1.5,
         frameon=False,
-        fontsize=14
+        fontsize=28
     )
 
-    plt.xticks(ticks=x, labels=x, fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.xlim(min(x), max(x))
+    plt.xticks(ticks=x, labels=x, fontsize=18)
+    # plt.gca().axes.get_xaxis().set_visible(False)
+
+    plt.yticks(fontsize=18)
+    # plt.xlim(min(x), max(x))
+    plt.xlim(4, max(x))
     # Use tight_layout for better adjustment
     plt.tight_layout()
+
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.gca().spines['left'].set_visible(False)
+    plt.gca().spines['bottom'].set_visible(False)
 
     # Save and display the plot
     plt.savefig(fname=f"{result_name}.svg")

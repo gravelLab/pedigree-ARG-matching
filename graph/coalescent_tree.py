@@ -35,6 +35,12 @@ class CoalescentTree(GenealogicalGraph):
         largest_clade = max(clades, key=lambda clade: intersection_size(clade))
         return largest_clade
 
+    def get_root_vertex(self):
+        top_level_vertices = self.get_top_level_vertices()
+        if len(top_level_vertices) > 1:
+            raise ValueError("The tree consists of more than one clade")
+        return top_level_vertices[0]
+
     def get_root_for_clade(self, clade: [int]):
         max_level_vertex = max(clade, key=lambda x: self.vertex_to_level_map[x])
         max_level = self.vertex_to_level_map[max_level_vertex]
