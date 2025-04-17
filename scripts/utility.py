@@ -82,13 +82,13 @@ def get_non_empty_string(input_request: str) -> str:
 
 def get_non_existing_path(input_request: str):
     while True:
-        directory_path = input(input_request)
-        if not directory_path:
+        path = input(input_request)
+        if not path:
             print("Specify a non-empty string")
-        elif os.path.exists(directory_path) and os.listdir(directory_path):
-            print("The specified directory already exists and is not empty, try again")
+        elif os.path.exists(path):
+            print("The specified path exists, try again")
         else:
-            return directory_path
+            return path
 
 
 def get_natural_number_input(input_request: str):
@@ -223,6 +223,8 @@ def dict_has_duplicate_values(dictionary: dict):
 
 def get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path: str | Path):
     tree_pedigree_directory_path = Path(tree_pedigree_directory_path)
+    if not tree_pedigree_directory_path.is_dir():
+        return None
     files = list(tree_pedigree_directory_path.glob("*"))
     files = [file.resolve() for file in files if file.is_file()]
     if len(files) != 2:

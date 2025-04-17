@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 import pandas as pd
 import matplotlib.pyplot as plt
 from scripts.utility import get_filepath, get_non_existing_path
@@ -5,18 +8,21 @@ from scripts.utility import get_filepath, get_non_existing_path
 
 def main():
     filepath = get_filepath("Specify the path to the data file:")
-    result_name = get_non_existing_path("Specify the resulting figure's filepath (without extension):")
+    os.chdir(Path(filepath).parent)
+    result_name = get_non_existing_path("Specify the resulting figure's filename (without extension):")
     title = input("Specify the title of the figure:")
-
     df = pd.read_csv(filepath)
-
+    # Ensure proband_number is sorted
+    # df = df.sort_values(by='proband_number')
     # Define x-axis and values to plot
     x = df['proband_number']
+    # x = range(len(df))
     y_columns = ['no_solutions', 'individual_and_spouses', 'individual_and_non_spouse',
-                 'no_individual_spouse', 'neither_individual_nor_spouse']
+                 'no_individual_spouse', 'neither_individual_nor_spouse',
+                 'neither_individual_nor_spouse_only_super_founders']
 
-    # Normalize the values to percentages
-    df['total'] = df[y_columns].sum(axis=1)
+    # Normalize the values to percentages. Replace 0 to avoid division by zero
+    df['total'] = df[y_columns].sum(axis=1).replace(0, 1)
     for col in y_columns:
         df[col] = (df[col] / df['total']) * 100
 
@@ -25,8 +31,14 @@ def main():
 
     plt.figure(figsize=(27.16, 14))
 
-    colors = ['#898989', '#00452c', '#00965f', '#f1c338', '#be5103']
+    colors = ['#898989', '#00452c', '#00965f', '#f1c338', '#be5103', '#b0aeae']
     handles = []
+
+    # bottom = None
+    # for i, col in enumerate(y_columns):
+    #     bar = plt.bar(x, df[col], bottom=bottom, color=colors[i], label=col, alpha=0.7, width=1.0, align='edge')
+    #     handles.append(bar)
+    #     bottom = df[col] if bottom is None else bottom + df[col]
 
     for i, col in enumerate(y_columns):
         if i == 0:
@@ -50,6 +62,7 @@ def main():
         "Individual present, and a non-spouse assignment present",
         "Individual not present, spouse present",
         "Neither individual nor spouse present",
+        "Neither individual nor spouse present, only super founders"
     ]
     grouped_handles = handles
 
@@ -63,7 +76,7 @@ def main():
         ncol=3,
         columnspacing=1.5,
         frameon=False,
-        fontsize=28
+        fontsize=18
     )
 
     plt.xticks(ticks=x, labels=x, fontsize=18)

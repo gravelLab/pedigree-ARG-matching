@@ -157,6 +157,22 @@ class CoalescentTree(GenealogicalGraph):
                     parents = self.parents_map[vertex]
                     file.write(f"{vertex} {' '.join(str(parent) for parent in parents)}\n")
 
+    def cut_edge(self, edge_child_vertex: int):
+        vertex_parents = self.parents_map[edge_child_vertex]
+        if len(vertex_parents) != 1:
+            raise ValueError(f"The specified vertex is either a root or the tree is in an invalid state")
+        vertex_parent = vertex_parents[0]
+        self.remove_edge(parent=vertex_parent, child=edge_child_vertex, recalculate_levels=False)
+        current_level = [edge_child_vertex]
+        while current_level:
+            next_level = []
+            for vertex in current_level:
+                next_level.extend(self.children_map.get(vertex, []))
+                self.remove_vertex(vertex, recalculate_levels=False)
+            current_level = next_level
+        self.initialize_vertex_to_level_map()
+        self.remove_unary_nodes()
+
     @staticmethod
     def get_coalescent_tree_from_file(filepath: str,
                                       missing_parent_notation=None, separation_symbol=' ',

@@ -194,6 +194,8 @@ class SimpleGraph:
 
         file = open(filepath, 'r')
         lines = file.readlines()
+        if not lines:
+            raise ValueError(f"The file {filepath} is empty")
         if skip_first_line or lines[0].__contains__('#'):
             lines.pop(0)
         for line in lines:
@@ -259,6 +261,8 @@ class SimpleGraph:
             warnings.warn(f"Individual {child} is specified multiple times in the graph."
                           f"The previous parents are {self.parents_map[child]}, new values: {parents}", UserWarning)
         else:
+            # TODO: We cannot calculate the number of vertices based on the number of valid input lines.
+            #  Consider removing this variable or fixing the logic
             self.vertices_number += 1
         for parent in parents:
             if parent not in missing_parent_notation:

@@ -5,7 +5,7 @@ from scripts.utility import *
 
 tree_filename = "clade"
 clade_ascending_pedigree_filename = "pedigree.pedigree"
-proband_number_limit = 40
+proband_number_limit = 80
 proband_number_tree_examples_limit = 10
 info_filename = "info.txt"
 

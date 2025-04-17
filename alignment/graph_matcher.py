@@ -459,8 +459,9 @@ class GraphMatcher:
 
     def filter_alignments(self, coalescent_tree_vertex_to_subtrees: dict):
         if self.matching_mode == MatchingMode.ALL_ALIGNMENTS:
-            # return self.filter_alignments_iteratively_recursive_cache(coalescent_tree_vertex_to_subtrees)
-            return self.filter_alignments_brute_force(coalescent_tree_vertex_to_subtrees)
+            return self.filter_alignments_iteratively_recursive_cache(coalescent_tree_vertex_to_subtrees)
+            # return self.filter_alignments_brute_force(coalescent_tree_vertex_to_subtrees)
+            # return self.filter_alignments_product_recursive(coalescent_tree_vertex_to_subtrees)
         return self.filter_alignments_example_per_root_assignment(coalescent_tree_vertex_to_subtrees)
 
     def filter_alignments_example_per_root_assignment(self, coalescent_tree_vertex_to_subtrees: dict):
@@ -468,9 +469,9 @@ class GraphMatcher:
         for clade_root_vertex, clade_root_vertex_assignments in coalescent_tree_vertex_to_subtrees.items():
             clade_alignments = []
             root_vertex_matchers: [SubtreeMatcher] = clade_root_vertex_assignments.values()
-            self.log(f"Looking for valid assignments for the root vertex {clade_root_vertex}"
+            self.log(f"Looking for valid assignments for the root vertex {clade_root_vertex}\n"
                      f" There are {len(root_vertex_matchers)}"
-                     f"unverified assignments to the root of the clade")
+                     f" unverified assignments to the root of the clade\n")
             for root_matcher in root_vertex_matchers:
                 assert clade_root_vertex == root_matcher.root_coalescent_tree
                 self.log(f"Finding an example alignment for the assignment "
@@ -524,7 +525,7 @@ class GraphMatcher:
             clade_alignments = []
             root_vertex_matchers: [SubtreeMatcher] = clade_root_vertex_assignments.values()
             self.log(f"Filtering the alignments, there are {len(root_vertex_matchers)}"
-                     f"unverified assignments to the root of the clade")
+                     f" unverified assignments to the root of the clade")
             for root_matcher in root_vertex_matchers:
                 self.log(f"Filtering the alignments for the root matcher "
                          f"{root_matcher.root_pedigree}")

@@ -77,7 +77,10 @@ def run_all_simulations_for_parent_directory_with_tree_pedigree_subdirectories(p
         tree_pedigree_directory_path = parent_directory / tree_pedigree_directory
         if not os.path.isdir(tree_pedigree_directory_path):
             continue
-        _, tree_path = get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path)
+        paths = get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path)
+        if not paths:
+            continue
+        _, tree_path = paths
         coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_path)
         polytomy_parents = (
             parent
@@ -129,8 +132,6 @@ def run_interactive_session_multiple_parent_directories_with_tree_pedigree_subdi
 
 
 def run_interactive_session():
-    result_directory_paths = Path(get_non_empty_string("Specify the path where the results are to be stored:"))
-    os.makedirs(result_directory_paths, exist_ok=True)
     mode_prompt = ("Specify the running mode:\n"
                    "1) Run the error simulation for a single tree.\n"
                    "2) Specify the path to a parent directory containing the tree-pedigree subdirectories.\nThe error "
@@ -141,6 +142,8 @@ def run_interactive_session():
     mode = get_natural_number_input_in_bounds(input_request=mode_prompt,
                                               lower_bound=1,
                                               upper_bound=3)
+    result_directory_paths = Path(get_non_empty_string("Specify the path where the results are to be stored:"))
+    os.makedirs(result_directory_paths, exist_ok=True)
     match mode:
         case 1:
             run_interactive_single_tree_mode(results_directory_paths=result_directory_paths)

@@ -88,7 +88,10 @@ def run_all_simulations_for_parent_directory_with_tree_pedigree_subdirectories(
         tree_pedigree_directory_path = parent_directory / tree_pedigree_directory
         if not os.path.isdir(tree_pedigree_directory_path):
             continue
-        _, tree_path = get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path)
+        paths = get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path)
+        if not paths:
+            continue
+        _, tree_path = paths
         coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_path)
         possible_error_vertices = [x for x in coalescent_tree.children_map if x in coalescent_tree.parents_map]
         results_subpath = results_path / tree_pedigree_directory
@@ -153,15 +156,11 @@ def run_interactive_session_multiple_parent_directories_with_tree_pedigree_subdi
 
 def run_interactive_session():
     running_mode_input = ("Specify the running mode:\n"
-                          "1) Specify a single directory\n"
-                          "2) Specify a parent directory containing tree-pedigree directories\n"
-                          "3) Specify a directory whose subdirectories are containing tree-pedigree directories "
+                          "1) Specify a single tree-pedigree directory\n"
+                          "2) Specify a parent directory containing tree-pedigree subdirectories\n"
+                          "3) Specify a super-parent directory whose subdirectories contain tree-pedigree directories "
                           "(Run the previous mode for all the subdirectories of a directory)\n")
     running_mode = get_natural_number_input_in_bounds(running_mode_input, 1, 3)
-    error_mode_prompt = ("Specify the error mode:\n"
-                         "1) Merge given number of edges (Create polytomies)\n"
-                         "2) Unmerge an edge (Resolve a polytomy)\n)")
-    error_mode = get_natural_number_input_in_bounds(error_mode_prompt, 1, 2)
     match running_mode:
         case 1:
             run_interactive_session_single_directory()

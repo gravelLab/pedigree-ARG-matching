@@ -23,8 +23,7 @@ def run_interactive_session():
     os.chdir(simulation_dir_name)
     probands = list(coalescent_tree.probands)
     tests_per_step = 100
-    values_for_simulation = []
-    values_for_simulation.extend([value for value in range(100, 9, -10) if value > 9])
+    values_for_simulation = list(range(40, 80))
 
     for probands_left in values_for_simulation:
         os.makedirs(f"{probands_left}")
