@@ -1,8 +1,16 @@
+import copy
 from collections import defaultdict
 
 from tskit import TreeSequence, Tree
 
 from graph.genealogical_graph import GenealogicalGraph, SimpleGraph
+
+from enum import Enum
+
+
+class Direction(Enum):
+    UP = 1,
+    DOWN = 2
 
 
 class CoalescentTree(GenealogicalGraph):
@@ -19,8 +27,24 @@ class CoalescentTree(GenealogicalGraph):
         self.initialize_vertex_to_level_map()
         self.initialize_genealogical_graph_from_probands()
 
+    def clone(self):
+        return copy.deepcopy(self)
+
     def get_vertex_parent(self, child: int):
-        return self.parents_map[child][0]
+        """
+        This function returns the unique parent vertex of the given vertex.
+        Args:
+            child: The child vertex id.
+
+        Returns:
+            The parent vertex id.
+        """
+        vertex_parents = self.parents_map.get(child, [])
+        if len(vertex_parents) > 1:
+            raise Exception(f"The tree is invalid, the vertex {child} has multiple parents")
+        if not vertex_parents:
+            return None
+        return vertex_parents[0]
 
     def get_largest_clade_by_size(self):
         clades = self.get_connected_components()
@@ -61,10 +85,8 @@ class CoalescentTree(GenealogicalGraph):
 
         children_map_vertices = narrow_function(self.children_map)
         parents_map_vertices = narrow_function(self.parents_map)
-        vertices_number = len(vertices)
         pedigree = SimpleGraph(children_map=defaultdict(list, children_map_vertices),
-                               parents_map=defaultdict(list, parents_map_vertices),
-                               vertices_number=vertices_number)
+                               parents_map=defaultdict(list, parents_map_vertices))
         return CoalescentTree(graph=pedigree)
 
     def remove_unary_nodes(self):
@@ -94,17 +116,6 @@ class CoalescentTree(GenealogicalGraph):
 
     def get_identity_solution(self):
         return {x: x for x in self.vertex_to_level_map}
-
-    # def save_to_file(self, filename: str):
-    #     file = open(filename, 'w')
-    #     self.write_levels_to_file(file, self.levels)
-    #     file.close()
-    #
-    # def save_ascending_genealogy_to_file(self, filename: str, probands: [int]):
-    #     levels = self.get_ascending_genealogy_from_vertices_by_levels(probands)
-    #     file = open(filename, 'w')
-    #     self.write_levels_to_file(filename, levels)
-    #     file.close()
 
     def remove_isolated_vertices(self, recalculate_levels: bool = True):
         isolated_vertices = [x for x in set(self.parents_map).union(self.children_map) if
@@ -153,23 +164,21 @@ class CoalescentTree(GenealogicalGraph):
     def write_levels_to_file(self, file, levels):
         for level in levels:
             for vertex in level:
-                if vertex in self.parents_map:
-                    parents = self.parents_map[vertex]
-                    file.write(f"{vertex} {' '.join(str(parent) for parent in parents)}\n")
+                vertex_parents = self.parents_map.get(vertex, ())
+                if vertex_parents:
+                    file.write(f"{vertex} {' '.join(str(parent) for parent in vertex_parents)}\n")
 
-    def cut_edge(self, edge_child_vertex: int):
-        vertex_parents = self.parents_map[edge_child_vertex]
-        if len(vertex_parents) != 1:
-            raise ValueError(f"The specified vertex is either a root or the tree is in an invalid state")
-        vertex_parent = vertex_parents[0]
-        self.remove_edge(parent=vertex_parent, child=edge_child_vertex, recalculate_levels=False)
-        current_level = [edge_child_vertex]
-        while current_level:
-            next_level = []
-            for vertex in current_level:
-                next_level.extend(self.children_map.get(vertex, []))
-                self.remove_vertex(vertex, recalculate_levels=False)
-            current_level = next_level
+    def cut_edge(self, edge_child_vertex: int, direction: Direction):
+        bottom_tree = self.get_vertex_descendants(edge_child_vertex)
+        # The chosen direction specifies which part of the tree should be kept
+        if direction == Direction.UP:
+            vertices_to_remove = bottom_tree
+        elif direction == Direction.DOWN:
+            vertices_to_remove = self.get_vertices().difference(bottom_tree)
+        else:
+            raise ValueError(f"The specified direction {direction} is not supported")
+        for vertex in vertices_to_remove:
+            self.remove_vertex(vertex, recalculate_levels=False)
         self.initialize_vertex_to_level_map()
         self.remove_unary_nodes()
 

@@ -1,33 +1,36 @@
 import os
 from pathlib import Path
 
-from graph.coalescent_tree import CoalescentTree
+from graph.coalescent_tree import CoalescentTree, Direction
 from scripts.utility import get_directory_path, get_non_existing_path
 
 metadata_header = ("This file specifies the number of probands for every tree in this directory\n"
                    "tree_index,proband_number")
 metadata_filename = ".metadata.txt"
 
+minimum_proband_number = 8
+
 
 def process_tree(filepath, tree_result_directory):
     try:
-        coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=filepath)
+        original_coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=filepath)
     except Exception as ex:
         print(f"Could not process {filepath} due to an exception")
         print(ex)
         return
     os.makedirs(tree_result_directory, exist_ok=True)
     # Saving the original tree as well
-    result_trees = [coalescent_tree]
-    coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=filepath)
-    # Finding the edges to be cut
-    vertices_to_remove = [x for x in coalescent_tree.parents_map if coalescent_tree.parents_map.get(x, [])]
+    result_trees = [original_coalescent_tree]
+    # Finding the edges to be cut. Notice that in a tree an edge can be identified by the child id
+    vertices_to_remove = [x for x in original_coalescent_tree.parents_map if original_coalescent_tree.parents_map.get(x, [])]
     # Process every edge
     for vertex in vertices_to_remove:
-        coalescent_tree.cut_edge(edge_child_vertex=vertex)
-        if coalescent_tree.probands:
-            result_trees.append(coalescent_tree)
-        coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=filepath)
+        # Keeping both bottom and upper parts of the tree
+        for direction in (Direction.UP, Direction.DOWN):
+            cloned_coalescent_tree = original_coalescent_tree.clone()
+            cloned_coalescent_tree.cut_edge(edge_child_vertex=vertex, direction=direction)
+            if len(cloned_coalescent_tree.probands) >= minimum_proband_number:
+                result_trees.append(cloned_coalescent_tree)
     # Save the trees by the number of probands
     result_trees.sort(key=lambda cut_tree: len(cut_tree.get_probands()), reverse=True)
     metadata_filepath = tree_result_directory / metadata_filename

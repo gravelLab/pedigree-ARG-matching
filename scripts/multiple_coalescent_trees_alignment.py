@@ -55,7 +55,10 @@ def run_interactive_session():
             os.mkdir(dir_name)
             os.chdir(dir_name)
             alignment_results = graph_matcher.find_mapping()
-            save_alignment_result_to_files(alignment_results, coalescent_tree, pedigree)
+            save_alignment_result_to_files(pedigree=pedigree,
+                                           coalescent_tree=coalescent_tree,
+                                           alignment_result=alignment_results
+                                           )
             clade_root = next(iter(alignment_results))
             alignments = alignment_results[clade_root]
             if alignments:

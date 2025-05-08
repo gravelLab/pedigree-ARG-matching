@@ -1,4 +1,4 @@
-from scripts.utility import *
+from matplotlib import pyplot as plt
 
 
 def main():
@@ -6,7 +6,6 @@ def main():
     # filename = "pedigrees/likelihood_comparison_simulation/full"
     filename2 = "pedigrees/likelihood_comparison_simulation/likelihood"
     # result = input("Specify the name of the resulting image:\n")
-    # result = f"{result}.png"
     result = "likelihood.png"
 
     # Assuming your data is stored in a file named 'data.txt'

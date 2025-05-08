@@ -1,5 +1,6 @@
 import argparse
 
+from alignment.driver_file import ProcessedDriverFile
 from alignment.graph_matcher import *
 from scripts.run_alignment import run_alignments_and_save_results
 from scripts.utility import *

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from alignment.graph_matcher import YAMLValidationError, ParsedDriverFile
+from alignment.driver_file import YAMLValidationError, ParsedDriverFile
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def invalid_alignment_duplicate_coalescent_ids_filepath(correct_initial_alignmen
 
 def test_correct_parsing(correct_initial_alignment_filepath):
     parsed_driver_file = ParsedDriverFile.parse_driver_file_and_validate_initial_assignments(
-            correct_initial_alignment_filepath
+        correct_initial_alignment_filepath
     )
     parsed_assignments = parsed_driver_file.initial_assignments
     expected_assignments = {1: [22], 2: [23], 3: [24, 26, 27], 4: [29, 30, 39]}

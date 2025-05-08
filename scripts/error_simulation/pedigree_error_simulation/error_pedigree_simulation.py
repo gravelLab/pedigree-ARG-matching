@@ -91,7 +91,7 @@ def run_interactive_session():
             #             != sorted(initial_children_map[x])]
             os.chdir("..")
     except KeyboardInterrupt:
-        print("Stop the simulation, log the final results")
+        print("Stop the simulation, log the cartegene_2_40_create_polytomy_edge_cut results")
 
 
 if __name__ == '__main__':

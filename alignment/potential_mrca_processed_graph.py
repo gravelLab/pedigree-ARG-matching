@@ -19,7 +19,6 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         self.vertex_to_ancestor_map: {int: {int: [int]}} = {key: dict() for key in self.vertex_to_level_map}
         if initialize_ancestor_maps:
             self.initialize_potential_mrca_map()
-        # self.inference_cache = dict()
 
     def initialize_potential_mrca_map(self):
         """
@@ -120,3 +119,22 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         if preprocess_graph:
             unprocessed_graph.initialize_potential_mrca_map()
         return unprocessed_graph
+
+    def get_minimal_path_length(self, descendant: int, ancestor: int) -> int:
+        current_level = {ancestor}
+        length = 0
+        ancestor_map = self.vertex_to_ancestor_map[descendant]
+        visited = set(current_level)
+        while current_level:
+            length += 1
+            next_level = {
+                v
+                for u in current_level
+                for v in ancestor_map.get(u, [])
+                if v not in visited
+            }
+            if descendant in next_level:
+                return length
+            visited.update(next_level)
+            current_level = next_level
+        raise ValueError(f"Descendant {descendant} not reachable from ancestor {ancestor}")

@@ -8,9 +8,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-import networkx as nx
-from matplotlib import pyplot as plt
-
 from graph.descendant_cache import DescendantCache
 from graph.descendant_memory_cache import DescendantMemoryCache
 from graph.simple_graph import *
@@ -41,6 +38,9 @@ class GenealogicalGraph(SimpleGraph):
         if initialize_levels:
             self.initialize_vertex_to_level_map()
         self.descendant_writer = DescendantMemoryCache()
+
+    def clone(self):
+        return copy.deepcopy(self)
 
     def _find_cycle(self):
         visited = set()  # To track visited nodes
@@ -204,7 +204,11 @@ class GenealogicalGraph(SimpleGraph):
 
     def remove_edge(self, parent: int, child: int, recalculate_levels: bool = True):
         self.parents_map[child].remove(parent)
+        if not self.parents_map[child]:
+            self.parents_map.pop(child)
         self.children_map[parent].remove(child)
+        if not self.children_map[parent]:
+            self.children_map.pop(parent)
         if recalculate_levels:
             self.initialize_vertex_to_level_map()
 
@@ -239,22 +243,6 @@ class GenealogicalGraph(SimpleGraph):
         @param recalculate_levels: Specified whether the levels are to be recalculated after removing the vertices
         from the graph
         """
-        # vertices_to_remove = frozenset(vertices)
-        # for vertex in vertices_to_remove:
-        #     self.children_map.pop(vertex, None)
-        #     self.parents_map.pop(vertex, None)
-        # for child, current_parents in list(self.parents_map.items()):
-        #     self.parents_map[child] = [x for x in current_parents if x not in vertices_to_remove]
-        # for parent, current_children in list(self.children_map.items()):
-        #     self.children_map[parent] = [x for x in current_children if x not in vertices_to_remove]
-        # if recalculate_levels:
-        #     self.initialize_vertex_to_level_map()
-        # else:
-        #     for vertex in vertices_to_remove:
-        #         self.vertex_to_level_map.pop(vertex, None)
-        #     self.levels = [
-        #         [x for x in level if x not in vertices_to_remove] for level in self.levels
-        #     ]
         for vertex in vertices:
             self.remove_vertex(vertex, False)
         if recalculate_levels:
@@ -294,20 +282,6 @@ class GenealogicalGraph(SimpleGraph):
                         [second_parent, _] = ploid_parents
                         second_parent_id = second_parent // 2
                 file.write(f"{vertex_individual_id} {first_parent_id} {second_parent_id}\n")
-
-    def draw_graph(self):
-        g = nx.DiGraph()
-        for level_index, level in enumerate(self.levels):
-            for vertex in level:
-                g.add_node(vertex, time=level_index)
-                vertex_parents = self.parents_map.get(vertex, [])
-                for parent in vertex_parents:
-                    g.add_edge(vertex, parent)
-        fig, ax = plt.subplots(figsize=(655, 655))
-        node_size = 1000
-        pos = nx.multipartite_layout(g, subset_key="time", align="horizontal")
-        nx.draw_networkx(g, pos, ax=ax, node_size=node_size, with_labels=True)
-        plt.savefig("small_graph.png")
 
     def save_ascending_genealogy_to_file(self, filepath: str, probands: [int]):
         levels = self.get_ascending_genealogy_from_vertices_by_levels(probands)

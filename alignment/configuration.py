@@ -11,8 +11,13 @@ class MatchingMode(Enum):
     EXAMPLE_PER_ROOT_ASSIGNMENT = 2,
 
 
-default_initial_matching_mode = InitialMatchingMode.INDIVIDUAL
-default_matching_mode = MatchingMode.EXAMPLE_PER_ROOT_ASSIGNMENT
+default_initial_mapping_mode = InitialMatchingMode.INDIVIDUAL
+default_alignment_mode = MatchingMode.ALL_ALIGNMENTS
+
+# Alignment statistics section start
+calculate_distances_histogram = False
+calculate_likelihood = False
+# Alignment statistics section end
 
 default_missing_parent_notation = "-1"
 default_separation_symbol = " "

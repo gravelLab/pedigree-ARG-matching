@@ -1,17 +1,106 @@
 import os
 import random
+from pathlib import Path
 
+import networkx
 import pytest
 
-from alignment.configuration import MatchingMode
+from alignment.configuration import MatchingMode, InitialMatchingMode
 from alignment.graph_matcher import GraphMatcher, get_initial_simulation_mapping_for_mode
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from graph.coalescent_tree import CoalescentTree, SimpleGraph
 from itertools import combinations
+from collections import Counter
+
+from scripts.utility import get_paths_from_tree_pedigree_directory, dict_has_duplicate_values
 
 pedigree_extension = ".pedigree"
 logs_folder_name = "logs"
 pedigrees_main_folder_name = "pedigrees"
+
+
+# ----------------------NetworkX implementation--------------------------------------
+
+def verify_valid_alignment_networkx(coalescent_tree: CoalescentTree, pedigree: PotentialMrcaProcessedGraph,
+                                    alignment: dict[int, int], root_vertex: int):
+    """
+    Verifies that the given alignment is correct.
+
+    Args:
+        coalescent_tree: The coalescent tree
+        pedigree: The pedigree
+        alignment (dict): The alignment to be verified.
+        root_vertex (int): The root vertex of the aligned clade.
+
+    Returns:
+        Whether the given alignment is correct.
+    """
+    if dict_has_duplicate_values(alignment):
+        return False
+    network_graph = networkx.DiGraph()
+    source_vertex_label = "s"
+    target_vertex_label = "t"
+    # Adding the edge from the root to the sink vertex
+    root_vertex_children_number = len(coalescent_tree.children_map[root_vertex])
+    assert root_vertex_children_number > 0
+    root_vertex_pedigree = alignment[root_vertex]
+    network_graph.add_edge(root_vertex_pedigree, target_vertex_label,
+                           capacity=root_vertex_children_number)
+    proband_number = 0
+    for parent in alignment:
+        parent_pedigree = alignment[parent]
+        if parent not in coalescent_tree.children_map:
+            network_graph.add_edge(source_vertex_label, parent_pedigree, capacity=1)
+            proband_number += 1
+            continue
+        children = coalescent_tree.children_map[parent]
+        assert len(children) > 0
+        children_pedigree = [alignment[x] for x in children if alignment.get(x) is not None]
+        children_number = len(children_pedigree)
+        add_edges_to_mrca_from_descendants_networkx(pedigree, network_graph, parent_pedigree, children_pedigree)
+        if parent_pedigree != root_vertex_pedigree:
+            network_graph.add_edge(parent_pedigree, target_vertex_label, capacity=children_number - 1)
+    maximum_flow = networkx.maximum_flow_value(flowG=network_graph, _s=source_vertex_label, _t=target_vertex_label)
+    return maximum_flow == proband_number
+
+
+def add_edges_to_mrca_from_descendants_networkx(pedigree: PotentialMrcaProcessedGraph,
+                                                flow_network: networkx.DiGraph, mrca: int,
+                                                descendant_vertices: [int]):
+    """
+    Adds all the paths from the given descendant vertices to the specified mrca to the specified graph.
+
+    Args:
+        pedigree: The pedigree.
+        flow_network (networkx.DiGraph): The graph to which the edges are added.
+        mrca (int): The mrca of the descendant vertices.
+        descendant_vertices (list[int]): The descendant vertices sharing the mrca.
+    """
+    mrca_access_label = f"{mrca}'"
+    flow_network.add_edge(mrca_access_label, mrca, capacity=len(descendant_vertices))
+    for descendant in descendant_vertices:
+        current_level_vertices = [mrca]
+        while current_level_vertices:
+            next_level_vertices = set()
+            for vertex in current_level_vertices:
+                if vertex == descendant:
+                    continue
+                neighbors = pedigree.vertex_to_ancestor_map[descendant].get(vertex, [])
+                for neighbor in neighbors:
+                    vertex_access_label = f"{vertex}'"
+                    # We can potentially override the edge's capacity if vertex is the mrca in the
+                    # coalescent tree
+                    if not flow_network.has_edge(vertex_access_label, vertex):
+                        flow_network.add_edge(vertex_access_label, vertex, capacity=1)
+                    flow_network.add_edge(neighbor, vertex_access_label, capacity=1)
+                next_level_vertices.update(neighbors)
+            current_level_vertices = next_level_vertices
+
+
+# --------------------------- End NetworkX implementation-----------------------------------
+
+def dict_list_equal_ignore_order(list1, list2):
+    return Counter(frozenset(d.items()) for d in list1) == Counter(frozenset(d.items()) for d in list2)
 
 
 def find_paths_for_one_vertex(graph: PotentialMrcaProcessedGraph, descendant: int):
@@ -70,6 +159,13 @@ def verify_pedigree_coalescent_tree_alignment(pedigree: PotentialMrcaProcessedGr
         verify_clade_alignments_locally_consistent(coalescent_tree=coalescent_tree, pedigree=pedigree,
                                                    clade_alignments=clade_alignments)
         verify_all_root_candidate_ploids_found(clade_alignments=clade_alignments, clade_root=coalescent_tree_root)
+        for alignment in clade_alignments:
+            assert verify_valid_alignment_networkx(
+                coalescent_tree=coalescent_tree,
+                pedigree=pedigree,
+                alignment=alignment,
+                root_vertex=coalescent_tree_root
+            )
 
 
 def find_vertex_ancestors(pedigree: PotentialMrcaProcessedGraph, vertex: int):
@@ -278,3 +374,159 @@ def test_generated_pedigrees_alignments(directory_entry):
     print(f"Testing the algorithm on {directory_entry}")
     run_verification_for_pedigree_directory(directory_name=directory_entry)
     print(f"{directory_entry} has been tested")
+
+
+@pytest.fixture
+def invalid_alignment_discarded_1():
+    return Path(os.path.dirname(os.path.abspath(__file__))) / "test_invalid_alignment_is_discarded_1"
+
+
+def test_invalid_alignment_discarded_1(invalid_alignment_discarded_1):
+    paths = get_paths_from_tree_pedigree_directory(invalid_alignment_discarded_1)
+    if not paths:
+        raise ValueError(f"{invalid_alignment_discarded_1} is not a valid tree-pedigree directory")
+    pedigree_path, tree_path = paths
+    pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(pedigree_path)
+    tree = CoalescentTree.get_coalescent_tree_from_file(tree_path)
+    root_vertex = tree.get_root_vertex()
+    initial_mapping = get_initial_simulation_mapping_for_mode(coalescent_tree=tree,
+                                                              mode=InitialMatchingMode.INDIVIDUAL)
+    matcher = GraphMatcher(
+        processed_graph=pedigree,
+        coalescent_tree=tree,
+        matching_mode=MatchingMode.ALL_ALIGNMENTS,
+        logs_path=None,
+        initial_mapping=initial_mapping
+    )
+    result = matcher.find_mapping()
+    expected_alignments = [
+        {2: 2, 4: 4, 3: 6},
+        {2: 2, 4: 4, 3: 7},
+        {2: 2, 4: 4, 3: 12},
+        {2: 2, 4: 4, 3: 13}
+    ]
+    assert root_vertex in result, "The root vertex hasn't been mapped"
+    alignments = result[root_vertex]
+    assert dict_list_equal_ignore_order(alignments, expected_alignments), "Didn't find the expected alignments"
+    invalid_alignments = [
+        {
+            2: 6, 4: 8, 3: 12
+        },
+        {
+            2: 6, 4: 8, 3: 13
+        },
+        {
+            2: 7, 4: 10, 3: 12
+        },
+        {
+            2: 7, 4: 10, 3: 13
+        },
+        {
+            2: 9, 4: 10, 3: 13
+        },
+        {
+            2: 7, 4: 11, 3: 13
+        },
+        {
+            2: 7, 4: 8, 3: 2
+        }
+    ]
+    for invalid_alignment in invalid_alignments:
+        assert not matcher.verify_valid_alignment(invalid_alignment)
+
+
+def find_alignments_for_path(directory_path: str | Path, initial_mapping: dict[int, [int]]):
+    paths = get_paths_from_tree_pedigree_directory(directory_path)
+    if not paths:
+        raise ValueError(f"{directory_path} is not a valid tree-pedigree directory")
+    pedigree_path, tree_path = paths
+    pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path)
+    tree = CoalescentTree.get_coalescent_tree_from_file(tree_path)
+    tree_root = tree.get_root_vertex()
+    matcher = GraphMatcher(
+        processed_graph=pedigree,
+        coalescent_tree=tree,
+        initial_mapping=initial_mapping,
+        matching_mode=MatchingMode.ALL_ALIGNMENTS,
+        logs_path=None,
+    )
+    alignments_map = matcher.find_mapping()
+    alignments = alignments_map[tree_root]
+    return matcher, alignments
+
+
+@pytest.fixture
+def test_collision_is_rejected_1_path():
+    return Path(os.path.dirname(os.path.abspath(__file__))) / "test_collision_is_rejected_1"
+
+
+def test_collision_is_rejected_1(test_collision_is_rejected_1_path):
+    initial_mapping = {
+        7: [2],
+        8: [4],
+        10: [14]
+    }
+    matcher, alignments = find_alignments_for_path(directory_path=test_collision_is_rejected_1_path,
+                                                   initial_mapping=initial_mapping
+                                                   )
+    expected_alignments = [
+        {
+            7: 2,
+            8: 4,
+            10: 14,
+            9: 6
+        },
+        {
+            7: 2,
+            8: 4,
+            10: 14,
+            9: 7
+        }
+    ]
+    assert dict_list_equal_ignore_order(expected_alignments, alignments)
+    invalid_alignment = {
+        7: 2,
+        8: 4,
+        10: 14,
+        9: 12
+    }
+    assert not matcher.verify_valid_alignment(alignment=invalid_alignment)
+    invalid_alignment[9] = 13
+    assert not matcher.verify_valid_alignment(alignment=invalid_alignment)
+
+
+@pytest.fixture
+def test_collision_is_rejected_2_path():
+    return Path(os.path.dirname(os.path.abspath(__file__))) / "test_collision_is_rejected_2"
+
+
+def test_collision_is_rejected_2(test_collision_is_rejected_2_path):
+    initial_mapping = {
+        1: [2],
+        2: [4],
+        4: [14],
+        5: [16],
+    }
+    _, alignments = find_alignments_for_path(directory_path=test_collision_is_rejected_2_path,
+                                             initial_mapping=initial_mapping)
+    expected_alignments = [
+        {
+            1: 2,
+            2: 4,
+            4: 14,
+            5: 16,
+            3: 6,
+            6: 18,
+            7: 20
+        },
+        {
+            1: 2,
+            2: 4,
+            4: 14,
+            5: 16,
+            3: 6,
+            6: 18,
+            7: 21
+        }
+    ]
+    assert dict_list_equal_ignore_order(expected_alignments, alignments)

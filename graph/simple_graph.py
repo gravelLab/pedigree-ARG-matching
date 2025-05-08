@@ -6,6 +6,7 @@ genealogical graph (i.e. a pedigree or a coalescent tree) and building the paren
 from __future__ import annotations
 import itertools
 import warnings
+import copy
 
 from tskit import Tree
 
@@ -16,19 +17,25 @@ class SimpleGraph:
     (children-parent relationships) in a graph
     """
 
-    def __init__(self, children_map: dict = None, parents_map: dict = None, vertices_number: int = 0):
+    def __init__(self, children_map: dict = None, parents_map: dict = None):
         if parents_map is None:
             parents_map = dict()
         if children_map is None:
             children_map = dict()
         self.children_map = children_map
         self.parents_map = parents_map
-        self.vertices_number = vertices_number
+        self._calculate_number_of_vertices()
 
     def __contains__(self, item):
         if not isinstance(item, int):
             return False
         return item in self.children_map or item in self.parents_map
+
+    def clone(self):
+        return copy.deepcopy(self)
+
+    def _calculate_number_of_vertices(self):
+        self.vertices_number = len(set(self.children_map).union(self.parents_map))
 
     def get_connected_components(self):
         """!
@@ -123,12 +130,16 @@ class SimpleGraph:
 
     def add_child(self, parent: int, child: int):
         """!
-        @brief This function updated the children map for the given parent-child relationship.
+        @brief This function updates the children map for the given parent-child relationship.
         @param parent The parent id.
         @param child The child id.
         """
+        if parent not in self.parents_map:
+            self.parents_map[parent] = []
         self.children_map[parent].append(child)
-        self.vertices_number += 1
+        if child not in self.parents_map:
+            self.parents_map[child] = []
+        self.parents_map[child].append(parent)
 
     @staticmethod
     def get_graph_from_tree(tree: Tree):
@@ -140,6 +151,7 @@ class SimpleGraph:
         graph.parents_map = tree.parent_dict
         for (child, parent) in tree.parent_dict.items():
             graph.add_child(parent=parent, child=child)
+        graph._calculate_number_of_vertices()
         return graph
 
     def add_edge(self, parent: int, child: int):
@@ -183,14 +195,14 @@ class SimpleGraph:
 
         def process_line(file_line: str):
             if ploidy == 1:
-                pedigree.add_haploid_line(line=file_line, max_parent_number=max_parent_number,
-                                          missing_parent_notation=missing_parent_notation,
-                                          separation_symbol=separation_symbol)
+                pedigree._add_haploid_line(line=file_line, max_parent_number=max_parent_number,
+                                           missing_parent_notation=missing_parent_notation,
+                                           separation_symbol=separation_symbol)
             else:
-                pedigree.add_line_from_pedigree(line=file_line,
-                                                max_parent_number=max_parent_number,
-                                                missing_parent_notation=missing_parent_notation,
-                                                separation_symbol=separation_symbol)
+                pedigree._add_line_from_pedigree(line=file_line,
+                                                 max_parent_number=max_parent_number,
+                                                 missing_parent_notation=missing_parent_notation,
+                                                 separation_symbol=separation_symbol)
 
         file = open(filepath, 'r')
         lines = file.readlines()
@@ -201,6 +213,7 @@ class SimpleGraph:
         for line in lines:
             process_line(line)
         file.close()
+        pedigree._calculate_number_of_vertices()
         return pedigree
 
     @staticmethod
@@ -244,9 +257,10 @@ class SimpleGraph:
         return list(map(lambda name: int(name) if name not in missing_parent_notation else name,
                         line.strip('\n').split(separation_symbol)[:max_parent_number + 1]))
 
-    def add_haploid_line(self, line: str, max_parent_number: int, separation_symbol=' ', missing_parent_notation=None):
+    def _add_haploid_line(self, line: str, max_parent_number: int, separation_symbol=' ', missing_parent_notation=None):
         """!
         @brief Processes the given line and updated the graph, treating every individual as haploid.
+        This function does not update the number of vertices
         """
         if missing_parent_notation is None:
             missing_parent_notation = ("-1", '.')
@@ -260,16 +274,12 @@ class SimpleGraph:
         if child in self.parents_map:
             warnings.warn(f"Individual {child} is specified multiple times in the graph."
                           f"The previous parents are {self.parents_map[child]}, new values: {parents}", UserWarning)
-        else:
-            # TODO: We cannot calculate the number of vertices based on the number of valid input lines.
-            #  Consider removing this variable or fixing the logic
-            self.vertices_number += 1
         for parent in parents:
             if parent not in missing_parent_notation:
                 self.add_edge(parent=parent, child=child)
 
-    def add_line_from_pedigree(self, line: str, max_parent_number: int,
-                               missing_parent_notation=None, separation_symbol=' '):
+    def _add_line_from_pedigree(self, line: str, max_parent_number: int,
+                                missing_parent_notation=None, separation_symbol=' '):
         """!
         @brief This function processes a single line from a pedigree and updates the graph accordingly.
         It treats every id as a diploid individual, so if the individual's id is x, then the resulting graph

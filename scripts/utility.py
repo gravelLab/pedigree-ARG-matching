@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 from scipy.stats import poisson
 import random
 from math import ceil
@@ -155,18 +154,6 @@ def read_mapping_from_file(filepath):
     return parsed_dict
 
 
-def build_histogram(histogram_filepath: str, dictionary: dict):
-    x = list(dictionary.keys())
-    y = list(dictionary.values())
-
-    plt.bar(x, y)
-    plt.xlabel('Distances')
-    plt.ylabel('Frequency')
-    plt.title('Distance histogram')
-    plt.savefig(f"{histogram_filepath}.png")
-    plt.close()
-
-
 def random_subselect(input_list, percentage):
     # Calculate the number of elements to select
     num_elements = ceil(len(input_list) * percentage)
@@ -221,6 +208,10 @@ def dict_has_duplicate_values(dictionary: dict):
     return False
 
 
+def dict_is_identity(dictionary: dict) -> bool:
+    return all(k == v for k, v in dictionary.items())
+
+
 def get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path: str | Path):
     tree_pedigree_directory_path = Path(tree_pedigree_directory_path)
     if not tree_pedigree_directory_path.is_dir():
@@ -231,6 +222,8 @@ def get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path: str | P
         return None
     pedigree_filename = next((file for file in files if file.suffix == ".pedigree"), None)
     tree_filename = next((file for file in files if file != pedigree_filename), None)
+    if not pedigree_filename or not tree_filename:
+        return None
     pedigree_filepath = tree_pedigree_directory_path / pedigree_filename
     tree_filepath = tree_pedigree_directory_path / tree_filename
     return pedigree_filepath, tree_filepath

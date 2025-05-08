@@ -14,11 +14,11 @@ Specifically, given the following inputs:
 
 1. **The Pedigree** :math:`P`;
 2. **The ARG** :math:`A`: An ARG with a set of leaf vertices :math:`L`, representing genetic transmissions within :math:`P`;
-3. **Initial Assignments**: A mapping :math:`f: V(L) \to 2^{P} \setminus \emptyset`, specifying initial relationships between ARG leaves and pedigree vertices,
+3. **Initial Assignments**: A mapping :math:`f: L \to 2^{V(P)} \setminus \{\emptyset\}`, specifying initial relationships between ARG leaves and pedigree vertices,
 
 the algorithm computes all possible **alignments** between :math:`A` and :math:`P`. An alignment is a function that assigns every vertex in the ARG to a vertex in the pedigree.
 
-Formally, it is defined as :math:`h: V(A) \to 2^{P} \setminus \emptyset`.
+Formally, it is defined as :math:`h: V(A) \to 2^{V(P)} \setminus \{\emptyset\}`.
 
 In other words, the goal is to find valid extensions of the initial assignments provided as input.
 

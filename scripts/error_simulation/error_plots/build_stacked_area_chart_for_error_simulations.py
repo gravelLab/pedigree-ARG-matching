@@ -19,7 +19,8 @@ def main():
     # x = range(len(df))
     y_columns = ['no_solutions', 'individual_and_spouses', 'individual_and_non_spouse',
                  'no_individual_spouse', 'neither_individual_nor_spouse',
-                 'neither_individual_nor_spouse_only_super_founders']
+                 #'neither_individual_nor_spouse_only_super_founders'
+                 ]
 
     # Normalize the values to percentages. Replace 0 to avoid division by zero
     df['total'] = df[y_columns].sum(axis=1).replace(0, 1)
@@ -48,9 +49,9 @@ def main():
                                     label=col, alpha=0.7)
         handles.append(fill)
 
-    plt.xlabel("Proband Number", fontsize=20)
-    plt.ylabel("Percentage (%)", fontsize=20)
-    plt.title(title, fontsize=20)
+    plt.xlabel("Proband Number", fontsize=30)
+    plt.ylabel("Percentage (%)", fontsize=30)
+    plt.title(title, fontsize=30, pad=30)
 
     # Set y-axis limits explicitly
     plt.ylim(0, 100)
@@ -62,7 +63,7 @@ def main():
         "Individual present, and a non-spouse assignment present",
         "Individual not present, spouse present",
         "Neither individual nor spouse present",
-        "Neither individual nor spouse present, only super founders"
+        #"Neither individual nor spouse present, only super founders"
     ]
     grouped_handles = handles
 
@@ -79,10 +80,10 @@ def main():
         fontsize=18
     )
 
-    plt.xticks(ticks=x, labels=x, fontsize=18)
+    plt.xticks(ticks=x, labels=x, fontsize=28)
     # plt.gca().axes.get_xaxis().set_visible(False)
 
-    plt.yticks(fontsize=18)
+    plt.yticks(fontsize=28)
     # plt.xlim(min(x), max(x))
     plt.xlim(4, max(x))
     # Use tight_layout for better adjustment

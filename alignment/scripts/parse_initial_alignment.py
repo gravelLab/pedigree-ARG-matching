@@ -1,4 +1,4 @@
-from alignment.graph_matcher import ParsedDriverFile
+from alignment.driver_file import ParsedDriverFile
 from scripts.utility import *
 
 

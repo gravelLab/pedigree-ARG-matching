@@ -8,10 +8,15 @@ import traceback
 import warnings
 from abc import ABC, abstractmethod
 from concurrent.futures import as_completed, ProcessPoolExecutor
+from functools import reduce
+
+from matplotlib import pyplot as plt
+from scipy import stats
 
 from alignment.graph_matcher import *
 from scripts import utility
-from scripts.run_alignment import save_alignment_result_to_files
+from scripts.alignment_similarity import calculate_percentage_of_correct_assignments
+from scripts.run_alignment import save_alignment_result_to_files, get_alignment_likelihood
 from scripts.utility import *
 
 log_directory = "log_dir"
@@ -19,9 +24,19 @@ initial_alignment_dir_name = "initial_alignment"
 general_result_filename = "simulation_result.txt"
 detailed_result_filename = "detailed_simulation_result.txt"
 results_csv_filename = "results_by_clade.csv"
+percentile_csv_filename = "percentiles_by_clade.csv"
 partial_results_csv_filename = "partial_results.csv"
-csv_header = ("proband_number,no_solutions,individual_and_spouses,individual_and_non_spouse,"
-              "no_individual_spouse,neither_individual_nor_spouse,neither_individual_nor_spouse_only_super_founders\n")
+classification_csv_header = ("proband_number,no_solutions,individual_and_spouses,individual_and_non_spouse,"
+                             "no_individual_spouse,neither_individual_nor_spouse,"
+                             "neither_individual_nor_spouse_only_super_founders\n")
+percentile_csv_header = "proband_number,identity_percentile,number_of_alignments\n"
+results_dir_name = "results"
+
+# Alignment likelihoods
+alignment_likelihoods_csv_filename = "alignment_likelihoods.csv"
+alignment_likelihoods_svg_filename = "alignment_likelihoods.png"
+alignment_likelihoods_csv_header = "correctness_ration, alignment_likelihood\n"
+
 total_results_filename = "total_results.txt"
 line_content_divider = "------------------------------------\n"
 line_section_divider = "#####################################\n"
@@ -159,11 +174,11 @@ def save_multiple_alignment_classifications(results_csv_file,
 
 
 def save_alignment_results_sorted_by_proband_number(
-                        results_csv_filepath: str | Path,
-                        proband_number_to_result: dict[int, AlignmentClassification]) -> AlignmentClassification:
+        results_csv_filepath: str | Path,
+        proband_number_to_result: dict[int, AlignmentClassification]) -> AlignmentClassification:
     global_alignment_classification = AlignmentClassification()
     with open(results_csv_filepath, "a") as results_csv_file:
-        results_csv_file.write(csv_header)
+        results_csv_file.write(classification_csv_header)
         for proband_number, proband_number_classifications in sorted(proband_number_to_result.items()):
             for proband_number_classification in proband_number_classifications:
                 row = proband_number_classification.csv_row(proband_number=str(proband_number))
@@ -319,15 +334,17 @@ class AlignmentTask(AbstractAlignmentTask):
                  file_access: AlignmentResultsFileAccess,
                  simulation_subdirectory_path: str | Path,
                  root_vertex_info: RootVertexSpouses = None,
-                 alignment_classification: AlignmentClassification = None):
+                 alignment_classification: AlignmentClassification = None,
+                 matching_mode: MatchingMode = default_alignment_mode):
         super().__init__(file_access=file_access, alignment_classification=alignment_classification,
                          root_vertex_info=root_vertex_info)
         self.pedigree_path = pedigree_path
         self.coalescent_tree_path = coalescent_tree_path
         self.file_access = file_access
         self.simulation_subdirectory_path = Path(simulation_subdirectory_path)
+        self.matching_mode = matching_mode
 
-    def run(self):
+    def run(self) -> (dict, CoalescentTree, PotentialMrcaProcessedGraph):
         print(f"Parsing {self.pedigree_path} [{self.coalescent_tree_path}]")
         coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=self.coalescent_tree_path)
         coalescent_tree.remove_unary_nodes()
@@ -348,7 +365,8 @@ class AlignmentTask(AbstractAlignmentTask):
         matcher = GraphMatcher(coalescent_tree=coalescent_tree,
                                processed_graph=pedigree,
                                logs_path=log_directory_path,
-                               initial_mapping=initial_mapping)
+                               initial_mapping=initial_mapping,
+                               matching_mode=self.matching_mode)
         result = matcher.find_mapping()
         if self.file_access.save_alignments:
             alignments_dir_path = str(self.simulation_subdirectory_path)
@@ -358,7 +376,7 @@ class AlignmentTask(AbstractAlignmentTask):
                                            directory_path=alignments_dir_path)
         self.classify_results(result=result, coalescent_tree=coalescent_tree,
                               pedigree=pedigree)
-        return self.error_results
+        return result, coalescent_tree, pedigree
 
 
 class MaximumAlignableSubcladeTask(AbstractAlignmentTask):
@@ -398,32 +416,44 @@ class MaximumAlignableSubcladeTask(AbstractAlignmentTask):
             return None
         return file_numbers
 
-    def run(self) -> (int, AlignmentClassification):
+    def run(self) -> (int, AlignmentClassification, dict):
         proband_number = None
         processed_tree_subclade_paths = self.process_tree_subclades_directory()
         if not processed_tree_subclade_paths:
             warnings.warn(f"Skipping, received an invalid tree-subclades directory path: "
                           f"{self.tree_subclades_dir_path}")
             return proband_number, self.error_results
+        solution_found = False
+        alignment = None
         for tree_index, tree_path in processed_tree_subclade_paths:
-            coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_path)
-            initial_mapping = get_initial_simulation_mapping_for_mode(coalescent_tree=coalescent_tree)
-            tree_log_directory = (self.simulation_subdirectory_path / f"{tree_index}"
-                                  / logs_default_directory_name)
-            os.makedirs(tree_log_directory, exist_ok=True)
-            matcher = GraphMatcher(coalescent_tree=coalescent_tree,
-                                   processed_graph=self.pedigree,
-                                   logs_path=tree_log_directory,
-                                   initial_mapping=initial_mapping)
-            result = matcher.find_mapping()
-            resulting_alignments = [d for lst in result.values() for d in lst]
-            if resulting_alignments:
-                # If the clade is alignable, stop
-                proband_number = len(coalescent_tree.get_probands())
-                self.classify_results(coalescent_tree=coalescent_tree, pedigree=self.pedigree,
-                                      result=result)
-                break
-        return proband_number, self.error_results
+            try:
+                coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_path)
+                initial_mapping = get_initial_simulation_mapping_for_mode(coalescent_tree=coalescent_tree)
+                tree_log_directory = (self.simulation_subdirectory_path / f"{tree_index}"
+                                      / logs_default_directory_name)
+                os.makedirs(tree_log_directory, exist_ok=True)
+                matcher = GraphMatcher(coalescent_tree=coalescent_tree,
+                                       processed_graph=self.pedigree,
+                                       logs_path=tree_log_directory,
+                                       initial_mapping=initial_mapping)
+                result = matcher.find_mapping()
+                resulting_alignments = [d for lst in result.values() for d in lst]
+                if resulting_alignments:
+                    # If the clade is alignable, stop
+                    proband_number = len(coalescent_tree.get_probands())
+                    self.classify_results(coalescent_tree=coalescent_tree, pedigree=self.pedigree,
+                                          result=result)
+                    solution_found = True
+                    alignment = result
+                    break
+            except Exception as ex:
+                warnings.warn(f"Alignment between the tree {tree_path}"
+                              f" and the initial pedigree has failed due to an exception")
+                raise ex
+        # It's still possible that there are no alignable subclades if a minimum proband number threshold is applied
+        if not solution_found:
+            self.error_results.no_solutions_counter += 1
+        return proband_number, self.error_results, alignment
 
 
 def run_initial_alignment(coalescent_tree: CoalescentTree, initial_pedigree: PotentialMrcaProcessedGraph,
@@ -564,7 +594,7 @@ class BaseErrorAlignmentComparison(ABC):
             for alignment_task in alignment_tasks:
                 alignment_task.run()
         except KeyboardInterrupt:
-            print("Stop the simulation, log the final results")
+            print("Stop the simulation, log the cartegene_2_40_create_polytomy_edge_cut results")
         except Exception as ex:
             print(f"Exception occurred: {ex}")
             traceback.print_exc()
@@ -872,7 +902,7 @@ def run_specific_error_pedigree_directories(paths: list[str], error_pedigrees_fo
     simulation_folder_path = error_pedigrees_folder_path.parent / simulation_subpath
     results_csv_filepath = simulation_folder_path / results_csv_filename
     with open(results_csv_filepath, "a") as results_file:
-        results_file.write(csv_header)
+        results_file.write(classification_csv_header)
         for parent_dir_name, tree_results in results:
             results_file.write(tree_results.csv_row(proband_number=parent_dir_name))
     return results
@@ -992,7 +1022,7 @@ def create_or_resolve_polytomy_script():
     partial_csv_filepath = simulation_path / partial_results_csv_filename
     proband_number_to_result = dict()
     with open(partial_csv_filepath, "a") as partial_result_csv_file:
-        partial_result_csv_file.write(csv_header)
+        partial_result_csv_file.write(classification_csv_header)
         for proband_number_directory in os.listdir(initial_data_parent_directory_path):
             try:
                 proband_number = int(proband_number_directory)
@@ -1018,17 +1048,69 @@ def create_or_resolve_polytomy_script():
             partial_result_csv_file.flush()
     results_csv_filepath = simulation_path / results_csv_filename
     global_alignment_classification = save_alignment_results_sorted_by_proband_number(
-                                            results_csv_filepath=results_csv_filepath,
-                                            proband_number_to_result=proband_number_classification
+        results_csv_filepath=results_csv_filepath,
+        proband_number_to_result=proband_number_classification
     )
     os.remove(partial_csv_filepath)
     return global_alignment_classification
 
 
+def save_alignment_likelihood_to_file(alignment_filepath: str | Path, tree: CoalescentTree,
+                                      pedigree: PotentialMrcaProcessedGraph, alignments: [dict]):
+    results = []
+    identity_found = False
+    alignments_likelihoods = []
+    identity_likelihood = None
+    # Calculate all likelihoods
+    for alignment in alignments:
+        alignments_likelihood = get_alignment_likelihood(
+            coalescent_tree=tree,
+            pedigree=pedigree,
+            alignment=alignment
+        )
+        alignment_correctness_ration = calculate_percentage_of_correct_assignments(alignment)
+        alignment_is_identity = alignment_correctness_ration == 1.0
+        if alignment_is_identity:
+            identity_found = True
+            identity_likelihood = alignments_likelihood
+        alignments_likelihoods.append(alignments_likelihood)
+        results.append((alignment_correctness_ration, alignments_likelihood))
+    # Sort by likelihood in decreasing order
+    if not identity_found:
+        raise Exception("Identity not found")
+    results.sort(key=lambda x: x[1], reverse=True)
+    data_filepath = alignment_filepath / alignment_likelihoods_csv_filename
+    with open(data_filepath, "a") as likelihoods_file:
+        likelihoods_file.write(alignment_likelihoods_csv_header)
+        for alignment_is_identity, alignments_likelihood in results:
+            likelihoods_file.write(f"{alignment_is_identity},{alignments_likelihood}\n")
+    diagram_filepath = alignment_filepath / alignment_likelihoods_svg_filename
+    # Highlight the correct alignment
+    highlighted = [(y, x) for (y, x) in results if y == 1.0]
+    assert len(highlighted) == 1
+    others = [(y, x) for (y, x) in results if y != 1.0]
+    y_vals_others, x_vals_others = zip(*others) if others else ([], [])
+    y_vals_highlight, x_vals_highlight = zip(*highlighted) if highlighted else ([], [])
+    plt.figure(figsize=(12, 9))
+    plt.scatter(x_vals_others, y_vals_others)
+    plt.scatter(x_vals_highlight, y_vals_highlight, color='green')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlabel("Alignment Likelihood (log scale)")
+    plt.ylabel("Correctness Ratio (log scale)")
+    plt.title("Correctness Ratio vs. Alignment Likelihood (Log-Log)")
+    plt.grid(True, which="both", ls="--")
+    plt.savefig(diagram_filepath, dpi=300)
+    plt.close()
+    return alignments_likelihoods, identity_likelihood
+
+
 def tree_pedigree_subdirectories():
     parent_directory = Path(get_directory_path("Specify the path to the parent directory:"))
     simulation_name = get_non_empty_string("Specify the simulation name:")
-    simulation_directory_path = parent_directory / simulation_name
+    results_directory_path = parent_directory / results_dir_name
+    os.makedirs(results_directory_path, exist_ok=True)
+    simulation_directory_path = results_directory_path / simulation_name
     os.mkdir(simulation_directory_path)
     alignment_tasks = []
     file_access = AlignmentResultsFileAccess(simulation_directory_path=simulation_directory_path)
@@ -1037,7 +1119,7 @@ def tree_pedigree_subdirectories():
         proband_number_directory_path = parent_directory / proband_number_directory
         if not os.path.isdir(proband_number_directory_path):
             continue
-        proband_alignment_classifications = []
+        proband_alignment_tasks = []
         for tree_pedigree_subdirectory in os.listdir(proband_number_directory_path):
             tree_pedigree_subdirectory_path = proband_number_directory_path / tree_pedigree_subdirectory
             paths = get_paths_from_tree_pedigree_directory(tree_pedigree_subdirectory_path)
@@ -1045,40 +1127,70 @@ def tree_pedigree_subdirectories():
                 continue
             pedigree_path, tree_path = paths
             proband_alignment_classification = AlignmentClassification()
-            simulation_subpath = tree_pedigree_subdirectory_path / simulation_name
+            results_path = tree_pedigree_subdirectory_path / results_dir_name
+            os.makedirs(results_path, exist_ok=True)
+            simulation_subpath = results_path / simulation_name
             alignment_task = AlignmentTask(pedigree_path=pedigree_path,
                                            coalescent_tree_path=tree_path,
                                            file_access=file_access,
                                            alignment_classification=proband_alignment_classification,
                                            simulation_subdirectory_path=simulation_subpath,
                                            # Deduct root vertex information automatically, as it stays the same
-                                           root_vertex_info=None)
+                                           root_vertex_info=None,
+                                           matching_mode=MatchingMode.ALL_ALIGNMENTS)
             alignment_tasks.append(alignment_task)
-            proband_alignment_classifications.append(proband_alignment_classification)
-        if not proband_alignment_classifications:
+            proband_alignment_tasks.append(alignment_task)
+        if not proband_alignment_tasks:
             continue
         proband_number_simulation_subpath = proband_number_directory_path / simulation_name
-        os.mkdir(proband_number_simulation_subpath)
-        proband_number_to_results[proband_number_simulation_subpath] = proband_alignment_classifications
-    for alignment_task in alignment_tasks:
-        alignment_task.run()
+        proband_number_to_results[proband_number_simulation_subpath] = proband_alignment_tasks
+    # Run the alignments and save the likelihoods
     alignment_classifications = []
     results_csv_filepath = simulation_directory_path / results_csv_filename
-    with open(results_csv_filepath, "a") as results_csv_file:
-        results_csv_file.write(csv_header)
-        for proband_simulation_path, proband_alignment_classifications in proband_number_to_results.items():
+    average_percentile_per_proband_number_csv = simulation_directory_path / percentile_csv_filename
+    with (open(results_csv_filepath, "a") as results_csv_file,
+          open(average_percentile_per_proband_number_csv, "a") as percentile_csv_file):
+        results_csv_file.write(classification_csv_header)
+        percentile_csv_file.write(percentile_csv_header)
+        for proband_simulation_path, proband_alignment_tasks in proband_number_to_results.items():
+            proband_alignment_tasks: [AlignmentTask]
+            for alignment_task in proband_alignment_tasks:
+                try:
+                    alignment_dictionary, tree, pedigree = alignment_task.run()
+                    tree: CoalescentTree
+                except KeyboardInterrupt:
+                    warnings.warn("Skipping the alignment")
+                    continue
+                if len(alignment_dictionary) != 1:
+                    raise Exception(f"The tree {alignment_task.coalescent_tree_path} does not have a single root")
+                alignments = alignment_dictionary[alignment_task.root_vertex_info.vertex_ploid_id]
+                filepath = alignment_task.simulation_subdirectory_path
+                # TODO: Avoid calculating the likelihoods twice in a normal way
+                alignments_likelihoods, identity_likelihood = save_alignment_likelihood_to_file(
+                    alignment_filepath=filepath, tree=tree,
+                    pedigree=pedigree, alignments=alignments
+                )
+                proband_number = len(tree.get_probands())
+                identity_percentile = stats.percentileofscore(alignments_likelihoods, identity_likelihood,
+                                                              kind='mean')
+                percentile_csv_file.write(f"{proband_number},{identity_percentile},{len(alignments)}\n")
+                percentile_csv_file.flush()
             initial_directory_name = proband_simulation_path.parent.name
             proband_results_path = proband_simulation_path / total_results_filename
+            os.mkdir(proband_simulation_path)
             # Calculating the accumulative result for this proband number
-            proband_result = reduce(lambda x, y: x.add_results(y), proband_alignment_classifications)
+            proband_classifications = [x.error_results for x in proband_alignment_tasks]
+            proband_result = reduce(lambda x, y: x.add_results(y),
+                                    proband_classifications)
             save_error_alignments_to_file(proband_results_path, proband_result)
-            alignment_classifications.extend(proband_alignment_classifications)
+            alignment_classifications.extend(proband_classifications)
             # Log the results separately for every clade
             save_multiple_alignment_classifications(
                 results_csv_file=results_csv_file,
-                alignment_classifications=alignment_classifications,
+                alignment_classifications=proband_classifications,
                 proband_number=initial_directory_name
             )
+            results_csv_file.flush()
     return alignment_classifications
 
 
@@ -1116,7 +1228,7 @@ def edge_cut_maximum_alignable_subclade():
     # Run the alignments
     proband_number_to_results = defaultdict(list)
     with open(partial_results_filepath, "a") as partial_results_file:
-        partial_results_file.write(csv_header)
+        partial_results_file.write(classification_csv_header)
         for alignment_task_data_entry in alignment_task_data:
             pedigree_path, coalescent_tree_path, original_tree_directory_path = alignment_task_data_entry
             # We are going to align the pedigree with multiple trees, so it's better to process the initial pedigree
@@ -1125,12 +1237,12 @@ def edge_cut_maximum_alignable_subclade():
             # pedigree for the initial error-tree (which we use for edge cutting)
             pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path,
                                                                                  preprocess_graph=True)
-            coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
-            root_vertex = coalescent_tree.get_root_vertex()
-            del coalescent_tree
-            root_vertex_information = RootVertexSpouses.get_root_vertex_information_from_pedigree(
-                pedigree=pedigree, root_vertex_ploid_id=root_vertex
-            )
+            # coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
+            # root_vertex = coalescent_tree.get_root_vertex()
+            # del coalescent_tree
+            # root_vertex_information = RootVertexSpouses.get_root_vertex_information_from_pedigree(
+            #     pedigree=pedigree, root_vertex_ploid_id=root_vertex
+            # )
             for modified_tree_directory in os.listdir(original_tree_directory_path):
                 # This is the directory storing the data for the same modified tree.
                 # Specifically, it stores all the cut trees derived from the modified tree
@@ -1142,11 +1254,12 @@ def edge_cut_maximum_alignable_subclade():
                 task = MaximumAlignableSubcladeTask(
                     pedigree=pedigree,
                     tree_cut_clades_dir_path=modified_tree_directory_path,
-                    root_vertex_info=root_vertex_information,
+                    # Use the new root of the subclade for binning the result
+                    root_vertex_info=None,
                     file_access=file_access,
                     simulation_subdirectory_path=modified_tree_results_path
                 )
-                proband_number, alignment_classification = task.run()
+                proband_number, alignment_classification, _ = task.run()
                 if not proband_number:
                     continue
                 csv_row = alignment_classification.csv_row(proband_number=str(proband_number))
@@ -1155,8 +1268,8 @@ def edge_cut_maximum_alignable_subclade():
                 proband_number_to_results[proband_number].append(alignment_classification)
     results_csv_filepath = simulation_path / results_csv_filename
     global_alignment_classification = save_alignment_results_sorted_by_proband_number(
-                                            results_csv_filepath=results_csv_filepath,
-                                            proband_number_to_result=proband_number_to_results
+        results_csv_filepath=results_csv_filepath,
+        proband_number_to_result=proband_number_to_results
     )
     os.remove(partial_results_filepath)
     return global_alignment_classification
@@ -1177,7 +1290,7 @@ def run_interactive_session():
                    "grouped by the proband number. Then, specify a super-parent directory with modified trees "
                    "directories (e.g. obtained from the create/resolve polytomy script)\n"
                    "7) (Edge cut simulation) Align the maximum alignable subclade\n"
-                   "8) Run the alignments for a directory with multiple tree-pedigree subdirectories\n"
+                   "8) (Perfect data) Run the alignments for a directory with multiple tree-pedigree subdirectories\n"
                    )
     menu_option = get_natural_number_input_in_bounds(script_menu, 1, 8)
     if menu_option < 7:
