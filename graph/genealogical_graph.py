@@ -213,7 +213,13 @@ class GenealogicalGraph(SimpleGraph):
             self.initialize_vertex_to_level_map()
 
     def add_edge(self, parent: int, child: int, recalculate_levels: bool = True):
+        # TODO: Refactor the codebase, so that the children and the parents maps are defaultdict.
+        #  Create function for getting the parents and children to avoid direct access to the defaultdict
+        if child not in self.parents_map:
+            self.parents_map[child] = []
         self.parents_map[child].append(parent)
+        if parent not in self.children_map:
+            self.children_map[parent] = []
         self.children_map[parent].append(child)
         if recalculate_levels:
             self.initialize_vertex_to_level_map()

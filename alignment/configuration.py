@@ -12,7 +12,7 @@ class MatchingMode(Enum):
 
 
 default_initial_mapping_mode = InitialMatchingMode.INDIVIDUAL
-default_alignment_mode = MatchingMode.ALL_ALIGNMENTS
+default_alignment_mode = MatchingMode.EXAMPLE_PER_ROOT_ASSIGNMENT
 
 # Alignment statistics section start
 calculate_distances_histogram = False
@@ -25,5 +25,9 @@ default_skip_first_line = False
 
 logs_enabled = True
 logs_default_directory_name = "logs"
+
+# File extensions
+pedigree_extension = ".pedigree"
+tree_extension = ".tree"
 
 print_enabled = True

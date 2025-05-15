@@ -16,6 +16,7 @@ from scipy import stats
 from alignment.graph_matcher import *
 from scripts import utility
 from scripts.alignment_similarity import calculate_percentage_of_correct_assignments
+from scripts.error_simulation.tree_error_simulation.simulate_resolve_polytomy_tree_error import oracle_filename
 from scripts.run_alignment import save_alignment_result_to_files, get_alignment_likelihood
 from scripts.utility import *
 
@@ -200,10 +201,16 @@ class RootVertexSpouses:
         self.individual_and_spouses = individual_and_spouses
 
     @staticmethod
-    def get_root_vertex_information_from_pedigree(root_vertex_ploid_id: int, pedigree: SimpleGraph):
+    def get_root_vertex_information_from_pedigree(root_vertex_ploid_id: int, pedigree: SimpleGraph,
+                                                  oracle_dict: dict[int, int] = None):
+        if oracle_dict:
+            root_vertex_ploid_id = oracle_dict[root_vertex_ploid_id]
+        root_vertex_children = pedigree.children_map.get(root_vertex_ploid_id, [])
+        if not root_vertex_children:
+            raise ValueError("The root vertex pedigree assignment doesn't have children")
         root_vertex_children_all_ploids = [
             child_ploid
-            for child in pedigree.children_map[root_vertex_ploid_id]
+            for child in root_vertex_children
             for child_ploid in [2 * (child // 2), 2 * (child // 2) + 1]
         ]
         root_vertex_pedigree_individual_and_spouses = {p // 2 for child_ploid
@@ -276,7 +283,7 @@ class AbstractAlignmentTask(ABC):
         self.root_vertex_info = root_vertex_info
 
     def classify_results(self, coalescent_tree: CoalescentTree, pedigree: PotentialMrcaProcessedGraph,
-                         result: dict):
+                         result: dict, oracle_dict: dict[int, int] = None):
         # The root of the tree can, in principle, be different from the root of the initial, error-free
         # tree. We need to know the id to access the alignments for the clade's root
         coalescent_tree_root = coalescent_tree.get_root_vertex()
@@ -285,7 +292,8 @@ class AbstractAlignmentTask(ABC):
             # deduct them automatically (working with msprime simulations)
             self.root_vertex_info = RootVertexSpouses.get_root_vertex_information_from_pedigree(
                 pedigree=pedigree,
-                root_vertex_ploid_id=coalescent_tree_root
+                root_vertex_ploid_id=coalescent_tree_root,
+                oracle_dict=oracle_dict
             )
         resulting_alignments = [d for lst in result.values() for d in lst]
         self.error_results.total_simulation_number += 1
@@ -398,7 +406,7 @@ class MaximumAlignableSubcladeTask(AbstractAlignmentTask):
         # Extract filenames and check if they are valid natural numbers
         file_numbers = []
         for file in tree_files:
-            if file.name.startswith('.'):
+            if file.name.startswith('.') or file.name == oracle_filename:
                 continue
             try:
                 num = int(file.stem)
@@ -423,34 +431,46 @@ class MaximumAlignableSubcladeTask(AbstractAlignmentTask):
             warnings.warn(f"Skipping, received an invalid tree-subclades directory path: "
                           f"{self.tree_subclades_dir_path}")
             return proband_number, self.error_results
+        oracle_filepath = self.tree_subclades_dir_path / oracle_filename
+        oracle_dict = None
+        if os.path.exists(oracle_filepath):
+            oracle_dict = parse_dictionary_from_file(oracle_filepath)
         solution_found = False
         alignment = None
         for tree_index, tree_path in processed_tree_subclade_paths:
             try:
                 coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_path)
                 initial_mapping = get_initial_simulation_mapping_for_mode(coalescent_tree=coalescent_tree)
-                tree_log_directory = (self.simulation_subdirectory_path / f"{tree_index}"
-                                      / logs_default_directory_name)
+                tree_results_path = self.simulation_subdirectory_path / f"{tree_index}"
+                tree_log_directory = tree_results_path / logs_default_directory_name
                 os.makedirs(tree_log_directory, exist_ok=True)
                 matcher = GraphMatcher(coalescent_tree=coalescent_tree,
                                        processed_graph=self.pedigree,
                                        logs_path=tree_log_directory,
-                                       initial_mapping=initial_mapping)
+                                       initial_mapping=initial_mapping,
+                                       matching_mode=MatchingMode.EXAMPLE_PER_ROOT_ASSIGNMENT)
                 result = matcher.find_mapping()
                 resulting_alignments = [d for lst in result.values() for d in lst]
                 if resulting_alignments:
                     # If the clade is alignable, stop
                     proband_number = len(coalescent_tree.get_probands())
                     self.classify_results(coalescent_tree=coalescent_tree, pedigree=self.pedigree,
-                                          result=result)
+                                          result=result, oracle_dict=oracle_dict)
                     solution_found = True
                     alignment = result
+                    if self.file_access.save_alignments:
+                        alignments_dir_path = str(tree_results_path)
+                        save_alignment_result_to_files(alignment_result=result,
+                                                       coalescent_tree=coalescent_tree,
+                                                       pedigree=self.pedigree,
+                                                       directory_path=alignments_dir_path)
                     break
             except Exception as ex:
                 warnings.warn(f"Alignment between the tree {tree_path}"
                               f" and the initial pedigree has failed due to an exception")
                 raise ex
-        # It's still possible that there are no alignable subclades if a minimum proband number threshold is applied
+        # It's still theoretically possible that there are no alignable subclades
+        # even if a minimum proband number threshold is applied
         if not solution_found:
             self.error_results.no_solutions_counter += 1
         return proband_number, self.error_results, alignment
@@ -629,7 +649,7 @@ class ErrorPedigreesAlignmentComparison(BaseErrorAlignmentComparison):
             simulation_subdirectory_path = self.simulation_folder_directory / subdirectory
             subdirectory_path = current_directory / subdirectory
             pedigree_file = get_unique_filename_with_specified_extension(directory_path=subdirectory_path,
-                                                                         extension=".pedigree")
+                                                                         extension=pedigree_extension)
 
             pedigree_filepath = subdirectory_path / pedigree_file
             alignment_task = AlignmentTask(
@@ -1195,7 +1215,8 @@ def tree_pedigree_subdirectories():
 
 
 def edge_cut_maximum_alignable_subclade():
-    perfect_data_dir_path = get_directory_path("Specify the path to the super directory with the simulated data:")
+    perfect_data_dir_path = get_directory_path("Specify the path to the super directory with the original "
+                                               "simulated data:")
     perfect_data_dir_path = Path(perfect_data_dir_path)
     edge_cut_dir_path = get_directory_path("Specify the path to the directory with cut trees:")
     edge_cut_dir_path = Path(edge_cut_dir_path)
@@ -1237,12 +1258,6 @@ def edge_cut_maximum_alignable_subclade():
             # pedigree for the initial error-tree (which we use for edge cutting)
             pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path,
                                                                                  preprocess_graph=True)
-            # coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
-            # root_vertex = coalescent_tree.get_root_vertex()
-            # del coalescent_tree
-            # root_vertex_information = RootVertexSpouses.get_root_vertex_information_from_pedigree(
-            #     pedigree=pedigree, root_vertex_ploid_id=root_vertex
-            # )
             for modified_tree_directory in os.listdir(original_tree_directory_path):
                 # This is the directory storing the data for the same modified tree.
                 # Specifically, it stores all the cut trees derived from the modified tree

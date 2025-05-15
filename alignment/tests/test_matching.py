@@ -5,7 +5,7 @@ from pathlib import Path
 import networkx
 import pytest
 
-from alignment.configuration import MatchingMode, InitialMatchingMode
+from alignment.configuration import MatchingMode, InitialMatchingMode, pedigree_extension
 from alignment.graph_matcher import GraphMatcher, get_initial_simulation_mapping_for_mode
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from graph.coalescent_tree import CoalescentTree, SimpleGraph
@@ -14,7 +14,6 @@ from collections import Counter
 
 from scripts.utility import get_paths_from_tree_pedigree_directory, dict_has_duplicate_values
 
-pedigree_extension = ".pedigree"
 logs_folder_name = "logs"
 pedigrees_main_folder_name = "pedigrees"
 

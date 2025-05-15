@@ -3,10 +3,11 @@ import warnings
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+from alignment.configuration import pedigree_extension
 from graph.coalescent_tree import CoalescentTree
 from graph.genealogical_graph import GenealogicalGraph
 from scripts.utility import get_directory_path, get_filepath, get_non_existing_path, get_natural_number_input, \
-    get_natural_number_input_in_bounds, read_integers_from_csv_file
+    get_natural_number_input_in_bounds, read_integers_from_csv_file, get_unique_filename_with_specified_extension
 
 
 def take_ascending_genealogies(input_genealogies_directory_path: str, probands: [int], result_directory_filepath: str,
@@ -36,20 +37,12 @@ def process_pedigree_directory(parent_pedigrees_directory_path: Path, result_dir
     pedigree_directory_path = parent_pedigrees_directory_path / pedigree_directory
     result_pedigree_directory_path = result_directory_filepath / pedigree_directory
     os.makedirs(result_pedigree_directory_path, exist_ok=True)
-
-    # Find pedigree files
-    pedigree_files = [f for f in os.listdir(pedigree_directory_path) if f.endswith(".pedigree")]
-
-    # Handle warnings
-    if len(pedigree_files) == 0:
-        warnings.warn(f"No pedigree files found in the {pedigree_directory_path} directory")
+    # Find and process the pedigree file
+    try:
+        pedigree_filename = get_unique_filename_with_specified_extension(pedigree_directory_path, pedigree_extension)
+    except ValueError as ex:
+        warnings.warn(ex)
         return
-    if len(pedigree_files) > 1:
-        warnings.warn(f"Multiple pedigree files found in the {pedigree_directory_path} directory")
-        return
-
-    # Process the pedigree file
-    pedigree_filename = pedigree_files[0]
     pedigree_filepath = pedigree_directory_path / pedigree_filename
     print(f"Processing {pedigree_filepath}")
     pedigree = GenealogicalGraph.get_diploid_graph_from_file(filepath=pedigree_filepath)
@@ -74,7 +67,7 @@ def process_pedigree_tree_directory(pedigree_tree_parent_directory_path: Path, r
                                result_directory_filepath=result_directory_filepath,
                                probands=probands,
                                parent_pedigrees_directory_path=pedigree_tree_parent_directory_path)
-    non_pedigree_files = [f for f in os.listdir(tree_pedigree_directory_path) if not f.endswith(".pedigree")]
+    non_pedigree_files = [f for f in os.listdir(tree_pedigree_directory_path) if not f.endswith(pedigree_extension)]
     # Handle warnings
     if len(non_pedigree_files) == 0:
         warnings.warn(f"No non-pedigree files found in the {tree_pedigree_directory_path} directory")
@@ -83,7 +76,7 @@ def process_pedigree_tree_directory(pedigree_tree_parent_directory_path: Path, r
         warnings.warn(f"Multiple non-pedigree files found in the {tree_pedigree_directory_path} directory")
         return
     coalescent_tree_filename = non_pedigree_files[0]
-
+    # Process the input files
     process_coalescent_tree_directory(parent_coalescent_tree_directory_path=tree_pedigree_directory_path,
                                       result_directory_filepath=result_directory_filepath,
                                       tree_filename=coalescent_tree_filename,

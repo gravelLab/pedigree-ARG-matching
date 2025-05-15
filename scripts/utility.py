@@ -5,6 +5,8 @@ from scipy.stats import poisson
 import random
 from math import ceil
 
+from alignment.configuration import pedigree_extension
+
 
 def get_filepaths(input_request: str) -> list[str]:
     print(input_request)
@@ -193,9 +195,9 @@ def get_filenames_with_given_extension(directory_path: str, extension: str):
 def get_unique_filename_with_specified_extension(directory_path: str, extension: str):
     files = get_filenames_with_given_extension(directory_path=directory_path, extension=extension)
     if len(files) == 0:
-        raise Exception(f"There are no {extension} files in the directory")
+        raise ValueError(f"There are no {extension} files in the directory")
     if len(files) == 2:
-        raise Exception(f"There are multiple {extension} files in the directory")
+        raise ValueError(f"There are multiple {extension} files in the directory")
     return files[0]
 
 
@@ -220,7 +222,7 @@ def get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path: str | P
     files = [file.resolve() for file in files if file.is_file()]
     if len(files) != 2:
         return None
-    pedigree_filename = next((file for file in files if file.suffix == ".pedigree"), None)
+    pedigree_filename = next((file for file in files if file.suffix == pedigree_extension), None)
     tree_filename = next((file for file in files if file != pedigree_filename), None)
     if not pedigree_filename or not tree_filename:
         return None

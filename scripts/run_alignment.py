@@ -1,5 +1,6 @@
 import sys
 
+
 from alignment.driver_file import PloidType
 from alignment.graph_matcher import *
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
@@ -7,11 +8,11 @@ from graph.genealogical_graph import *
 from scripts.alignment_similarity import get_alignments_similarity, get_alignments_ind_similarity, \
     get_distance_histogram_to_identity, save_distance_histogram
 from scripts.utility import *
+from alignment.configuration import pedigree_extension
 
 print_enabled = False
 calculate_similarity = False
-pedigree_file_extension = ".pedigree"
-extension_skip_list = [".svg", pedigree_file_extension]
+extension_skip_list = [".svg", pedigree_extension]
 
 
 def get_alignment_likelihood(coalescent_tree: CoalescentTree, pedigree: PotentialMrcaProcessedGraph,
@@ -172,7 +173,7 @@ def process_pedigree_tree_directory(directory: str, result_directory_name: str):
     os.makedirs(result_directory_path)
     directory_files = [file for file in os.listdir(directory) if os.path.isfile(os.path.join(directory, file))]
     pedigree_filename = get_unique_filename_with_specified_extension(directory_path=directory,
-                                                                     extension=pedigree_file_extension)
+                                                                     extension=pedigree_extension)
     tree_filenames = [filename for filename in directory_files if filename != pedigree_filename]
     for tree_filename in tree_filenames:
         tree_filepath = parent_directory_path / tree_filename
@@ -213,7 +214,7 @@ def run_alignment_with_multiple_clades_and_save_results(directory: str, result_d
     os.makedirs(result_directory_path)
     if pedigree is None:
         pedigree_filename = get_unique_filename_with_specified_extension(directory_path=directory,
-                                                                         extension=pedigree_file_extension)
+                                                                         extension=pedigree_extension)
         pedigree_filepath = parent_directory_path / pedigree_filename
         start_preprocessing = time.time()
         pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_filepath)

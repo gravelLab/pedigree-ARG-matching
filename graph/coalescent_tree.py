@@ -136,7 +136,7 @@ class CoalescentTree(GenealogicalGraph):
             self.remove_edge(parent=child, child=child_child, recalculate_levels=False)
         self.remove_edge(parent=parent, child=child, recalculate_levels=recalculate_levels)
 
-    def unmerge_polytomy(self, child: int, recalculate_levels: bool = True):
+    def unmerge_polytomy(self, child: int, recalculate_levels: bool = True) -> int:
         def get_new_vertex_id():
             return max(self.vertex_to_level_map.keys()) + 1
 
@@ -149,7 +149,6 @@ class CoalescentTree(GenealogicalGraph):
             raise Exception(f"The specified vertex {child} is not a part of a polytomy")
         self.remove_edge(parent=child_parent, child=child, recalculate_levels=False)
         new_vertex_id = get_new_vertex_id()
-        self.children_map[new_vertex_id] = []
         self.add_edge(parent=new_vertex_id, child=child, recalculate_levels=False)
         child_parent_parent = self.parents_map.get(child_parent, [])
         if child_parent_parent:
@@ -160,6 +159,7 @@ class CoalescentTree(GenealogicalGraph):
         else:
             self.parents_map[child_parent] = []
         self.add_edge(parent=new_vertex_id, child=child_parent, recalculate_levels=recalculate_levels)
+        return new_vertex_id
 
     def write_levels_to_file(self, file, levels):
         for level in levels:

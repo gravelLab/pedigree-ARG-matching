@@ -1,29 +1,57 @@
+import copy
+
 from graph.coalescent_tree import CoalescentTree
 from scripts.utility import *
+
+oracle_filename = "oracle.txt"
+tree_filename = "tree.tree"
+
+
+def unmerge_polytomy_and_save_results(tree: CoalescentTree, error_vertex: int, simulation_dir_path: str | Path,
+                                      oracle_vertex_assignments: dict):
+    os.makedirs(simulation_dir_path, exist_ok=True)
+    simulation_tree_result_path = simulation_dir_path / tree_filename
+    oracle_filepath = simulation_dir_path / oracle_filename
+    error_vertex_parent = tree.get_vertex_parent(error_vertex)
+    new_vertex_id = tree.unmerge_polytomy(child=error_vertex, recalculate_levels=True)
+    simulation_oracle_vertex_assignments = copy.deepcopy(oracle_vertex_assignments)
+    simulation_oracle_vertex_assignments[new_vertex_id] = oracle_vertex_assignments[error_vertex_parent]
+    tree.save_to_file(filepath=simulation_tree_result_path)
+    # For various simulations with msprime data, we need to know the corresponding pedigree vertex
+    # assignments for the tree vertices. Considering that resolving a polytomy requires adding a new vertex to the
+    # tree, we need to save this information somewhere
+    save_dictionary_to_file(dictionary_filepath=oracle_filepath, dictionary=simulation_oracle_vertex_assignments)
 
 
 def run_independent_simulations(tree: CoalescentTree, simulation_number: int, polytomy_vertices: [int],
                                 tree_absolute_path: str, result_directory_path: Path):
+    tree_vertices = tree.get_vertices()
+    oracle_vertex_assignments = {x: x for x in tree_vertices}
     simulation_error_vertices = list(polytomy_vertices)
     for simulation_counter in range(simulation_number):
         simulation_tree_name = str(simulation_counter)
-        simulation_tree_result_path = result_directory_path / simulation_tree_name
+        simulation_tree_directory = result_directory_path / simulation_tree_name
+        os.makedirs(simulation_tree_directory, exist_ok=True)
         error_vertex = random.choice(simulation_error_vertices)
         # Removing the vertex from the list to prevent it from being picked again
         simulation_error_vertices.remove(error_vertex)
-        tree.unmerge_polytomy(child=error_vertex, recalculate_levels=True)
-        tree.save_to_file(filepath=simulation_tree_result_path)
+        unmerge_polytomy_and_save_results(tree=tree, error_vertex=error_vertex,
+                                          simulation_dir_path=simulation_tree_directory,
+                                          oracle_vertex_assignments=oracle_vertex_assignments)
         # TODO: Reverse the changes instead of parsing the tree again
         tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_absolute_path)
 
 
 def run_all_simulations(tree: CoalescentTree, polytomy_vertices: [int],
                         tree_absolute_path: str, result_directory_path: Path):
+    tree_vertices = tree.get_vertices()
+    oracle_vertex_assignments = {x: x for x in tree_vertices}
     for simulation_counter, error_vertex in enumerate(polytomy_vertices):
         simulation_tree_name = str(simulation_counter)
-        simulation_tree_result_path = result_directory_path / simulation_tree_name
-        tree.unmerge_polytomy(child=error_vertex, recalculate_levels=True)
-        tree.save_to_file(filepath=simulation_tree_result_path)
+        simulation_tree_directory = result_directory_path / simulation_tree_name
+        unmerge_polytomy_and_save_results(tree=tree, error_vertex=error_vertex,
+                                          simulation_dir_path=simulation_tree_directory,
+                                          oracle_vertex_assignments=oracle_vertex_assignments)
         # TODO: Reverse the changes instead of parsing the tree again
         tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_absolute_path)
 
@@ -136,7 +164,7 @@ def run_interactive_session():
                    "1) Run the error simulation for a single tree.\n"
                    "2) Specify the path to a parent directory containing the tree-pedigree subdirectories.\nThe error "
                    "simulation will be performed for all the trees.\n"
-                   "3) Specify a directory whose subdirectories are containing tree-pedigree directories "
+                   "3) Specify a directory whose subdirectories contain tree-pedigree directories "
                    "(Run the previous mode for all the subdirectories of a directory).\n")
 
     mode = get_natural_number_input_in_bounds(input_request=mode_prompt,

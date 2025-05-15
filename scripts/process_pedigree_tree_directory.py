@@ -1,7 +1,7 @@
 """!
 @file process_pedigree_tree_directory.py
 @brief The main script that asks the user to specify a testing directory for the script.
-The testing directory must contain one file with the extension ".pedigree" and the rest of the files must be the
+The testing directory must contain one file with the pedigree extension and the rest of the files must be the
 coalescent trees with which the mentioned pedigree is to be aligned.
 """
 import os
