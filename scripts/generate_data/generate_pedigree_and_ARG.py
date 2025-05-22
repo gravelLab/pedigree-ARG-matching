@@ -10,6 +10,12 @@ sequence_length = 2
 recombination_rate = 0.1
 arg_filename = "arg.arg"
 
+population_size = 1004
+end_time = 5
+# Create a directory for the files
+directory_path = f"pedigrees/{population_size}_{end_time}"
+seed = 1234
+
 
 def generate_and_save_ARG(parsed_pedigree: TableCollection):
     simulated_arg: TreeSequence = msprime.ancestry.sim_ancestry(initial_state=parsed_pedigree,
@@ -32,42 +38,37 @@ def generate_and_save_coalescent_tree(tree_counter: int, tree: Tree):
     return tree_counter
 
 
-population_size = 1004
-end_time = 5
+def run_simulation():
+    if not os.path.exists(directory_path):
+        os.makedirs(directory_path)
+    os.chdir(directory_path)
+    filename_prefix = f"{population_size}_{end_time}"
+    filename = f"{filename_prefix}.pedigree"
+    file = open(filename, 'w')
+    pedigree = msprime.pedigrees.sim_pedigree(population_size=population_size,
+                                              random_seed=seed,
+                                              sequence_length=sequence_length,
+                                              end_time=end_time)
+    pedigree: TableCollection
+    file.write("# id parent0 parent1 time\n")
+    for i in range(len(pedigree.individuals)):
+        [left_parent, right_parent] = pedigree.individuals[i].parents
+        if left_parent == "-1":
+            left_parent = '.'
+        if right_parent == "-1":
+            right_parent = '.'
+        file.write(f"{i} {left_parent} {right_parent}\n")
 
-# Create a directory for the files
-directory_path = f"pedigrees/{population_size}_{end_time}"
+    print("Generated pedigree\n")
 
-if not os.path.exists(directory_path):
-    os.makedirs(directory_path)
-os.chdir(directory_path)
+    file.close()
 
-seed = 1234
+    arg: TreeSequence = generate_and_save_ARG(pedigree)
+    print("Generated ARG\n")
+    first_tree: Tree = arg.first()
 
-filename_prefix = f"{population_size}_{end_time}"
-filename = f"{filename_prefix}.pedigree"
-file = open(filename, 'w')
-pedigree = msprime.pedigrees.sim_pedigree(population_size=population_size,
-                                          random_seed=seed,
-                                          sequence_length=sequence_length,
-                                          end_time=end_time)
-pedigree: TableCollection
-file.write("# id parent0 parent1 time\n")
-for i in range(len(pedigree.individuals)):
-    [left_parent, right_parent] = pedigree.individuals[i].parents
-    if left_parent == "-1":
-        left_parent = '.'
-    if right_parent == "-1":
-        right_parent = '.'
-    file.write(f"{i} {left_parent} {right_parent}\n")
+    generate_and_save_coalescent_tree(0, first_tree)
 
-print("Generated pedigree\n")
 
-file.close()
-
-arg: TreeSequence = generate_and_save_ARG(pedigree)
-print("Generated ARG\n")
-first_tree: Tree = arg.first()
-
-generate_and_save_coalescent_tree(0, first_tree)
-arg_parsed: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=arg_filename)
+if __name__ == "__main__":
+    run_simulation()

@@ -1,7 +1,7 @@
 import warnings
 
 from alignment.graph_matcher import *
-from scripts.utility import *
+from scripts.utility.basic_utility import *
 
 simulation_root_dir = "error_pedigrees"
 error_rate = 0.01

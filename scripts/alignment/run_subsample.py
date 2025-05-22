@@ -1,7 +1,7 @@
 import shutil
 
-from scripts.run_alignment import *
-from scripts.utility import *
+from scripts.alignment.run_alignment import *
+from scripts.utility.basic_utility import *
 
 
 def run_interactive_session():

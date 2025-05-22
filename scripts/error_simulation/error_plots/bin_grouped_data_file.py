@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from scripts.utility import get_filepath, get_non_existing_path, get_natural_number_with_lower_bound
+from scripts.utility.basic_utility import get_filepath, get_non_existing_path, get_natural_number_with_lower_bound
 
 
 def bin_simulation_results(input_csv, output_csv, bin_size):

@@ -1,13 +1,9 @@
-import os
 import warnings
 from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 
-from alignment.configuration import pedigree_extension
 from graph.coalescent_tree import CoalescentTree
 from graph.genealogical_graph import GenealogicalGraph
-from scripts.utility import get_directory_path, get_filepath, get_non_existing_path, get_natural_number_input, \
-    get_natural_number_input_in_bounds, read_integers_from_csv_file, get_unique_filename_with_specified_extension
+from scripts.utility.basic_utility import *
 
 
 def take_ascending_genealogies(input_genealogies_directory_path: str, probands: [int], result_directory_filepath: str,

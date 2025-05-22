@@ -2,8 +2,9 @@ from alignment.configuration import logs_default_directory_name
 from alignment.graph_matcher import GraphMatcher, get_initial_simulation_mapping_for_mode
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from graph.coalescent_tree import CoalescentTree
-from scripts.run_alignment import save_alignment_result_to_files
-from scripts.utility import *
+from scripts.alignment.run_alignment import save_alignment_result_to_files
+from scripts.utility.basic_utility import *
+from scripts.utility.alignment_utility import read_mapping_from_file
 
 alignment_general_results_filename = "results.txt"
 

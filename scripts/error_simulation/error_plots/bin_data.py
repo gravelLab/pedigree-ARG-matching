@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from scripts.utility import get_filepath, get_non_existing_path, get_natural_number_input
+from scripts.utility.basic_utility import get_filepath, get_non_existing_path, get_natural_number_input
 
 
 def bin_data(df, x_column, y_columns, bin_size):

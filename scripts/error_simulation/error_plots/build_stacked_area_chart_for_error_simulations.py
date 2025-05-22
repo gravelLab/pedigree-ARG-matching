@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 import matplotlib.pyplot as plt
-from scripts.utility import get_filepath, get_non_existing_path
+from scripts.utility.basic_utility import get_filepath, get_non_existing_path
 
 
 def main():

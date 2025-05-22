@@ -14,7 +14,7 @@ from alignment.configuration import *
 from alignment.potential_mrca_processed_graph import *
 from alignment.subtree_matcher import *
 from graph.coalescent_tree import CoalescentTree
-from scripts.utility import dict_has_duplicate_values
+from scripts.utility.alignment_utility import dict_has_duplicate_values
 
 
 def get_subtree_matcher_for_coalescent_tree_proband(proband: int, proband_pedigree_ids: [int]):

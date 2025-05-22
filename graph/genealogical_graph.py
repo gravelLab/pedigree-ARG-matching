@@ -7,6 +7,7 @@ coalescent trees.
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import Path
 
 from graph.descendant_cache import DescendantCache
 from graph.descendant_memory_cache import DescendantMemoryCache
@@ -289,7 +290,7 @@ class GenealogicalGraph(SimpleGraph):
                         second_parent_id = second_parent // 2
                 file.write(f"{vertex_individual_id} {first_parent_id} {second_parent_id}\n")
 
-    def save_ascending_genealogy_to_file(self, filepath: str, probands: [int]):
+    def save_ascending_genealogy_to_file(self, filepath: str | Path, probands: [int]):
         levels = self.get_ascending_genealogy_from_vertices_by_levels(probands)
         file = open(filepath, 'w')
         self.write_levels_to_file(file, levels)

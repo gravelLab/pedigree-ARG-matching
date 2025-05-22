@@ -12,7 +12,8 @@ from graph.coalescent_tree import CoalescentTree, SimpleGraph
 from itertools import combinations
 from collections import Counter
 
-from scripts.utility import get_paths_from_tree_pedigree_directory, dict_has_duplicate_values
+from scripts.utility.basic_utility import get_paths_from_tree_pedigree_directory
+from scripts.utility.alignment_utility import dict_has_duplicate_values
 
 logs_folder_name = "logs"
 pedigrees_main_folder_name = "pedigrees"

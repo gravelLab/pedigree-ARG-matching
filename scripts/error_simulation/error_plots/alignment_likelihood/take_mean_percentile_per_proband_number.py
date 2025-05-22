@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from scripts.utility import get_filepath, get_non_existing_path
+from scripts.utility.basic_utility import get_filepath, get_non_existing_path
 
 
 def group_and_save_the_average(input_filepath: str | Path, output_filepath: str | Path):

@@ -124,38 +124,6 @@ def get_natural_number_with_lower_bound(input_request: str, lower_bound: int):
         return value
 
 
-def save_dictionary_to_file(dictionary_filepath: str, dictionary: dict):
-    dictionary_file = open(dictionary_filepath, 'w')
-    for key, value in dictionary.items():
-        dictionary_file.write(f"{key}: {value}\n")
-    dictionary_file.close()
-
-
-def parse_dictionary_from_file(file_path: str):
-    result = dict()
-    with open(file_path, 'r') as file:
-        for line in file:
-            parts = line.strip().split(':')
-            key = int(parts[0].strip())
-            value = int(parts[1].strip())
-            result[key] = value
-    return result
-
-
-def read_mapping_from_file(filepath):
-    parsed_dict = {}
-    with open(filepath, 'r') as file:
-        for line in file:
-            # Split the line on ':' to separate key and value
-            key, value = line.strip().split(':')
-            # Convert key to an integer and value to a list of integers
-            key = int(key.strip())
-            value = [int(x) for x in value.strip()[1:-1].split(',')]
-            # Add to the dictionary
-            parsed_dict[key] = value
-    return parsed_dict
-
-
 def random_subselect(input_list, percentage):
     # Calculate the number of elements to select
     num_elements = ceil(len(input_list) * percentage)
@@ -199,19 +167,6 @@ def get_unique_filename_with_specified_extension(directory_path: str, extension:
     if len(files) == 2:
         raise ValueError(f"There are multiple {extension} files in the directory")
     return files[0]
-
-
-def dict_has_duplicate_values(dictionary: dict):
-    seen = set()
-    for value in dictionary.values():
-        if value in seen:
-            return True
-        seen.add(value)
-    return False
-
-
-def dict_is_identity(dictionary: dict) -> bool:
-    return all(k == v for k, v in dictionary.items())
 
 
 def get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path: str | Path):

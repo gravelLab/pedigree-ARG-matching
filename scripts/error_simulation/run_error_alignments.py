@@ -14,12 +14,12 @@ from matplotlib import pyplot as plt
 from scipy import stats
 
 from alignment.graph_matcher import *
-from scripts import utility
-from scripts.alignment_similarity import calculate_percentage_of_correct_assignments
+from scripts.alignment_statistics.alignment_similarity import calculate_percentage_of_correct_assignments
 from scripts.alignment_statistics.calculate_statistics import get_alignment_likelihood
 from scripts.error_simulation.tree_error_simulation.simulate_resolve_polytomy_tree_error import oracle_filename
-from scripts.run_alignment import save_alignment_result_to_files
-from scripts.utility import *
+from scripts.alignment.run_alignment import save_alignment_result_to_files
+from scripts.utility.alignment_utility import parse_dictionary_from_file
+from scripts.utility.basic_utility import *
 
 log_directory = "log_dir"
 initial_alignment_dir_name = "initial_alignment"
@@ -1388,7 +1388,7 @@ def parse_arguments():
     # name under the error directory)
     error_directory_path = arguments.error_dir
     simulation_name = arguments.simulation_name
-    if not utility.verify_folder_path(error_directory_path):
+    if not verify_folder_path(error_directory_path):
         print(f"The specified directory path {error_directory_path} either does not exist or is not a directory")
         return
     simulation_folder_path = Path(error_directory_path) / simulation_name
@@ -1405,7 +1405,7 @@ def parse_arguments():
             tree_path = arguments.tree_path
             if tree_path and pedigree_path:
                 for path in (tree_path, pedigree_path):
-                    if not utility.verify_filepath(path):
+                    if not verify_filepath(path):
                         print(f"Path {path} does not exist or is not a file")
                         return
                 print(f"Running mode 1 with tree_path: {tree_path} and pedigree_path: {pedigree_path}")
@@ -1420,7 +1420,7 @@ def parse_arguments():
             if arguments.initial_dirs:
                 pedigree_tree_directory_paths = arguments.initial_dirs
                 for directory in pedigree_tree_directory_paths:
-                    if not utility.verify_folder_path(directory):
+                    if not verify_folder_path(directory):
                         print(f"Path {directory} does not exist or is not a directory")
                         return
                 print(f"Running mode 2 selected with initial_dirs: {arguments.initial_dirs}")
@@ -1433,7 +1433,7 @@ def parse_arguments():
         case "3":
             if arguments.initial_parent_dir:
                 parent_paths_directory = arguments.initial_parent_dir
-                if not utility.verify_folder_path(parent_paths_directory):
+                if not verify_folder_path(parent_paths_directory):
                     print(f"Path {parent_paths_directory} does not exist or is not a directory")
                     return
                 pedigree_tree_directory_paths = get_absolute_paths_to_subfolders(parent_paths_directory)

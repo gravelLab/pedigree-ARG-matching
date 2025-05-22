@@ -1,7 +1,7 @@
 from alignment.configuration import InitialMatchingMode
 from alignment.graph_matcher import get_pedigree_simulation_probands_for_alignment_mode
 from graph.coalescent_tree import CoalescentTree, SimpleGraph, GenealogicalGraph
-from scripts.utility import *
+from scripts.utility.basic_utility import *
 
 
 def run_interactive_session():

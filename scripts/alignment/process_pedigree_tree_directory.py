@@ -6,8 +6,8 @@ coalescent trees with which the mentioned pedigree is to be aligned.
 """
 import os
 
-from scripts.run_alignment import process_pedigree_tree_directory
-from scripts.utility import get_directory_path, get_non_existing_path
+from scripts.alignment.run_alignment import process_pedigree_tree_directory
+from scripts.utility.basic_utility import get_directory_path, get_non_existing_path
 
 
 def run_interactive_session():

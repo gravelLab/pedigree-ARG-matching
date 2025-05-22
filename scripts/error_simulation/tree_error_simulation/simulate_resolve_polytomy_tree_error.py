@@ -1,7 +1,8 @@
 import copy
 
 from graph.coalescent_tree import CoalescentTree
-from scripts.utility import *
+from scripts.utility.basic_utility import *
+from scripts.utility.alignment_utility import save_dictionary_to_file
 
 oracle_filename = "oracle.txt"
 tree_filename = "tree.tree"

@@ -6,24 +6,12 @@ from pathlib import Path
 from typing import Iterable
 
 from alignment.configuration import calculate_distances_histogram
-from alignment.driver_file import PloidType
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from graph.coalescent_tree import CoalescentTree
-from scripts.alignment_similarity import get_alignments_similarity, get_alignments_ind_similarity
+from scripts.alignment_statistics.alignment_similarity import get_alignments_similarity, get_alignments_ind_similarity
+from scripts.utility.alignment_utility import convert_ploid_id_to_individual, save_alignment_to_file
 
 section_separator = "############################################################\n"
-
-
-def convert_ploid_id_to_individual(ploid_id: int):
-    individual_id = ploid_id // 2
-    ploid_type = PloidType.Paternal.value if ploid_id % 2 == 0 else PloidType.Maternal.value
-    return f"{individual_id}{ploid_type}"
-
-
-def save_alignment_to_file(dictionary_file, alignment: dict):
-    for key, value in alignment.items():
-        converted_value = convert_ploid_id_to_individual(value)
-        dictionary_file.write(f"{key}: {converted_value}\n")
 
 
 def get_alignment_likelihood(coalescent_tree: CoalescentTree, pedigree: PotentialMrcaProcessedGraph,

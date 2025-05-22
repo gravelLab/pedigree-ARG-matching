@@ -2,7 +2,7 @@ import math
 from itertools import combinations
 
 from graph.coalescent_tree import CoalescentTree
-from scripts.utility import *
+from scripts.utility.basic_utility import *
 
 
 def run_independent_simulations(tree: CoalescentTree, possible_error_vertices: [int], simulation_number: int,

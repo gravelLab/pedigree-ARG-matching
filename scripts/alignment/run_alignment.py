@@ -1,7 +1,7 @@
 from alignment.graph_matcher import *
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from scripts.alignment_statistics.calculate_statistics import CladeMetadata, CladeAlignmentsMetadata
-from scripts.utility import *
+from scripts.utility.basic_utility import *
 
 print_enabled = False
 extension_skip_list = [".svg", pedigree_extension]
@@ -15,7 +15,8 @@ def save_alignment_result_to_files(alignment_result: {int: [dict]}, coalescent_t
         clade_result_directory_path = result_parent_directory / result_directory_name
         valid_alignments = alignment_result[clade_root]
         clade_alignments_metadata = CladeAlignmentsMetadata(
-            clade_alignments=valid_alignments, calculate_similarity=calculate_similarity,
+            clade_alignments=valid_alignments,
+            calculate_similarity=calculate_similarity,
             calculate_distances_histogram=calculate_distances_histogram,
             calculate_alignments_likelihoods=calculate_likelihood
         )
@@ -60,8 +61,9 @@ def run_alignments_and_save_results(graph_matcher: GraphMatcher, output_path: st
     print("Running the alignment")
     result = graph_matcher.find_mapping()
     end_alignment = time.time()
-    print(f"Matching time: {end_alignment - start_alignment} seconds")
-    graph_matcher.log(f"Matching time: {end_alignment - start_alignment} seconds")
+    matching_time_message = f"Matching time: {end_alignment - start_alignment} seconds"
+    print(matching_time_message)
+    graph_matcher.log(matching_time_message)
     save_alignment_result_to_files(alignment_result=result, coalescent_tree=graph_matcher.coalescent_tree,
                                    pedigree=graph_matcher.pedigree, directory_path=output_path)
 

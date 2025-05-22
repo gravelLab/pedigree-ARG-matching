@@ -6,7 +6,8 @@ from pathlib import Path
 from alignment.configuration import tree_extension
 from graph.coalescent_tree import CoalescentTree, Direction
 from scripts.error_simulation.tree_error_simulation.simulate_resolve_polytomy_tree_error import oracle_filename
-from scripts.utility import get_directory_path, get_non_existing_path, get_unique_filename_with_specified_extension
+from scripts.utility.basic_utility import (get_directory_path, get_non_existing_path,
+                                           get_unique_filename_with_specified_extension)
 
 metadata_header = ("This file specifies the number of probands for every tree in this directory\n"
                    "tree_index,proband_number")
@@ -87,6 +88,7 @@ def run_interactive_session():
         if not os.path.isdir(proband_filepath):
             continue
         try:
+            # noinspection PyUnusedLocal
             proband_number = int(proband_directory)
         except ValueError:
             continue

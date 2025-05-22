@@ -1,5 +1,5 @@
 from alignment.driver_file import ParsedDriverFile
-from scripts.utility import *
+from scripts.utility.basic_utility import *
 
 
 def main():

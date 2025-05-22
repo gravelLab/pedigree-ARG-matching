@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 from graph.coalescent_tree import CoalescentTree, GenealogicalGraph
-from scripts.utility import *
+from scripts.utility.basic_utility import *
 
 tree_filename = "clade"
 clade_ascending_pedigree_filename = "pedigree.pedigree"
