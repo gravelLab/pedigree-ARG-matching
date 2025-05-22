@@ -17,6 +17,7 @@ default_alignment_mode = MatchingMode.EXAMPLE_PER_ROOT_ASSIGNMENT
 # Alignment statistics section start
 calculate_distances_histogram = False
 calculate_likelihood = False
+calculate_similarity = False
 # Alignment statistics section end
 
 default_missing_parent_notation = "-1"

@@ -128,7 +128,7 @@ class ParsedDriverFile:
                 try:
                     coalescent_id = int(entry[coalescent_id_key])
                 except ValueError:
-                    raise YAMLValidationError(f"Invalid coalescent id: {entry[coalescent_id_key]}")
+                    raise YAMLValidationError(f"Coalescent id must be an integer: {entry[coalescent_id_key]}")
 
                 # Check if coalescent_id already exists
                 if coalescent_id in initial_assignments_dictionary:
@@ -223,6 +223,9 @@ class ProcessedDriverFile:
             separation_symbol=tree_separation_symbol,
             skip_first_line=tree_skip_first_line
         )
+        initial_assignments = parsed_driver_file.initial_assignments
+        specified_probands = initial_assignments.keys()
+        coalescent_tree.reduce_to_ascending_genealogy(probands=specified_probands)
         # Parse the pedigree
         pedigree_missing_parent_notation = parsed_driver_file.pedigree_parsing_rules.missing_parent_notation
         pedigree_separation_symbol = parsed_driver_file.pedigree_parsing_rules.separation_symbol
@@ -234,13 +237,12 @@ class ProcessedDriverFile:
             separation_symbol=pedigree_separation_symbol,
             skip_first_line=pedigree_skip_first_line
         )
-        initial_assignments = parsed_driver_file.initial_assignments
         # Calculate the leaf vertices in the coalescent tree for which mapping isn't specified
         coalescent_tree_probands = coalescent_tree.get_probands()
-        tree_leaf_vertices_missing_assignments = set(initial_assignments.keys()).difference(coalescent_tree_probands)
-        if tree_leaf_vertices_missing_assignments:
-            raise YAMLValidationError("Missing initial assignments for tree's leaf vertices "
-                                      f"{tree_leaf_vertices_missing_assignments}")
+        # tree_leaf_vertices_missing_assignments = set(initial_assignments.keys()).difference(coalescent_tree_probands)
+        # if tree_leaf_vertices_missing_assignments:
+        #     raise YAMLValidationError("Missing initial assignments for tree's leaf vertices "
+        #                               f"{tree_leaf_vertices_missing_assignments}")
         for coalescent_vertex, pedigree_vertices in initial_assignments.items():
             if coalescent_vertex not in coalescent_tree_probands:
                 raise ValueError(f"The specified coalescent vertex {coalescent_vertex} either does not exist or isn't"

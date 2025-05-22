@@ -16,8 +16,9 @@ from scipy import stats
 from alignment.graph_matcher import *
 from scripts import utility
 from scripts.alignment_similarity import calculate_percentage_of_correct_assignments
+from scripts.alignment_statistics.calculate_statistics import get_alignment_likelihood
 from scripts.error_simulation.tree_error_simulation.simulate_resolve_polytomy_tree_error import oracle_filename
-from scripts.run_alignment import save_alignment_result_to_files, get_alignment_likelihood
+from scripts.run_alignment import save_alignment_result_to_files
 from scripts.utility import *
 
 log_directory = "log_dir"
@@ -1185,7 +1186,6 @@ def tree_pedigree_subdirectories():
                     raise Exception(f"The tree {alignment_task.coalescent_tree_path} does not have a single root")
                 alignments = alignment_dictionary[alignment_task.root_vertex_info.vertex_ploid_id]
                 filepath = alignment_task.simulation_subdirectory_path
-                # TODO: Avoid calculating the likelihoods twice in a normal way
                 alignments_likelihoods, identity_likelihood = save_alignment_likelihood_to_file(
                     alignment_filepath=filepath, tree=tree,
                     pedigree=pedigree, alignments=alignments

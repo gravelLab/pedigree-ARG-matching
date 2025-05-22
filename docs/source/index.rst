@@ -84,7 +84,8 @@ Each ploid is represented by the pedigree ID followed by one of the two ploid ty
   - **M**: Represents the maternal ploid.
 
 .. note::
-   All leaf vertices, and only the leaf vertices, must have their initial mappings specified.
+   The mapping can be specified to a subset of the leaf vertices. In this case, the algorithm will take the ascending
+   tree for those leaf vertices.
 
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

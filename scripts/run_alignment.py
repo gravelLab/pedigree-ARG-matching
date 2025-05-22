@@ -1,128 +1,10 @@
-import sys
-
-
-from alignment.driver_file import PloidType
 from alignment.graph_matcher import *
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
-from graph.genealogical_graph import *
-from scripts.alignment_similarity import get_alignments_similarity, get_alignments_ind_similarity, \
-    get_distance_histogram_to_identity, save_distance_histogram
+from scripts.alignment_statistics.calculate_statistics import CladeMetadata, CladeAlignmentsMetadata
 from scripts.utility import *
-from alignment.configuration import pedigree_extension
 
 print_enabled = False
-calculate_similarity = False
 extension_skip_list = [".svg", pedigree_extension]
-
-
-def get_alignment_likelihood(coalescent_tree: CoalescentTree, pedigree: PotentialMrcaProcessedGraph,
-                             alignment: dict):
-    def get_coalescent_vertex_mapped_level_difference(ancestor: int, descendant: int) -> int:
-        return pedigree.get_minimal_path_length(ancestor=alignment[ancestor],
-                                                descendant=alignment[descendant]
-                                                )
-
-    total_length = 0
-    for parent, children in coalescent_tree.children_map.items():
-        if parent not in alignment:
-            # The vertex does not belong to this clade
-            continue
-        for child in children:
-            level_distance_approximation = get_coalescent_vertex_mapped_level_difference(ancestor=parent,
-                                                                                         descendant=child)
-            total_length += level_distance_approximation
-    return total_length
-
-
-def convert_ploid_id_to_individual(ploid_id: int):
-    individual_id = ploid_id // 2
-    ploid_type = PloidType.Paternal.value if ploid_id % 2 == 0 else PloidType.Maternal.value
-    return f"{individual_id}{ploid_type}"
-
-
-def save_alignment_result_to_file(coalescent_tree: CoalescentTree, pedigree: PotentialMrcaProcessedGraph,
-                                  dictionary_filepath: str, alignment: dict):
-    with open(dictionary_filepath, "w") as dictionary_file:
-        alignment_likelihood = None
-        if calculate_likelihood:
-            alignment_likelihood = get_alignment_likelihood(pedigree=pedigree,
-                                                            coalescent_tree=coalescent_tree,
-                                                            alignment=alignment)
-
-            dictionary_file.write(f"Approximated alignment length: {alignment_likelihood}\n")
-        for key, value in alignment.items():
-            converted_value = convert_ploid_id_to_individual(value)
-            dictionary_file.write(f"{key}: {converted_value}\n")
-        dictionary_file.close()
-        return alignment_likelihood
-
-
-def save_statistics_to_file(alignment_result: {int: [dict]}, coalescent_tree: CoalescentTree,
-                            clade_root: int, alignments_number: int, result_filepath: str,
-                            min_alignment_length: int, min_length_alignments: [int]):
-    # Calculating the clade for the given vertex and sorting the vertices by their levels
-    clade = coalescent_tree.get_vertex_descendants(clade_root)
-    # clade = coalescent_tree.get_connected_component_for_vertex(clade_root)
-    clade = sorted(clade, key=lambda v: coalescent_tree.vertex_to_level_map[v], reverse=True)
-    # Calculating the rest of the data
-    coalescing_events = len([x for x in clade if x in coalescent_tree.children_map
-                             and len(coalescent_tree.children_map[x]) > 1])
-    proband_vertices = [x for x in clade if coalescent_tree.vertex_to_level_map[x] == 0]
-    coalescent_vertex_pedigree_candidates_number = {x: len({alignment[x] for alignment in alignment_result[clade_root]})
-                                                    for x in clade}
-    # Printing the results to the file
-    with open(result_filepath, 'w') as statistics_file:
-        statistics_file.write(f"The root of the clade: {clade_root}\n")
-        statistics_file.write(f"There are {len(clade)} vertices in the clade\n")
-        statistics_file.write(f"There are {len(proband_vertices)} probands in the clade\n")
-        statistics_file.write(f"There are {coalescing_events} coalescing events in the clade\n")
-        statistics_file.write("##############################\n")
-        if calculate_distances_histogram:
-            statistics_file.write(f"The minimum alignment length: {min_alignment_length}\n")
-            statistics_file.write(f"The corresponding alignments: {min_length_alignments}\n")
-        statistics_file.write("##############################\n")
-        if calculate_similarity:
-            alignments_similarity = get_alignments_similarity(alignment_result[clade_root],
-                                                              coalescent_tree.probands)
-            alignments_ind_similarity = get_alignments_ind_similarity(alignment_result[clade_root],
-                                                                      coalescent_tree.probands)
-            statistics_file.write(f"The alignments similarity: {alignments_similarity}\n")
-            statistics_file.write(f"The alignments individual similarity: {alignments_ind_similarity}\n")
-        else:
-            statistics_file.write("The similarities among the trees were not calculated\n")
-        statistics_file.write("##############################\n")
-        statistics_file.write("Number of coalescing events grouped by the children number:\n")
-        coalescing_number_to_events_number = dict()
-        for vertex in clade:
-            if vertex not in coalescent_tree.children_map:
-                continue
-            children_number = len(coalescent_tree.children_map[vertex])
-            previous_counter = coalescing_number_to_events_number.get(children_number, 0)
-            coalescing_number_to_events_number[children_number] = previous_counter + 1
-        coalescing_numbers = sorted(coalescing_number_to_events_number.keys())
-        for coalescing_number in coalescing_numbers:
-            statistics_file.write(f"{coalescing_number}: {coalescing_number_to_events_number[coalescing_number]}\n")
-        statistics_file.write("##############################\n")
-        statistics_file.write(f"The total number of alignments is: {alignments_number}\n")
-        statistics_file.write("##############################\n")
-        statistics_file.write("The number of pedigree candidates for every vertex:\n")
-        for vertex in clade:
-            if vertex in coalescent_tree.probands:
-                statistics_file.write(f"{vertex} (proband): {coalescent_vertex_pedigree_candidates_number[vertex]}\n")
-            else:
-                statistics_file.write(f"{vertex}: {coalescent_vertex_pedigree_candidates_number[vertex]}\n")
-        statistics_file.write("##############################\n")
-        statistics_file.write("Appearances of each candidate:\n")
-        vertex_candidate_count_dict = defaultdict(lambda: defaultdict(int))
-        for alignment in alignment_result[clade_root]:
-            for key, value in alignment.items():
-                vertex_candidate_count_dict[key][value] += 1
-        for vertex in clade:
-            statistics_file.write(f"{vertex}:\n")
-            for value, count in sorted(vertex_candidate_count_dict[vertex].items(),
-                                       key=lambda x: x[1], reverse=True):
-                percentage = count / alignments_number
-                statistics_file.write(f"        {value} ({percentage});\n")
 
 
 def save_alignment_result_to_files(alignment_result: {int: [dict]}, coalescent_tree: CoalescentTree,
@@ -131,40 +13,17 @@ def save_alignment_result_to_files(alignment_result: {int: [dict]}, coalescent_t
     for clade_root in alignment_result:
         result_directory_name = f"{clade_root}"
         clade_result_directory_path = result_parent_directory / result_directory_name
-        os.makedirs(clade_result_directory_path)
-        counter = 0
         valid_alignments = alignment_result[clade_root]
-        min_length = sys.maxsize
-        min_length_alignments = []
-        # TODO: Cache the distance between two vertices per pedigree
-        for valid_alignment in valid_alignments:
-            alignment_filename = f"alignment_{counter}"
-            alignment_path = clade_result_directory_path / alignment_filename
-            alignment_length = save_alignment_result_to_file(dictionary_filepath=alignment_path,
-                                                             alignment=valid_alignment,
-                                                             pedigree=pedigree, coalescent_tree=coalescent_tree)
-            if calculate_distances_histogram:
-                if min_length == alignment_length:
-                    min_length_alignments.append(counter)
-                elif alignment_length < min_length:
-                    min_length = alignment_length
-                    min_length_alignments = [counter]
-            counter += 1
-        statistics_filename = f"_clade_{clade_root}.txt"
-        statistics_filepath = clade_result_directory_path / statistics_filename
-        save_statistics_to_file(alignment_result=alignment_result, coalescent_tree=coalescent_tree,
-                                clade_root=clade_root, alignments_number=counter, result_filepath=statistics_filepath,
-                                min_alignment_length=min_length, min_length_alignments=min_length_alignments)
-        if calculate_distances_histogram and len(valid_alignments) > 0:
-            distance_histogram_filename = f"distance_histogram_{clade_root}.txt"
-            distance_histogram_filepath = clade_result_directory_path / distance_histogram_filename
-            distance_histogram_dict = get_distance_histogram_to_identity(valid_alignments)
-            save_dictionary_to_file(dictionary_filepath=distance_histogram_filepath,
-                                    dictionary=distance_histogram_dict)
-            distance_histogram_image_filename = f"distance_histogram_{clade_root}"
-            distance_histogram_image_filepath = clade_result_directory_path / distance_histogram_image_filename
-            save_distance_histogram(histogram_filepath=distance_histogram_image_filepath,
-                                    dictionary=distance_histogram_dict)
+        clade_alignments_metadata = CladeAlignmentsMetadata(
+            clade_alignments=valid_alignments, calculate_similarity=calculate_similarity,
+            calculate_distances_histogram=calculate_distances_histogram,
+            calculate_alignments_likelihoods=calculate_likelihood
+        )
+        clade_metadata = CladeMetadata.get_clade_basic_metadata(
+            coalescent_tree=coalescent_tree, pedigree=pedigree, clade_root=clade_root,
+            results_filepath=clade_result_directory_path, clade_alignments_metadata=clade_alignments_metadata
+        )
+        clade_metadata.save()
 
 
 def process_pedigree_tree_directory(directory: str, result_directory_name: str):

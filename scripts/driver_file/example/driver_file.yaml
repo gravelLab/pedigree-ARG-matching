@@ -15,5 +15,5 @@ pedigree:
   missing_parent_notation: "-1"
   separation_symbol: " "
   skip_first_line: false
-output_path: "example_output"
+output_path: "example_output_not_all_probands"
 alignment_mode: "default"
