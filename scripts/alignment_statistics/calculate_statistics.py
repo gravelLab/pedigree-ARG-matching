@@ -65,13 +65,12 @@ class CladeAlignmentsMetadata:
 
 
 @dataclass
-class CladeMetadata:
+class CladeAlignmentMetadata:
     results_filepath: Path
     clade_root: int
     clade: Iterable[int]
     probands: Iterable[int]
     number_of_coalescing_events: int
-    # TODO: Rename the class
     pedigree: PotentialMrcaProcessedGraph
     coalescent_tree: CoalescentTree
     clade_alignments_metadata: CladeAlignmentsMetadata = None
@@ -90,7 +89,7 @@ class CladeMetadata:
         proband_vertices = [x for x in clade if coalescent_tree.vertex_to_level_map[x] == 0]
         os.makedirs(results_filepath, exist_ok=True)
         results_filepath = Path(results_filepath)
-        return CladeMetadata(
+        return CladeAlignmentMetadata(
             clade_root=clade_root,
             clade=clade,
             probands=proband_vertices,
@@ -208,10 +207,10 @@ def save_statistics_to_file(clade_alignments_metadata: CladeAlignmentsMetadata, 
                             clade_root: int, pedigree: PotentialMrcaProcessedGraph,
                             results_filepath: str):
     # Process the clade
-    clade_metadata = CladeMetadata.get_clade_basic_metadata(coalescent_tree=coalescent_tree,
-                                                            clade_root=clade_root,
-                                                            pedigree=pedigree,
-                                                            clade_alignments_metadata=clade_alignments_metadata,
-                                                            results_filepath=results_filepath)
+    clade_metadata = CladeAlignmentMetadata.get_clade_basic_metadata(coalescent_tree=coalescent_tree,
+                                                                     clade_root=clade_root,
+                                                                     pedigree=pedigree,
+                                                                     clade_alignments_metadata=clade_alignments_metadata,
+                                                                     results_filepath=results_filepath)
     # Printing the results to the file
     clade_metadata.save_tree_metadata(results_filepath)

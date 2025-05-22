@@ -1,6 +1,6 @@
 from alignment.graph_matcher import *
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
-from scripts.alignment_statistics.calculate_statistics import CladeMetadata, CladeAlignmentsMetadata
+from scripts.alignment_statistics.calculate_statistics import CladeAlignmentMetadata, CladeAlignmentsMetadata
 from scripts.utility.basic_utility import *
 
 print_enabled = False
@@ -20,7 +20,7 @@ def save_alignment_result_to_files(alignment_result: {int: [dict]}, coalescent_t
             calculate_distances_histogram=calculate_distances_histogram,
             calculate_alignments_likelihoods=calculate_likelihood
         )
-        clade_metadata = CladeMetadata.get_clade_basic_metadata(
+        clade_metadata = CladeAlignmentMetadata.get_clade_basic_metadata(
             coalescent_tree=coalescent_tree, pedigree=pedigree, clade_root=clade_root,
             results_filepath=clade_result_directory_path, clade_alignments_metadata=clade_alignments_metadata
         )
