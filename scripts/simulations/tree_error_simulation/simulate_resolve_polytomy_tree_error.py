@@ -1,6 +1,7 @@
 import copy
 
-from graph.coalescent_tree import CoalescentTree
+from lineagekit.core.CoalescentTree import CoalescentTree
+
 from scripts.utility.basic_utility import *
 from scripts.utility.alignment_utility import save_dictionary_to_file
 
@@ -14,7 +15,7 @@ def unmerge_polytomy_and_save_results(tree: CoalescentTree, error_vertex: int, s
     simulation_tree_result_path = simulation_dir_path / tree_filename
     oracle_filepath = simulation_dir_path / oracle_filename
     error_vertex_parent = tree.get_vertex_parent(error_vertex)
-    new_vertex_id = tree.unmerge_polytomy(child=error_vertex, recalculate_levels=True)
+    new_vertex_id = tree.unmerge_edge(child=error_vertex)
     simulation_oracle_vertex_assignments = copy.deepcopy(oracle_vertex_assignments)
     simulation_oracle_vertex_assignments[new_vertex_id] = oracle_vertex_assignments[error_vertex_parent]
     tree.save_to_file(filepath=simulation_tree_result_path)
@@ -26,7 +27,7 @@ def unmerge_polytomy_and_save_results(tree: CoalescentTree, error_vertex: int, s
 
 def run_independent_simulations(tree: CoalescentTree, simulation_number: int, polytomy_vertices: [int],
                                 tree_absolute_path: str, result_directory_path: Path):
-    tree_vertices = tree.get_vertices()
+    tree_vertices = tree.nodes
     oracle_vertex_assignments = {x: x for x in tree_vertices}
     simulation_error_vertices = list(polytomy_vertices)
     for simulation_counter in range(simulation_number):
@@ -45,7 +46,7 @@ def run_independent_simulations(tree: CoalescentTree, simulation_number: int, po
 
 def run_all_simulations(tree: CoalescentTree, polytomy_vertices: [int],
                         tree_absolute_path: str, result_directory_path: Path):
-    tree_vertices = tree.get_vertices()
+    tree_vertices = tree.nodes
     oracle_vertex_assignments = {x: x for x in tree_vertices}
     for simulation_counter, error_vertex in enumerate(polytomy_vertices):
         simulation_tree_name = str(simulation_counter)
@@ -61,15 +62,15 @@ def run_interactive_single_tree_mode(results_directory_paths: Path):
     coalescent_tree_path = get_filepath("Specify the path to the coalescent tree:")
     coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
     polytomy_parents = (
-        parent
-        for parent, children in coalescent_tree.children_map.items()
-        if len(children) > 2
+        node
+        for node, parents_dict in coalescent_tree.pred.items()
+        if len(parents_dict) > 2
     )
 
     possible_error_vertices = [
         vertex
         for parent in polytomy_parents
-        for vertex in coalescent_tree.children_map[parent]
+        for vertex in coalescent_tree.get_children(parent)
     ]
     if not possible_error_vertices:
         print("This coalescent tree has not polytomies to resolve")
@@ -112,14 +113,14 @@ def run_all_simulations_for_parent_directory_with_tree_pedigree_subdirectories(p
         _, tree_path = paths
         coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_path)
         polytomy_parents = (
-            parent
-            for parent, children in coalescent_tree.children_map.items()
-            if len(children) > 2
+            node
+            for node, children_dict in coalescent_tree.succ.items()
+            if len(children_dict) > 2
         )
         possible_error_vertices = [
             vertex
             for parent in polytomy_parents
-            for vertex in coalescent_tree.children_map[parent]
+            for vertex in coalescent_tree.get_children(parent)
         ]
         results_subpath = results_path / tree_pedigree_directory
         os.makedirs(results_subpath, exist_ok=True)

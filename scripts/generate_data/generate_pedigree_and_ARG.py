@@ -3,8 +3,8 @@ import os
 import msprime.pedigrees
 
 import msprime.ancestry
+from lineagekit.core.CoalescentTree import CoalescentTree
 from tskit import TreeSequence, TableCollection, Tree
-from graph.coalescent_tree import CoalescentTree
 
 sequence_length = 2
 recombination_rate = 0.1

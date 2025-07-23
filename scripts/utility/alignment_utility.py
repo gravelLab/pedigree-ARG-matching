@@ -38,12 +38,6 @@ def convert_ploid_id_to_individual(ploid_id: int):
     return f"{individual_id}{ploid_type}"
 
 
-def save_alignment_to_file(dictionary_file, alignment: dict):
-    for key, value in alignment.items():
-        converted_value = convert_ploid_id_to_individual(value)
-        dictionary_file.write(f"{key}: {converted_value}\n")
-
-
 def read_mapping_from_file(filepath):
     parsed_dict = {}
     with open(filepath, 'r') as file:

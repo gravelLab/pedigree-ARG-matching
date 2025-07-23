@@ -1,7 +1,7 @@
 import math
 from itertools import combinations
 
-from graph.coalescent_tree import CoalescentTree
+from lineagekit.core.CoalescentTree import CoalescentTree
 from scripts.utility.basic_utility import *
 
 
@@ -14,8 +14,7 @@ def run_independent_simulations(tree: CoalescentTree, possible_error_vertices: [
             error_vertex = random.choice(simulation_error_vertices)
             simulation_error_vertices.remove(error_vertex)
             error_vertex_parent = tree.get_vertex_parent(error_vertex)
-            tree.merge_edge(parent=error_vertex_parent, child=error_vertex, recalculate_levels=False)
-        tree.initialize_vertex_to_level_map()
+            tree.merge_edge(parent=error_vertex_parent, child=error_vertex)
         tree.save_to_file(simulation_tree_name)
         # TODO: Reverse the changes instead of parsing the tree again
         tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
@@ -28,8 +27,8 @@ def run_all_simulations(tree: CoalescentTree, possible_error_vertices: [int],
         simulation_tree_name = f"{simulation_counter}"
         for error_vertex in errors_combination:
             error_vertex_parent = tree.get_vertex_parent(error_vertex)
-            tree.merge_edge(parent=error_vertex_parent, child=error_vertex, recalculate_levels=False)
-        tree.remove_isolated_vertices(recalculate_levels=True)
+            tree.merge_edge(parent=error_vertex_parent, child=error_vertex)
+        tree.remove_isolated_vertices()
         tree.save_to_file(simulation_tree_name)
         # TODO: Reverse the changes instead of parsing the tree again
         tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
@@ -39,7 +38,8 @@ def run_interactive_session_single_directory():
     results_directory_path = get_non_existing_path("Specify the path where the results are to be stored:")
     coalescent_tree_path = get_filepath("Specify the path to the coalescent tree:")
     coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
-    possible_error_vertices = [x for x in coalescent_tree.children_map if x in coalescent_tree.parents_map]
+    possible_error_vertices = [x for x in coalescent_tree if coalescent_tree.has_parents(x) and
+                               coalescent_tree.has_children(x)]
     max_error_number = len(possible_error_vertices)
     merge_error_operations_per_simulation = get_natural_number_input_in_bounds(
         input_request=f"Specify the number of merge operations that"
@@ -93,7 +93,8 @@ def run_all_simulations_for_parent_directory_with_tree_pedigree_subdirectories(
             continue
         _, tree_path = paths
         coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_path)
-        possible_error_vertices = [x for x in coalescent_tree.children_map if x in coalescent_tree.parents_map]
+        possible_error_vertices = [x for x in coalescent_tree if coalescent_tree.has_parents(x) and
+                                   coalescent_tree.has_children(x)]
         results_subpath = results_path / tree_pedigree_directory
         os.makedirs(results_subpath)
         os.chdir(results_subpath)

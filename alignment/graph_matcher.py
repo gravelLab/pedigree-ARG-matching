@@ -6,14 +6,19 @@ import os
 import time
 from builtins import int
 from collections import defaultdict
+from functools import partial
 from pathlib import Path
+from typing import Iterable
 
+import igraph
 import igraph as ig
+from igraph import Flow
+from lineagekit.core.CoalescentTree import CoalescentTree
 
+from alignment.alignment_result import FullAlignmentResult, FailedClimbingAlignmentResult
 from alignment.configuration import *
 from alignment.potential_mrca_processed_graph import *
 from alignment.subtree_matcher import *
-from graph.coalescent_tree import CoalescentTree
 from scripts.utility.alignment_utility import dict_has_duplicate_values
 
 
@@ -29,26 +34,27 @@ def get_subtree_matcher_for_coalescent_tree_proband(proband: int, proband_pedigr
             for proband_pedigree_id in proband_pedigree_ids}
 
 
-def get_initial_simulation_mapping_for_mode(coalescent_tree: CoalescentTree,
-                                            mode: InitialMatchingMode = default_initial_mapping_mode):
+def get_initial_simulation_mapping_for_mode(
+        coalescent_tree: CoalescentTree,
+        mode: ProbandInitialAssignmentsMode = default_proband_initial_assignments_mode):
     match mode:
-        case InitialMatchingMode.PLOID:
-            return {x: [x] for x in coalescent_tree.get_probands()}
-        case InitialMatchingMode.INDIVIDUAL:
-            return {x: [2 * (x // 2), (2 * (x // 2) + 1)] for x in coalescent_tree.get_probands()}
+        case ProbandInitialAssignmentsMode.PLOID:
+            return {x: [x] for x in coalescent_tree.get_sink_vertices()}
+        case ProbandInitialAssignmentsMode.INDIVIDUAL:
+            return {x: [2 * (x // 2), (2 * (x // 2) + 1)] for x in coalescent_tree.get_sink_vertices()}
         case _:
             raise ValueError(f"Unknown initial matching mode: {mode}")
 
 
-def get_pedigree_simulation_probands_for_alignment_mode(coalescent_tree: CoalescentTree,
-                                                        alignment_mode: InitialMatchingMode =
-                                                        default_initial_mapping_mode):
+def get_pedigree_simulation_probands_for_alignment_mode(vertices: Iterable[int],
+                                                        alignment_mode: ProbandInitialAssignmentsMode =
+                                                        default_proband_initial_assignments_mode):
     # Returns the corresponding probands ids for a pedigree for the current matching mode
     match alignment_mode:
-        case InitialMatchingMode.PLOID:
-            return coalescent_tree.get_probands()
-        case InitialMatchingMode.INDIVIDUAL:
-            proband_individuals = {proband // 2 for proband in coalescent_tree.get_probands()}
+        case ProbandInitialAssignmentsMode.PLOID:
+            return vertices
+        case ProbandInitialAssignmentsMode.INDIVIDUAL:
+            proband_individuals = {proband // 2 for proband in vertices}
             probands_all_ploids = [
                 ploid
                 for proband_individual in proband_individuals
@@ -57,6 +63,10 @@ def get_pedigree_simulation_probands_for_alignment_mode(coalescent_tree: Coalesc
             return probands_all_ploids
         case _:
             raise ValueError(f"Unknown alignment mode: {alignment_mode}")
+
+
+source_vertex_label = "s"
+target_vertex_label = "t"
 
 
 class GraphMatcher:
@@ -110,7 +120,7 @@ class GraphMatcher:
                  of its pedigree candidates.
                 inference_result: The list of candidates for the focal vertex.
             """
-            self.log(f"Vertex level: {coalescent_tree.vertex_to_level_map[focal_vertex_coalescent_id]}")
+            self.log(f"Vertex level: {coalescent_tree.get_vertex_level(focal_vertex_coalescent_id)}")
             self.log(f"Solving the inference for {focal_vertex_coalescent_id} which has {len(focal_vertex_children)} "
                      f"children")
             self.log(f"The children's domain:")
@@ -127,8 +137,11 @@ class GraphMatcher:
             self.file.close()
 
     def __init__(self, processed_graph: PotentialMrcaProcessedGraph, coalescent_tree: CoalescentTree,
-                 initial_mapping: dict[int, [int]], logs_path: str | Path = None,
-                 matching_mode: MatchingMode = default_alignment_mode):
+                 initial_mapping: dict[int, [int]], result_callback_function,
+                 logs_path: str | Path = None,
+                 alignment_vertex_mode: AlignmentVertexMode = default_alignment_vertex_mode,
+                 alignment_edge_mode: AlignmentEdgeMode = default_alignment_edge_mode
+                 ):
         """
         Initializes the GraphMatcher object.
 
@@ -140,12 +153,15 @@ class GraphMatcher:
                 pedigree to the vertices in the coalescent tree.
             logs_path (str | Path): The path where the log file should be stored. None specifies that no logs
                 should be stored.
-            matching_mode (MatchingMode): The matching mode to use.
+            alignment_vertex_mode (AlignmentVertexMode): Specifies how extensive the search must be.
+            alignment_edge_mode (AlignmentEdgeMode): Specifies whether edge alignments should be calculated.
         """
         self.pedigree = processed_graph
         self.coalescent_tree = coalescent_tree
         self.initial_mapping = initial_mapping
-        self.matching_mode = matching_mode
+        self.alignment_vertex_mode = alignment_vertex_mode
+        self.alignment_edge_mode = alignment_edge_mode
+        self.result_callback_function = result_callback_function
         if logs_path and logs_enabled:
             self.logger = GraphMatcher.MatcherLogger(logs_directory_path=logs_path)
         else:
@@ -169,7 +185,7 @@ class GraphMatcher:
         if print_enabled:
             print(string)
 
-    def find_potential_alignments(self):
+    def _find_potential_alignments(self):
         """
         This method finds the superset of all the valid alignments by climbing the tree and resolving all the
         'local' collisions. That is, all of these alignments won't have collisions on the parent-child level
@@ -177,68 +193,107 @@ class GraphMatcher:
         Returns:
              The set of the potential alignments.
         """
-        coalescent_tree_vertex_to_subtrees = dict()
-        for vertex in self.coalescent_tree.levels[0]:
-            coalescent_tree_vertex_to_subtrees[vertex] = get_subtree_matcher_for_coalescent_tree_proband(
-                vertex, self.initial_mapping[vertex])
-        for level in self.coalescent_tree.levels[1:]:
-            for vertex in level:
-                coalescent_tree_vertex_to_subtrees[vertex] = self.get_subtrees_from_children(
-                    vertex,
-                    coalescent_tree_vertex_to_subtrees)
+        coalescent_tree_vertex_to_subtrees: dict[int, dict[int, SubtreeMatcher]] = dict()
+        clades = self.coalescent_tree.get_connected_components()
+        if not clades:
+            raise ValueError("The passed tree is empty")
+        for clade in clades:
+            max_level = max(self.coalescent_tree.get_vertex_level(v) for v in clade)
+            clade_by_levels = [[] for _ in range(max_level + 1)]
+            for v in clade:
+                level = self.coalescent_tree.get_vertex_level(v)
+                clade_by_levels[level].append(v)
+            assert len(clade_by_levels[max_level]) == 1
+            clade_root = clade_by_levels[max_level][0]
+            for vertex in clade_by_levels[0]:
+                coalescent_tree_vertex_to_subtrees[vertex] = get_subtree_matcher_for_coalescent_tree_proband(
+                    vertex, self.initial_mapping[vertex])
+            for level in clade_by_levels[1:]:
+                proceed_climbing = True
+                for vertex in level:
+                    subtree_alignments = self._get_subtrees_from_children(
+                        vertex,
+                        coalescent_tree_vertex_to_subtrees
+                    )
+                    coalescent_tree_vertex_to_subtrees[vertex] = subtree_alignments
+                    if len(subtree_alignments) == 0:
+                        # Call the callback function with a failure alignment result object
+                        focal_vertex_children: [int] = self.coalescent_tree.get_children(vertex)
+                        child_to_pedigree_candidates = {
+                            x: tuple(coalescent_tree_vertex_to_subtrees[x].keys())
+                            for x in focal_vertex_children
+                        }
+                        failed_alignment_result = FailedClimbingAlignmentResult(
+                            clade_root=clade_root,
+                            failed_vertex=vertex,
+                            child_to_pedigree_candidates=child_to_pedigree_candidates
+                        )
+                        # Notify the client code that climbing for the specified clade has failed
+                        self.result_callback_function(failed_alignment_result)
+                        proceed_climbing = False
+                        break
+                # Proceed to the next clade if climbing failed
+                if not proceed_climbing:
+                    break
+        # tree_levels = self.coalescent_tree.get_levels()
+        # if not tree_levels:
+        #     raise ValueError("The passed tree is empty")
+        # for vertex in tree_levels[0]:
+        #     coalescent_tree_vertex_to_subtrees[vertex] = get_subtree_matcher_for_coalescent_tree_proband(
+        #         vertex, self.initial_mapping[vertex])
+        # for level in tree_levels[1:]:
+        #     for vertex in level:
+        #         subtree_alignments = self._get_subtrees_from_children(
+        #             vertex,
+        #             coalescent_tree_vertex_to_subtrees
+        #         )
+        #         if len(subtree_alignments) == 0:
+        #             focal_vertex_children: [int] = self.coalescent_tree.get_children(vertex)
+        #             child_to_pedigree_candidates = {
+        #                 x: coalescent_tree_vertex_to_subtrees[x]
+        #                 for x in focal_vertex_children
+        #             }
+        #             return FailClimbingResult(
+        #                 tree_vertex_failure=vertex,
+        #                 child_vertex_to_candidates=child_to_pedigree_candidates
+        #             )
+        #         coalescent_tree_vertex_to_subtrees[vertex] = subtree_alignments
         # Filtering the map, so that only the assignments for the roots of the clades remain
         coalescent_tree_vertex_to_subtrees = {
             x: value
             for x, value in coalescent_tree_vertex_to_subtrees.items()
-            if x not in self.coalescent_tree.parents_map
+            if x in self.coalescent_tree.get_founders()
         }
+        # return SuccessClimbingResult(
+        #     tree_vertex_to_subtree_alignments=coalescent_tree_vertex_to_subtrees
+        # )
         return coalescent_tree_vertex_to_subtrees
 
-    def find_mapping(self):
+    def find_alignments(self):
         """
         This method finds all the valid mapping between the given processed pedigree and
-        every sub-clade within the coalescent tree.
-
-        Returns:
-              Dictionary that maps every clade root vertex in the coalescent tree to the list of valid alignments for
-              the sub-clade where the chosen vertex is the root.
-              The alignments are represented as a list of SubtreeMatcher objects
+        every sub-clade within the coalescent tree. Every valid vertex alignment is passed to the callback function
+        provided in the constructor
         """
-        coalescent_tree_vertex_to_subtrees = self.find_potential_alignments()
+        coalescent_tree_vertex_to_subtrees = self._find_potential_alignments()
         start_time = time.time()
         self.log_section_delimiter()
-        self.log(f"Filtering the potential alignments. The alignment mode is {self.matching_mode}")
-        result_dict = self.filter_alignments(coalescent_tree_vertex_to_subtrees)
+        self.log(f"Filtering the potential alignments. The alignment mode is {self.alignment_vertex_mode}")
+        self._filter_alignments(coalescent_tree_vertex_to_subtrees)
         end_time = time.time()
         self.log(f"Time spent on building and filtering the results: {end_time - start_time}")
-        return result_dict
-
-    def filter_alignments(self, coalescent_tree_vertex_to_subtrees: dict):
-        if self.matching_mode == MatchingMode.ALL_ALIGNMENTS:
-            return self.filter_alignments_brute_force(coalescent_tree_vertex_to_subtrees)
-            # return self.filter_alignments_product_recursive(coalescent_tree_vertex_to_subtrees)
-        return self.filter_alignments_example_per_root_assignment(coalescent_tree_vertex_to_subtrees)
-
-    def filter_alignments_example_per_root_assignment(self, coalescent_tree_vertex_to_subtrees: dict):
-        result_dict = dict()
-        for clade_root_vertex, clade_root_vertex_assignments in coalescent_tree_vertex_to_subtrees.items():
-            clade_alignments = []
-            root_vertex_matchers: [SubtreeMatcher] = clade_root_vertex_assignments.values()
-            self.log(f"Looking for valid assignments for the root vertex {clade_root_vertex}\n"
-                     f" There are {len(root_vertex_matchers)} potential assignments \n")
-            self.log_subsection_delimiter()
-            for root_matcher in root_vertex_matchers:
-                assert clade_root_vertex == root_matcher.root_coalescent_tree
-                self.log(f"Finding an example alignment for the assignment "
-                         f"{clade_root_vertex}: {root_matcher.root_pedigree}")
-                alignments = root_matcher.get_all_subtree_alignments()
-                self.log(f"There are {len(alignments)} potential alignments")
-                for alignment in alignments:
-                    if self.verify_valid_alignment(alignment=alignment):
-                        clade_alignments.append(alignment)
-                        break
-            result_dict[clade_root_vertex] = clade_alignments
-        return result_dict
+        # climb_result: ClimbingResult = self._find_potential_alignments()
+        # match climb_result:
+        #     case SuccessClimbingResult(tree_vertex_to_subtree_alignments=coalescent_tree_vertex_to_subtrees):
+        #         start_time = time.time()
+        #         self.log_section_delimiter()
+        #         self.log(f"Filtering the potential alignments. The alignment mode is {self.alignment_vertex_mode}")
+        #         self._filter_alignments(coalescent_tree_vertex_to_subtrees)
+        #         end_time = time.time()
+        #         self.log(f"Time spent on building and filtering the results: {end_time - start_time}")
+        #     case FailClimbingResult(tree_vertex_failure=tree_vertex_failure,
+        #                             child_vertex_to_candidates=child_vertex_to_candidates):
+        #         pass
 
     def _verify_symmetry_holds(self, vertex_individual_id: int):
         """
@@ -252,183 +307,431 @@ class GraphMatcher:
         """
         paternal_ploid = 2 * vertex_individual_id
         maternal_ploid = paternal_ploid + 1
-        return (set(self.pedigree.children_map.get(paternal_ploid, [])) ==
-                set(self.pedigree.children_map.get(maternal_ploid, [])))
+        return set(self.pedigree.get_children(paternal_ploid)) == set(self.pedigree.get_children(maternal_ploid))
 
-    def filter_clade_root_assignments_independently(self, coalescent_tree_vertex_to_subtrees: dict,
-                                                    matcher_filter_function):
-        result_dict = dict()
+    @staticmethod
+    def _update_edge_alignment_for_symmetric_ploid(edge_alignment: dict[(int, int), [int]],
+                                                   new_ploid: int, root_id: int,
+                                                   coalescent_tree: CoalescentTree):
+        other_ploid = PotentialMrcaProcessedGraph.get_other_ploid(new_ploid)
+        children = coalescent_tree.get_children(root_id)
+        for child in children:
+            edge = (child, root_id)
+            path: list[int] = edge_alignment[edge]
+            removed_vertex = path.pop()
+            assert removed_vertex == other_ploid
+            path.append(new_ploid)
+
+    def _get_symmetric_alignment_result(self, alignment_result: FullAlignmentResult):
+        # Using the results obtained for the other ploid
+        symmetric_result = copy.deepcopy(alignment_result)
+        clade_root = symmetric_result.clade_root
+        old_ploid = symmetric_result[clade_root]
+        new_ploid = self.pedigree.get_other_ploid(old_ploid)
+        # Update the vertex alignment
+        symmetric_result.vertex_alignment[clade_root] = new_ploid
+        edge_alignments_to_update = []
+        if symmetric_result.example_edge_alignment:
+            edge_alignments_to_update.append(symmetric_result.example_edge_alignment)
+        elif symmetric_result.edge_alignments:
+            edge_alignments_to_update = symmetric_result.edge_alignments
+        for edge_alignment in edge_alignments_to_update:
+            self._update_edge_alignment_for_symmetric_ploid(edge_alignment=edge_alignment,
+                                                            root_id=clade_root,
+                                                            new_ploid=new_ploid,
+                                                            coalescent_tree=self.coalescent_tree
+                                                            )
+        return symmetric_result
+
+    def _filter_alignments(self, coalescent_tree_vertex_to_subtrees: dict):
+        match self.alignment_vertex_mode:
+            case AlignmentVertexMode.ALL_ALIGNMENTS:
+                root_matcher_filter_function = self._get_verified_alignments_brute_force
+            case AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT:
+                root_matcher_filter_function = self._find_example_alignment_for_root_assignment
+            case _:
+                raise ValueError("Unsupported AlignmentExtentMode")
+        original_callback = self.result_callback_function
+        # Iterating over clades
         for clade_root_vertex, clade_root_vertex_assignments in coalescent_tree_vertex_to_subtrees.items():
-            clade_alignments = []
             root_vertex_matchers: [SubtreeMatcher] = clade_root_vertex_assignments.values()
             log_message = (f"Filtering the alignments for the root {clade_root_vertex}\n"
                            f"There are {len(root_vertex_matchers)} potential assignments for this root")
             self.log(log_message)
-            verified_individual_assignments = dict()
+            pedigree_individuals_respecting_ploid_symmetry = set()
+            root_assignments_to_process = []
+            # Since the two ploids of the same individual are symmetrical
+            # (unless the pedigree has been modified after parsing), we can only process one ploid and use
+            # its results for the other
+            # This check is performed because the user can modify the pedigree in such a way that the symmetry doesn't
+            # hold
             for root_matcher in root_vertex_matchers:
+                pedigree_candidate = root_matcher.root_pedigree
+                pedigree_individual = pedigree_candidate // 2
+                if pedigree_individual in pedigree_individuals_respecting_ploid_symmetry:
+                    self.log(f"Using the symmetry of the pedigree for the pedigree candidate {pedigree_candidate}")
+                    continue
+                root_assignments_to_process.append(root_matcher)
+                if self._verify_symmetry_holds(vertex_individual_id=pedigree_individual):
+                    pedigree_individuals_respecting_ploid_symmetry.add(pedigree_individual)
+
+            def intermediary_callback(alignment_result: FullAlignmentResult):
+                # This callback takes advantage of the symmetry in the pedigree to speed up the calculations
+                root_pedigree_candidate = alignment_result[alignment_result.clade_root]
+                root_pedigree_candidate_individual = root_pedigree_candidate // 2
+                if root_pedigree_candidate_individual in pedigree_individuals_respecting_ploid_symmetry:
+                    symmetric_result = self._get_symmetric_alignment_result(alignment_result)
+                    original_callback(symmetric_result)
+                original_callback(alignment_result)
+
+            self.result_callback_function = intermediary_callback
+            # Processing all the selected pedigree candidates for the clade root
+            time_start_total = time.time()
+            for root_matcher in root_assignments_to_process:
                 self.log_subsection_delimiter()
                 self.log(f"Filtering the alignments for the pedigree candidate {root_matcher.root_pedigree}")
-                root_candidate_pedigree_individual = root_matcher.root_pedigree // 2
-                if (root_candidate_pedigree_individual in verified_individual_assignments
-                        and self._verify_symmetry_holds(vertex_individual_id=root_candidate_pedigree_individual)):
-                    # We can use the results obtained for the other ploid
-                    self.log("The other ploid of this candidate has been already verified, using the symmetry")
-                    corresponding_alignments = verified_individual_assignments[root_candidate_pedigree_individual]
-                    corresponding_alignments = copy.deepcopy(corresponding_alignments)
-                    for alignment in corresponding_alignments:
-                        alignment[clade_root_vertex] = root_matcher.root_pedigree
-                    clade_alignments.extend(corresponding_alignments)
-                    continue
                 validation_start = time.time()
-                valid_alignments = matcher_filter_function(root_matcher)
+                root_matcher_filter_function(root_matcher)
                 validation_end = time.time()
                 time_taken = validation_end - validation_start
-                self.log(f"There are {len(valid_alignments)} resulting valid alignments")
                 self.log(f"Time spent on this root candidate: {time_taken}")
-                clade_alignments.extend(valid_alignments)
-                # Saving the alignments corresponding to a valid pedigree assignment
-                verified_individual_assignments[root_candidate_pedigree_individual] = valid_alignments
-            result_dict[clade_root_vertex] = clade_alignments
-        return result_dict
+            time_end_total = time.time()
+            time_taken_total = time_end_total - time_start_total
+            self.log(f"Total time spent on filtering: {time_taken_total}")
+        self.result_callback_function = original_callback
 
-    def filter_alignments_brute_force(self, coalescent_tree_vertex_to_subtrees: dict):
-        return self.filter_clade_root_assignments_independently(
-            coalescent_tree_vertex_to_subtrees=coalescent_tree_vertex_to_subtrees,
-            matcher_filter_function=self.get_verified_alignments_brute_force)
-
-    def filter_alignments_product_recursive(self, coalescent_tree_vertex_to_subtrees: dict):
-        return self.filter_clade_root_assignments_independently(
-            coalescent_tree_vertex_to_subtrees=coalescent_tree_vertex_to_subtrees,
-            matcher_filter_function=self.get_verified_alignments_product_recursive)
-
-    def get_verified_alignments_product_recursive(self, matcher: SubtreeMatcher):
-        if matcher.subtree_alignments is not None:
-            return matcher.subtree_alignments
-        results = []
-        root_assignment_dict = {matcher.root_coalescent_tree: matcher.root_pedigree}
-        # If the given vertex has no children, the resulting alignment is a dictionary with one key-value pair
-        if matcher.children_assignments is None:
-            return [root_assignment_dict]
-        # If there are children assignments, loop over all the corresponding children alignments
-        for children_assignment in matcher.children_assignments:
-            children_alignments = [self.get_verified_alignments_product_recursive(matcher=x) for x in
-                                   children_assignment.values()]
-            for children_dictionaries in product(*children_alignments):
-                new_result = dict(root_assignment_dict)
-                for dictionary in children_dictionaries:
-                    new_result.update(dictionary)
-                if self.verify_valid_alignment(alignment=new_result):
-                    results.append(new_result)
-        matcher.subtree_alignments = results
-        return results
-
-    def get_verified_alignments_iteratively_recursive_cache(self, matcher: SubtreeMatcher,
-                                                            sub_alignments_cache: dict,
-                                                            print_debug=True):
-        #  When the number of unverified alignments is quite small, this approach can be slower
-        if matcher.subtree_alignments is not None:
-            return matcher.subtree_alignments
-        results = []
-        root_assignment_dict = {matcher.root_coalescent_tree: matcher.root_pedigree}
-        # If the given vertex has no children, the resulting alignment is a dictionary with one key-value pair
-        if matcher.children_assignments is None:
-            return [root_assignment_dict]
-        # There are children assignments, loop over all the corresponding children alignments
-        for index, children_assignment in enumerate(matcher.children_assignments):
-            if print_debug:
-                print(f"Processing assignment {index + 1} of {len(matcher.children_assignments)}")
-            # current_valid_alignments = [root_assignment_dict]
-            children_matchers = sorted(children_assignment.values(),
-                                       key=lambda x: x.root_coalescent_tree in self.coalescent_tree.children_map,
-                                       reverse=False)
-            current_valid_alignments = self.get_verified_alignments_iteratively_recursive_cache(
-                children_matchers[0], sub_alignments_cache)
-            for child_index, child_matcher in enumerate(children_matchers[1:]):
-                if print_debug:
-                    print(f"Processing child {child_index + 2} "
-                          f"of {len(self.coalescent_tree.children_map[matcher.root_coalescent_tree])}")
-                    print(f"Current number of sub-alignments is {len(current_valid_alignments)}")
-                current_children_matchers = children_matchers[:child_index + 2]
-                children_assignment = tuple(
-                    (child_matcher.root_coalescent_tree, child_matcher.root_pedigree)
-                    for child_matcher in current_children_matchers
-                )
-                new_valid_alignments = sub_alignments_cache.get(children_assignment, [])
-                # new_valid_alignments = []
-                if new_valid_alignments:
-                    print("Using cached results")
-                else:
-                    print("#########################")
-                    child_matcher_alignments = self.get_verified_alignments_iteratively_recursive_cache(
-                        matcher=child_matcher,
-                        sub_alignments_cache=sub_alignments_cache, print_debug=False)
-                    print("#########################")
-                    for child_matcher_alignment in child_matcher_alignments:
-                        for current_valid_alignment in current_valid_alignments:
-                            new_alignment = dict(child_matcher_alignment)
-                            new_alignment.update(current_valid_alignment)
-                            if self.verify_valid_alignment(alignment=new_alignment):
-                                new_valid_alignments.append(new_alignment)
-                            else:
-                                print("Discard")
-                    sub_alignments_cache[children_assignment] = new_valid_alignments
-                current_valid_alignments = new_valid_alignments
-            result_alignments = []
-            for current_valid_alignment in current_valid_alignments:
-                new_alignment = dict(current_valid_alignment)
-                new_alignment.update(root_assignment_dict)
-                if self.verify_valid_alignment(alignment=new_alignment):
-                    result_alignments.append(new_alignment)
-            results.extend(result_alignments)
-        matcher.subtree_alignments = results
-        return results
-
-    def get_verified_alignments_brute_force(self, matcher: SubtreeMatcher):
+    def _get_verified_alignments_brute_force(self, matcher: SubtreeMatcher):
         alignments = matcher.get_all_subtree_alignments()
         self.log(f"There are {len(alignments)} alignments for the matcher, filtering the results")
-        valid_alignments = [x for x in alignments if self.verify_valid_alignment(alignment=x)]
-        self.log(f"The number of filtered alignments: {len(alignments) - len(valid_alignments)}")
-        return valid_alignments
+        valid_alignments = 0
+        for alignment in alignments:
+            alignment_verification_result = self._verify_valid_alignment(potential_alignment=alignment)
+            if alignment_verification_result:
+                self.result_callback_function(alignment_verification_result)
+                valid_alignments += 1
+        self.log(f"The number of valid alignments: {valid_alignments}")
 
-    def verify_valid_alignment(self, alignment: dict[int, int]):
+    def _find_example_alignment_for_root_assignment(self, root_matcher: SubtreeMatcher):
+        self.log(f"Finding an example alignment for the assignment "
+                 f"{root_matcher.root_coalescent_tree}: {root_matcher.root_pedigree}")
+        alignments = root_matcher.get_all_subtree_alignments()
+        self.log(f"There are {len(alignments)} potential alignments")
+        for alignment in alignments:
+            alignment_verification = self._verify_valid_alignment(potential_alignment=alignment)
+            if alignment_verification:
+                self.result_callback_function(alignment_verification)
+                break
+
+    @staticmethod
+    def _are_paths_disjoint(paths):
+        seen = set()
+        for path in paths:
+            for vertex in path:
+                if vertex in seen:
+                    return False
+                seen.add(vertex)
+        return True
+
+    @staticmethod
+    def _map_trimmed_path_to_readable_format(vertex_alignment, edge, trimmed_path, network_graph):
+        _, parent = edge
+        readable_path = []
+        for index, vertex in enumerate(trimmed_path):
+            if index % 2 == 1:
+                # Every second vertex is an access vertex which shouldn't be reported
+                continue
+            pedigree_ploid_id = int(network_graph.vs[vertex]["name"])
+            readable_path.append(pedigree_ploid_id)
+        last_path_vertex = vertex_alignment[parent]
+        readable_path.append(last_path_vertex)
+        return readable_path
+
+    @staticmethod
+    def _map_edge_alignment_to_meaningful_ids(edge_alignment, vertex_alignment, network_graph):
+        readable_edge_alignment = dict()
+        for edge, path in edge_alignment:
+            readable_path = GraphMatcher._map_trimmed_path_to_readable_format(vertex_alignment, edge,
+                                                                              path, network_graph)
+            readable_edge_alignment[edge] = readable_path
+        return readable_edge_alignment
+
+    def _edge_alignment_search_simple_product(self, edge_to_all_pedigree_paths: dict):
+        edge_to_path_tuples = [
+            [(edge, path) for path in paths]
+            for edge, paths in edge_to_all_pedigree_paths.items()
+        ]
+        # This is a generator (lazy evaluation)
+        possible_edge_alignments = product(*edge_to_path_tuples)
+        valid_edge_alignments = []
+        for possible_edge_alignment in possible_edge_alignments:
+            paths = [path for _, path in possible_edge_alignment]
+            if self._are_paths_disjoint(paths):
+                valid_edge_alignments.append(possible_edge_alignment)
+                if self.alignment_vertex_mode == AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT:
+                    break
+        return valid_edge_alignments
+
+    def _edge_alignment_search_sort_by_value_space(self, edge_to_all_pedigree_paths: dict):
+        # Sort edges by number of paths (most constrained first)
+        sorted_edges = sorted(
+            edge_to_all_pedigree_paths.items(),
+            key=lambda item: len(item[1])
+        )
+        edge_number = len(sorted_edges)
+        valid_edge_alignments = []
+
+        def validate_valid_edge_alignment_extension(edge_alignment, new_path):
+            # Avoid constructing the set if the edge alignment is empty
+            if not edge_alignment:
+                return True
+            new_path_vertices = frozenset(new_path)
+            for _, path in edge_alignment:
+                if new_path_vertices.intersection(path):
+                    return False
+            return True
+
+        def backtrack_search(edge_index: int, current_edge_alignment: list):
+            if edge_index == edge_number:
+                valid_edge_alignments.append(current_edge_alignment.copy())
+                return
+            edge, paths = sorted_edges[edge_index]
+            for path in paths:
+                if validate_valid_edge_alignment_extension(current_edge_alignment, path):
+                    current_edge_alignment.append((edge, path))
+                    backtrack_search(edge_index + 1, current_edge_alignment)
+                    current_edge_alignment.pop()
+                    if (len(valid_edge_alignments) > 1 and
+                            self.alignment_vertex_mode == AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT):
+                        return
+
+        backtrack_search(0, [])
+        return valid_edge_alignments
+
+    def _build_edge_to_path_map(self, alignment: dict, network_graph: igraph.Graph):
+        edge_to_all_pedigree_paths = dict()
+        for parent, child in self.coalescent_tree.edges:
+            child_pedigree = alignment.get(child, None)
+            parent_pedigree = alignment.get(parent, None)
+            if child_pedigree is None or parent_pedigree is None:
+                continue
+            parent_pedigree_access_vertex = f"{parent_pedigree}'"
+            child_pedigree_id = network_graph.vs.find(name=str(child_pedigree)).index
+            parent_pedigree_id = network_graph.vs.find(name=str(parent_pedigree)).index
+            parent_pedigree_access_vertex_id = network_graph.vs.find(name=parent_pedigree_access_vertex).index
+            simple_paths: list[list[int]] = network_graph.get_all_simple_paths(v=child_pedigree_id,
+                                                                               to=parent_pedigree_id,
+                                                                               mode=igraph.OUT)
+            for simple_path in simple_paths:
+                simple_path.remove(parent_pedigree_id)
+                # We can remove the access vertex as well!
+                # Notice that any vertex that goes through the access vertex must go through the original
+                # vertex as well
+                # Now, consider the case where the parent vertex is not the candidate for the root vertex. In this case,
+                # it will be present in the path going from the parent vertex to its parent. Therefore, if any other
+                # vertex goes through the parent vertex's access vertex, we will have a collision
+                # On the other hand, if the parent vertex is the candidate for the root of the clade, then no other
+                # vertex can actually reach it (as this would mean that there is a cycle in the pedigree)
+                simple_path.remove(parent_pedigree_access_vertex_id)
+            edge_to_all_pedigree_paths[(child, parent)] = simple_paths
+        return edge_to_all_pedigree_paths
+
+    def _get_possible_edge_alignment_generator(self, alignment: dict, network_graph: igraph.Graph):
+        edge_to_all_pedigree_paths = self._build_edge_to_path_map(alignment, network_graph)
+        edge_to_path_tuples = [
+            [(edge, path) for path in paths]
+            for edge, paths in edge_to_all_pedigree_paths.items()
+        ]
+        # This is a generator (lazy evaluation)
+        return product(*edge_to_path_tuples)
+
+    def _get_edge_alignments_for_vertex_alignment(self, potential_alignment: FullAlignmentResult,
+                                                  network_graph: igraph.Graph,
+                                                  search_function) -> FullAlignmentResult:
+        alignment = potential_alignment.vertex_alignment
+        edge_to_all_pedigree_paths = self._build_edge_to_path_map(alignment=alignment, network_graph=network_graph)
+        edge_alignments = search_function(edge_to_all_pedigree_paths)
+        partial_func = partial(self._map_edge_alignment_to_meaningful_ids,
+                               vertex_alignment=alignment,
+                               network_graph=network_graph)
+        valid_edge_alignments = list(map(partial_func, edge_alignments))
+        if len(valid_edge_alignments) > 0:
+            potential_alignment.edge_alignments = valid_edge_alignments
+            # formatted_edge_to_path_map = dict()
+            # for edge, paths in edge_to_all_pedigree_paths.items():
+            #     formatted_paths = [self._map_trimmed_path_to_readable_format(
+            #         vertex_alignment=potential_alignment.vertex_alignment,
+            #         network_graph=network_graph,
+            #         edge=edge,
+            #         trimmed_path=path
+            #     ) for path in paths]
+            #     formatted_edge_to_path_map[edge] = formatted_paths
+            # potential_alignment.edge_to_path_map = formatted_edge_to_path_map
+            potential_alignment.is_valid = True
+        return potential_alignment
+
+    def _get_example_edge_alignment(self, potential_alignment: FullAlignmentResult,
+                                    network_graph: igraph.Graph) -> FullAlignmentResult:
+        alignment = potential_alignment.vertex_alignment
+        potential_edge_alignments = self._get_possible_edge_alignment_generator(alignment=alignment,
+                                                                                network_graph=network_graph)
+        for possible_edge_alignment in potential_edge_alignments:
+            paths = [path for _, path in possible_edge_alignment]
+            if self._are_paths_disjoint(paths):
+                potential_alignment.example_edge_alignment = possible_edge_alignment
+                return potential_alignment
+
+    def _verify_example_edge_alignment_from_flow(self, alignment: dict[int, int],
+                                                 alignment_flow: Flow) -> dict[(int, int), [int]]:
+        """
+        Creates an example edge alignment from the obtained flow
+
+        Args:
+            alignment: The vertex alignment
+            alignment_flow: The corresponding maximum flow
+
+        Returns:
+             The edge alignment if the flow produces a correct alignment or None otherwise
+        """
+
+        def get_edge_flow(edge_child: int, edge_parent: int):
+            edge_id = graph.get_eid(edge_child, edge_parent)
+            return alignment_flow.flow[edge_id]
+
+        def get_pedigree_path(descendant: int, ancestor: int):
+            current_path = [descendant]
+            current_vertex = descendant
+            current_vertex_id = graph.vs.find(name=str(current_vertex)).index
+            ancestor_id = graph.vs.find(name=str(ancestor)).index
+            target_id = graph.vs.find(name=target_vertex_label).index
+            while current_vertex_id != ancestor_id:
+                neighbours = graph.neighbors(vertex=current_vertex_id, mode="out")
+                neighbours = [x for x in neighbours if get_edge_flow(edge_child=current_vertex_id, edge_parent=x) > 0]
+                try:
+                    neighbours.remove(target_id)
+                except ValueError:
+                    pass
+                if not neighbours:
+                    # The flow doesn't connect the descendant with the ancestor, the flow doesn't produce the alignment
+                    raise ValueError("The flow doesn't produce a valid alignment")
+                assert len(neighbours) == 1
+                # The vertex that we've reached is the access vertex of the next pedigree individual on the path
+                access_vertex_id = neighbours[0]
+                access_vertex_neighbors = graph.neighbors(vertex=access_vertex_id, mode="out")
+                # The access vertex is only connected to its corresponding original vertex
+                assert len(access_vertex_neighbors) == 1
+                next_vertex_id = access_vertex_neighbors[0]
+                next_vertex_name = int(graph.vs[next_vertex_id]["name"])
+                current_path.append(next_vertex_name)
+                current_vertex_id = next_vertex_id
+            return current_path
+
+        graph: ig.Graph = alignment_flow.graph
+        tree_non_leaf_levels = self.coalescent_tree.get_levels()[1:]
+        edge_alignment = dict()
+        for tree_level in tree_non_leaf_levels:
+            for vertex in tree_level:
+                vertex_pedigree = alignment.get(vertex, None)
+                # If the vertex is not in the alignment (for example, it's a part of another clade, skip it)
+                if not vertex_pedigree:
+                    continue
+                vertex_children = self.coalescent_tree.get_children(vertex)
+                for child in vertex_children:
+                    child_pedigree = alignment.get(child, None)
+                    if not child_pedigree:
+                        continue
+                    try:
+                        pedigree_path = get_pedigree_path(descendant=child_pedigree, ancestor=vertex_pedigree)
+                    except ValueError:
+                        return None
+                    edge_alignment[(child, vertex)] = pedigree_path
+        return edge_alignment
+
+    def _run_maximum_flow(self, potential_alignment: FullAlignmentResult, network_graph: igraph.Graph,
+                          proband_number: int) -> FullAlignmentResult:
+        # Verify that the default value is False
+        assert not potential_alignment.is_valid
+        match self.alignment_edge_mode:
+            case AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT:
+                maximum_flow = network_graph.maxflow(source=source_vertex_label, target=target_vertex_label,
+                                                     capacity='capacity')
+                maximum_flow_value = maximum_flow.value
+                necessary_condition = maximum_flow_value == proband_number
+                # If the necessary condition doesn't hold, there are no edge alignments
+                if not necessary_condition:
+                    return potential_alignment
+                # We can additionally check if the alignment is correct. If so, we can use it as an example alignment
+                edge_alignment = self._verify_example_edge_alignment_from_flow(
+                    alignment=potential_alignment.vertex_alignment,
+                    alignment_flow=maximum_flow
+                )
+                if edge_alignment is not None:
+                    potential_alignment.example_edge_alignment = edge_alignment
+                    potential_alignment.is_valid = True
+                    return potential_alignment
+                # Otherwise, we need to perform a search until we find a solution or run out of options
+                return self._get_edge_alignments_for_vertex_alignment(
+                    network_graph=network_graph,
+                    potential_alignment=potential_alignment,
+                    search_function=self._edge_alignment_search_simple_product
+                )
+            case AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS:
+                maximum_flow_value = network_graph.maxflow_value(source=source_vertex_label,
+                                                                 target=target_vertex_label,
+                                                                 capacity='capacity')
+                is_valid = maximum_flow_value == proband_number
+                if not is_valid:
+                    return potential_alignment
+                return self._get_edge_alignments_for_vertex_alignment(
+                    network_graph=network_graph,
+                    potential_alignment=potential_alignment,
+                    search_function=self._edge_alignment_search_simple_product
+                )
+
+    def _verify_valid_alignment(self, potential_alignment: dict[int, int]) -> FullAlignmentResult:
         """
         Verifies that the given (possibly partial) alignment is correct.
 
         Args:
-            alignment (dict): The alignment to be verified.
+            potential_alignment (dict): The alignment to be verified.
 
         Returns:
-            Whether the given alignment is correct.
+            The alignment result object calculated based on the specified problem mode.
         """
-        if dict_has_duplicate_values(alignment):
-            return False
+        if dict_has_duplicate_values(potential_alignment):
+            return FullAlignmentResult(
+                vertex_alignment=potential_alignment,
+                is_valid=False,
+                clade_root=None
+            )
+        clade_root = None
         network_graph = ig.Graph(directed=True)
-        source_vertex_label = "s"
-        target_vertex_label = "t"
         vertices_to_add = set()
         edges_to_add = set()
         edge_capacities = dict()
         vertices_to_add.update([source_vertex_label, target_vertex_label])
         proband_number = 0
-        for tree_vertex in alignment:
-            tree_vertex_pedigree = alignment[tree_vertex]
+        for tree_vertex in potential_alignment:
+            tree_vertex_pedigree = potential_alignment[tree_vertex]
             tree_vertex_pedigree_str = str(tree_vertex_pedigree)
             vertices_to_add.add(tree_vertex_pedigree_str)
-            tree_vertex_parents = [x for x in self.coalescent_tree.parents_map.get(tree_vertex, []) if x in alignment]
+            tree_vertex_parents = [x for x in self.coalescent_tree.get_parents(tree_vertex) if x in potential_alignment]
             # If the vertex is a proband, connect it to the source
-            children = self.coalescent_tree.children_map.get(tree_vertex, [])
+            children = self.coalescent_tree.get_children(tree_vertex)
             if not children:
                 edges_to_add.add((source_vertex_label, tree_vertex_pedigree_str))
                 proband_number += 1
                 if not tree_vertex_parents:
+                    assert clade_root is None
+                    clade_root = tree_vertex
                     edges_to_add.add((tree_vertex_pedigree_str, target_vertex_label))
                 continue
             assert len(children) > 0
-            children_pedigree = [alignment[x] for x in children if alignment.get(x) is not None]
+            children_pedigree = [potential_alignment[x] for x in children if potential_alignment.get(x) is not None]
             # The number of children present in the alignment
             children_number = len(children_pedigree)
-            vertices, edges, capacities = self.add_edges_to_mrca_from_descendants(tree_vertex_pedigree,
-                                                                                  children_pedigree)
+            vertices, edges, capacities = self._add_edges_to_mrca_from_descendants(tree_vertex_pedigree,
+                                                                                   children_pedigree)
+
             vertices_to_add.update(vertices)
             edges_to_add.update(edges)
             assert not [x for x in capacities if x in edge_capacities]
@@ -436,6 +739,8 @@ class GraphMatcher:
             edge = tree_vertex_pedigree_str, target_vertex_label
             edges_to_add.add(edge)
             if not tree_vertex_parents:
+                assert clade_root is None
+                clade_root = tree_vertex
                 edge_capacities[edge] = children_number
             else:
                 edge_capacities[edge] = children_number - 1
@@ -444,11 +749,16 @@ class GraphMatcher:
         edges = list(edges_to_add)
         capacities = [edge_capacities.get(edge, 1) for edge in edges]
         network_graph.add_edges(edges, attributes={"capacity": capacities})
-        maximum_flow = network_graph.maxflow_value(source=source_vertex_label, target=target_vertex_label,
-                                                   capacity='capacity')
-        return maximum_flow == proband_number
+        assert clade_root is not None
+        alignment_result = FullAlignmentResult(
+            vertex_alignment=potential_alignment,
+            clade_root=clade_root,
+            is_valid=False
+        )
+        return self._run_maximum_flow(potential_alignment=alignment_result, network_graph=network_graph,
+                                      proband_number=proband_number)
 
-    def add_edges_to_mrca_from_descendants(self, mrca: int, descendant_vertices: [int]):
+    def _add_edges_to_mrca_from_descendants(self, mrca: int, descendant_vertices: [int]):
         mrca_access_label = f"{mrca}'"
         vertices_to_add = set()
         edges_to_add = set()
@@ -478,7 +788,7 @@ class GraphMatcher:
                 current_level_vertices = next_level_vertices
         return vertices_to_add, edges_to_add, edge_to_capacity
 
-    def get_subtrees_from_children(self, focal_vertex: int, vertex_subtree_dict: {int: {int: SubtreeMatcher}}):
+    def _get_subtrees_from_children(self, focal_vertex: int, vertex_subtree_dict: {int: {int: SubtreeMatcher}}):
         """
         Finds all the valid alignments for the sub-clade where the given focal_vertex is the root.
 
@@ -491,7 +801,7 @@ class GraphMatcher:
              The list of all the valid sub-clade alignments for the specified focal vertex. The resulting
              list consists of SubtreeMatcher subtree_matcher.SubtreeMatcher objects.
         """
-        focal_vertex_children: [int] = self.coalescent_tree.children_map[focal_vertex]
+        focal_vertex_children: [int] = self.coalescent_tree.get_children(focal_vertex)
         if not focal_vertex_children:
             raise Exception("Isolated vertex in the coalescent tree")
         if len(focal_vertex_children) == 1:
@@ -501,13 +811,13 @@ class GraphMatcher:
                       vertex_subtree_dict[child].items()}
             return result
         if print_enabled:
-            print("####################")
-            print(f"Inference for {focal_vertex} ({self.coalescent_tree.vertex_to_level_map[focal_vertex]}),"
+            print(section_separator)
+            print(f"Inference for {focal_vertex} ({self.coalescent_tree.get_vertex_level(focal_vertex)}),"
                   f" there are {len(focal_vertex_children)} children")
             for child in focal_vertex_children:
                 print(f"{child}: {len(vertex_subtree_dict[child])}")
         inference_start = time.time()
-        (children_order, inference_result) = self.get_pmracs_for_vertices(
+        (children_order, inference_result) = self._get_pmracs_for_vertices(
             coalescent_vertex_to_candidates=vertex_subtree_dict,
             vertices_coalescent_ids=focal_vertex_children
         )
@@ -537,20 +847,6 @@ class GraphMatcher:
                 root_pedigree=focal_vertex_candidate,
                 children_assignments=children_dictionaries)
             inference_result.pop(focal_vertex_candidate)
-        # for single_result in inference_result:
-        #     (assigned_children, focal_vertex_candidates) = single_result
-        #     assert len(children_order) == len(assigned_children) == len(focal_vertex_children)
-        #     children_dictionary = dict()
-        #     for index, child_assigned_pedigree_id in enumerate(assigned_children):
-        #         child_coalescent_id = children_order[index]
-        #         assigned_child_matcher = vertex_subtree_dict[child_coalescent_id][child_assigned_pedigree_id]
-        #         children_dictionary[child_coalescent_id] = assigned_child_matcher
-        #     for focal_vertex_candidate in focal_vertex_candidates:
-        #         subtree_matcher = candidate_subtree_matcher_dictionary.setdefault(focal_vertex_candidate,
-        #                                                                           SubtreeMatcher(focal_vertex,
-        #                                                                                          focal_vertex_candidate,
-        #                                                                                          []))
-        #         subtree_matcher.children_assignments.append(children_dictionary)
         result_build_end = time.time()
         self.log(f"Building the result {result_build_end - result_build_start}")
         self.log(f"There are {len(candidate_subtree_matcher_dictionary)} resulting assignments")
@@ -558,7 +854,7 @@ class GraphMatcher:
 
     # ----------------------------------------- Alignment logic ------------------------------------------------------
 
-    def verify_pmrca_for_vertex_pair(self, first_vertex: int, second_vertex: int, common_ancestor: int):
+    def _verify_pmrca_for_vertex_pair(self, first_vertex: int, second_vertex: int, common_ancestor: int):
         """
         Verifies that the given vertex is a potential mrca for the given pair of vertices.
 
@@ -575,8 +871,8 @@ class GraphMatcher:
                     first_vertex_access_vertices ==
                     self.pedigree.vertex_to_ancestor_map[second_vertex][common_ancestor])
 
-    def triplet_condition_holds(self, first_vertex: int, second_vertex: int, third_vertex: int,
-                                potential_mrca_candidate: int):
+    def _triplet_condition_holds(self, first_vertex: int, second_vertex: int, third_vertex: int,
+                                 potential_mrca_candidate: int):
         """
         Verifies that the potential MRCA candidate satisfies all the conditions involving the
         third vertex. More specifically, it verifies that the `Hall's condition
@@ -612,7 +908,7 @@ class GraphMatcher:
         # If the loop completes, there are 2 or fewer distinct elements
         return False
 
-    def filter_common_ancestors_for_vertex_pair(self, first_candidate: int, second_candidate: int):
+    def _filter_common_ancestors_for_vertex_pair(self, first_candidate: int, second_candidate: int):
         """
         Finds the pmracs vertices for the given vertex pair. Important: This method does not check whether the passed
         vertices are different.
@@ -625,25 +921,23 @@ class GraphMatcher:
              The list of pmracs for the given vertices.
         """
         verified_ancestors = []
-        if (not self.pedigree.parents_map.get(first_candidate, []) or
-                not self.pedigree.parents_map.get(second_candidate, [])):
+        if not self.pedigree.has_parents(first_candidate) or not self.pedigree.has_parents(second_candidate):
             return verified_ancestors
-        while self.pedigree.parents_map[first_candidate] == self.pedigree.parents_map[second_candidate]:
-            verified_ancestors.extend(self.pedigree.parents_map[first_candidate])
-            [first_candidate, second_candidate] = self.pedigree.parents_map[first_candidate]
-            if (not self.pedigree.parents_map.get(first_candidate, []) or
-                    not self.pedigree.parents_map.get(second_candidate, [])):
+        while self.pedigree.get_parents(first_candidate) == self.pedigree.get_parents(second_candidate):
+            verified_ancestors.extend(self.pedigree.get_parents(first_candidate))
+            [first_candidate, second_candidate] = self.pedigree.get_parents(first_candidate)
+            if not self.pedigree.has_parents(first_candidate) or not self.pedigree.has_parents(second_candidate):
                 return verified_ancestors
         first_ancestors = self.pedigree.vertex_to_ancestor_map[first_candidate]
         second_ancestors = self.pedigree.vertex_to_ancestor_map[second_candidate]
         if len(second_ancestors) < len(first_ancestors):
             first_ancestors, second_ancestors = second_ancestors, first_ancestors
         verified_ancestors.extend([ancestor for ancestor in first_ancestors if ancestor in second_ancestors and
-                                   self.verify_pmrca_for_vertex_pair(first_candidate, second_candidate, ancestor)
+                                   self._verify_pmrca_for_vertex_pair(first_candidate, second_candidate, ancestor)
                                    ])
         return verified_ancestors
 
-    def get_pmracs_for_vertex_pair(self, first: int, second: int, coalescent_vertex_to_candidates: {int: [int]}):
+    def _get_pmracs_for_vertex_pair(self, first: int, second: int, coalescent_vertex_to_candidates: {int: [int]}):
         """
         Explores the possible candidates for the given coalescent vertices and finds the corresponding pmracs.
 
@@ -666,15 +960,15 @@ class GraphMatcher:
             for second_vertex_candidate in second_vertex_candidates:
                 if first_vertex_candidate == second_vertex_candidate:
                     continue
-                verified_ancestors = self.filter_common_ancestors_for_vertex_pair(
+                verified_ancestors = self._filter_common_ancestors_for_vertex_pair(
                     first_vertex_candidate,
                     second_vertex_candidate)
                 for verified_ancestor in verified_ancestors:
                     result[verified_ancestor].append((first_vertex_candidate, second_vertex_candidate))
         return result
 
-    def get_pmracs_for_vertex_triple_iterative(self, first: int, second: int, third: int,
-                                               coalescent_vertex_to_candidates: {int: [int]}):
+    def _get_pmracs_for_vertex_triple_iterative(self, first: int, second: int, third: int,
+                                                coalescent_vertex_to_candidates: {int: [int]}):
         """
         Explores the possible candidates for the given coalescent vertices and finds the corresponding pmracs.
 
@@ -698,8 +992,8 @@ class GraphMatcher:
             triplet_cache[triplet_tuple] = triplet_tuple
             return triplet_tuple
 
-        first_second_pair_result = self.get_pmracs_for_vertex_pair(first, second, coalescent_vertex_to_candidates)
-        first_third_pair_result = self.get_pmracs_for_vertex_pair(first, third, coalescent_vertex_to_candidates)
+        first_second_pair_result = self._get_pmracs_for_vertex_pair(first, second, coalescent_vertex_to_candidates)
+        first_third_pair_result = self._get_pmracs_for_vertex_pair(first, third, coalescent_vertex_to_candidates)
         first_second_dict = defaultdict(dict)
         first_third_dict = defaultdict(dict)
         for (pair_result, dictionary) in ((first_second_pair_result, first_second_dict),
@@ -726,14 +1020,15 @@ class GraphMatcher:
                             continue
                         # TODO: Consider adding the common-parents speed-up
                         current_triplet_tuple = get_triplet_tuple(first_candidate, second_candidate, third_candidate)
-                        if (self.verify_pmrca_for_vertex_pair(second_candidate, third_candidate, shared_common_ancestor)
-                                and self.triplet_condition_holds(first_candidate, second_candidate,
-                                                                 third_candidate, shared_common_ancestor)):
+                        if (self._verify_pmrca_for_vertex_pair(second_candidate, third_candidate,
+                                                               shared_common_ancestor)
+                                and self._triplet_condition_holds(first_candidate, second_candidate,
+                                                                  third_candidate, shared_common_ancestor)):
                             result[shared_common_ancestor].append(current_triplet_tuple)
         return result
 
-    def get_pmracs_for_vertices(self, vertices_coalescent_ids: [int],
-                                coalescent_vertex_to_candidates: {int: [int]}):
+    def _get_pmracs_for_vertices(self, vertices_coalescent_ids: [int],
+                                 coalescent_vertex_to_candidates: {int: [int]}):
         """
         This function calculates the potential most recent common ancestor (pmrca) for the given vertices.
 
@@ -751,19 +1046,19 @@ class GraphMatcher:
                                          reverse=False
                                          )
         if vertices_length == 2:
-            result = self.get_pmracs_for_vertex_pair(vertices_coalescent_ids[0], vertices_coalescent_ids[1],
-                                                     coalescent_vertex_to_candidates)
+            result = self._get_pmracs_for_vertex_pair(vertices_coalescent_ids[0], vertices_coalescent_ids[1],
+                                                      coalescent_vertex_to_candidates)
         elif vertices_length == 3:
-            result = self.get_pmracs_for_vertex_triple_iterative(vertices_coalescent_ids[0],
-                                                                 vertices_coalescent_ids[1],
-                                                                 vertices_coalescent_ids[2],
-                                                                 coalescent_vertex_to_candidates)
+            result = self._get_pmracs_for_vertex_triple_iterative(vertices_coalescent_ids[0],
+                                                                  vertices_coalescent_ids[1],
+                                                                  vertices_coalescent_ids[2],
+                                                                  coalescent_vertex_to_candidates)
         else:
-            result = self.get_pmracs_for_vertices_dfs(vertices_coalescent_ids, coalescent_vertex_to_candidates)
+            result = self._get_pmracs_for_vertices_dfs(vertices_coalescent_ids, coalescent_vertex_to_candidates)
         return vertices_coalescent_ids, result
 
-    def get_pmracs_for_vertices_dfs(self, vertices_coalescent_ids: [int],
-                                    coalescent_vertex_to_candidates: {int: [int]}):
+    def _get_pmracs_for_vertices_dfs(self, vertices_coalescent_ids: [int],
+                                     coalescent_vertex_to_candidates: {int: [int]}):
         """
         Explores the search graph in a dfs manner storing the results only for the currently explored branch.
 
@@ -818,7 +1113,7 @@ class GraphMatcher:
             if not current_index:
                 # We have only mapped the first tree vertex
                 first_candidate_ancestors = [x for x in self.pedigree.get_vertex_ancestors(vertex)
-                                             if len(self.pedigree.children_map[x]) >= vertices_length]
+                                             if len(self.pedigree.get_children(x)) >= vertices_length]
                 if first_candidate_ancestors:
                     verified_assignments = (
                         (vertex,),

@@ -1,8 +1,9 @@
 import warnings
 from concurrent.futures import ProcessPoolExecutor
 
-from graph.coalescent_tree import CoalescentTree
-from graph.genealogical_graph import GenealogicalGraph
+from lineagekit.core.CoalescentTree import CoalescentTree
+from lineagekit.core.PloidPedigree import PloidPedigree
+
 from scripts.utility.basic_utility import *
 
 
@@ -41,9 +42,9 @@ def process_pedigree_directory(parent_pedigrees_directory_path: Path, result_dir
         return
     pedigree_filepath = pedigree_directory_path / pedigree_filename
     print(f"Processing {pedigree_filepath}")
-    pedigree = GenealogicalGraph.get_diploid_graph_from_file(filepath=pedigree_filepath)
+    pedigree = PloidPedigree.get_ploid_pedigree_from_file(filepath=pedigree_filepath)
     ascending_pedigree_filepath = result_pedigree_directory_path / pedigree_filename
-    pedigree.save_ascending_genealogy_to_file(filepath=ascending_pedigree_filepath, probands=probands)
+    pedigree.save_ascending_genealogy_as_diploid(filepath=ascending_pedigree_filepath, vertices=probands)
 
 
 def process_coalescent_tree_directory(parent_coalescent_tree_directory_path: Path, result_directory_filepath: Path,
@@ -52,8 +53,7 @@ def process_coalescent_tree_directory(parent_coalescent_tree_directory_path: Pat
     result_tree_filepath = result_directory_filepath / tree_filename
     coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=input_tree_filepath)
     os.makedirs(result_directory_filepath, exist_ok=True)
-    coalescent_tree.save_ascending_genealogy_to_file(filepath=result_tree_filepath,
-                                                     probands=probands)
+    coalescent_tree.save_ascending_graph_to_file(filepath=result_tree_filepath, vertices=probands)
 
 
 def process_pedigree_tree_directory(pedigree_tree_parent_directory_path: Path, result_directory_filepath: Path,

@@ -1,0 +1,17 @@
+initial_assignments:
+  - coalescent_id: 86
+    pedigree_ids: [43P]
+  - coalescent_id: 95
+    pedigree_ids: [47M, 47P]
+coalescent_tree:
+  path: "tree"
+  missing_parent_notation: "-1"
+  separation_symbol: " "
+  skip_first_line: false
+pedigree:
+  path: "pedigree_with_a_cycle.pedigree"
+  missing_parent_notation: "-1"
+  separation_symbol: " "
+  skip_first_line: false
+  check_for_cycles: true
+output_path: "example"

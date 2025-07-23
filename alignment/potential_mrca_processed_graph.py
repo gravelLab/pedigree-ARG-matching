@@ -1,7 +1,9 @@
-from graph.genealogical_graph import GenealogicalGraph, SimpleGraph
+from pathlib import Path
+
+from lineagekit.core.PloidPedigree import PloidPedigree
 
 
-class PotentialMrcaProcessedGraph(GenealogicalGraph):
+class PotentialMrcaProcessedGraph(PloidPedigree):
     """
     This class represents a preprocessed pedigree graph. Apart from having the usual parents and children mappings,
     it also contains the following information about the pedigree:
@@ -13,12 +15,19 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
     and the values are the "access vertices" through which u can reach the particular ancestor.
     """
 
-    def __init__(self, pedigree: SimpleGraph, probands: [int] = None, initialize_ancestor_maps: bool = True,
-                 initialize_levels: bool = True):
-        super().__init__(pedigree=pedigree, probands=probands, initialize_levels=initialize_levels)
-        self.vertex_to_ancestor_map: {int: {int: [int]}} = {key: dict() for key in self.vertex_to_level_map}
+    def __init__(self, initialize_ancestor_maps: bool = True, *args, **kwargs):
+        super().__init__(args, kwargs)
+        self.vertex_to_ancestor_map: {int: {int: [int]}} = None
         if initialize_ancestor_maps:
             self.initialize_potential_mrca_map()
+
+    @classmethod
+    def from_pedigree(cls, pedigree: PloidPedigree, initialize_ancestor_maps: bool = True):
+        obj = cls.__new__(cls)  # Create instance without calling __init__
+        obj.__dict__.update(pedigree.__dict__)  # Copy all attributes
+        if initialize_ancestor_maps:
+            obj.initialize_potential_mrca_map()
+        return obj
 
     def initialize_potential_mrca_map(self):
         """
@@ -26,9 +35,8 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         used during the alignment process. This matrix maps a pair (descendant, ancestor) to the list of the ancestor's
         children vertices through which the descendant can reach the ancestor.
          """
-        # TODO: Recalculate the levels if necessary
-        self.vertex_to_ancestor_map = {key: dict() for key in self.vertex_to_level_map}
-        ancestor_to_vertex_map = {vertex: dict() for vertex in self.vertex_to_level_map.keys()}
+        self.vertex_to_ancestor_map = {key: dict() for key in self}
+        ancestor_to_vertex_map = {vertex: dict() for vertex in self}
         tuple_reuse_map = dict()
 
         def append_child(child_value: int, children_tuple=None):
@@ -54,13 +62,14 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
             tuple_reuse_map[new_tuple] = new_tuple
             return new_tuple
 
-        for vertex in self.levels[1]:
-            vertex_children = self.children_map[vertex]
+        levels = self.get_levels()
+        for vertex in levels[1]:
+            vertex_children = self.get_children(vertex)
             for child in vertex_children:
                 ancestor_to_vertex_map[vertex][child] = append_child(child)
-        for level in self.levels[2:]:
+        for level in levels[2:]:
             for vertex in level:
-                vertex_children = self.children_map[vertex]
+                vertex_children = self.get_children(vertex)
                 for child in vertex_children:
                     ancestor_to_vertex_map[vertex][child] = append_child(child)
                     for child_descendant in ancestor_to_vertex_map[child].keys():
@@ -87,7 +96,7 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
         return self.vertex_to_ancestor_map[vertex].keys()
 
     @staticmethod
-    def get_processed_graph_from_file(filepath: str, missing_parent_notation=None, separation_symbol=' ',
+    def get_processed_graph_from_file(filepath: str | Path, missing_parent_notation=None, separation_symbol=' ',
                                       preprocess_graph: bool = True,
                                       probands: [int] = None,
                                       skip_first_line: bool = False
@@ -106,19 +115,15 @@ class PotentialMrcaProcessedGraph(GenealogicalGraph):
 
         Returns:
         """
-        pedigree: SimpleGraph = SimpleGraph.get_diploid_graph_from_file(filepath=filepath,
-                                                                        missing_parent_notation=missing_parent_notation,
-                                                                        separation_symbol=separation_symbol,
-                                                                        skip_first_line=skip_first_line)
-        if probands is None:
-            return PotentialMrcaProcessedGraph(pedigree=pedigree, initialize_levels=preprocess_graph,
-                                               initialize_ancestor_maps=preprocess_graph)
-        unprocessed_graph = PotentialMrcaProcessedGraph(pedigree=pedigree, initialize_levels=False,
-                                                        initialize_ancestor_maps=False)
-        unprocessed_graph.reduce_to_ascending_genealogy(probands=probands, recalculate_levels=preprocess_graph)
-        if preprocess_graph:
-            unprocessed_graph.initialize_potential_mrca_map()
-        return unprocessed_graph
+
+        pedigree: PloidPedigree = PloidPedigree.get_ploid_pedigree_from_file(
+            filepath=filepath,
+            missing_parent_notation=missing_parent_notation,
+            separation_symbol=separation_symbol,
+            skip_first_line=skip_first_line,
+            probands=probands
+        )
+        return PotentialMrcaProcessedGraph.from_pedigree(pedigree=pedigree, initialize_ancestor_maps=preprocess_graph)
 
     def get_minimal_path_length(self, descendant: int, ancestor: int) -> int:
         current_level = {ancestor}

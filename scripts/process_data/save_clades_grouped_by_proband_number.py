@@ -1,6 +1,10 @@
 from collections import defaultdict
 
-from graph.coalescent_tree import CoalescentTree, GenealogicalGraph
+from lineagekit.core.CoalescentTree import CoalescentTree
+from lineagekit.core.PloidPedigree import PloidPedigree
+
+from alignment.configuration import ProbandInitialAssignmentsMode
+from alignment.graph_matcher import get_pedigree_simulation_probands_for_alignment_mode
 from scripts.utility.basic_utility import *
 
 tree_filename = "clade"
@@ -13,7 +17,7 @@ info_filename = "info.txt"
 def save_clades_by_proband_sizes(pedigree_filepath: str, coalescent_tree_filepath: str,
                                  result_filepath: str):
     print("Processing the graph")
-    pedigree = GenealogicalGraph.get_diploid_graph_from_file(filepath=pedigree_filepath)
+    pedigree = PloidPedigree.get_ploid_pedigree_from_file(filepath=pedigree_filepath)
     print("Processing the coalescent tree")
     coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_filepath)
     os.makedirs(result_filepath, exist_ok=False)
@@ -28,7 +32,7 @@ def save_clades_by_proband_sizes(pedigree_filepath: str, coalescent_tree_filepat
     for clade in clades:
         # Since we haven't removed the unary nodes, we can't estimate the maximum number of probands based on the
         # size of the clade
-        proband_number = len(coalescent_tree.probands.intersection(clade))
+        proband_number = len(coalescent_tree.get_sink_vertices().intersection(clade))
         if proband_number < 2:
             continue
         if proband_number > proband_number_limit:
@@ -52,16 +56,14 @@ def save_clades_by_proband_sizes(pedigree_filepath: str, coalescent_tree_filepat
             sub_dir_name = str(index)
             os.mkdir(sub_dir_name)
             os.chdir(sub_dir_name)
-            clade: CoalescentTree = coalescent_tree.get_subtree_from_vertices(clade)
-            clade.save_to_file(tree_filename)
-            proband_individuals = {proband // 2 for proband in clade.get_probands()}
-            probands_all_ploids = [
-                ploid
-                for proband_individual in proband_individuals
-                for ploid in [2 * proband_individual, 2 * proband_individual + 1]
-            ]
-            pedigree.save_ascending_genealogy_to_file(filepath=clade_ascending_pedigree_filename,
-                                                      probands=probands_all_ploids)
+            clade = coalescent_tree.reduce_to_subgraph(subgraph_vertices=clade)
+            clade.save_to_file(vertices=clade)
+            clade_probands = clade.get_sink_vertices()
+            pedigree_probands = get_pedigree_simulation_probands_for_alignment_mode(
+                vertices=clade_probands, alignment_mode=ProbandInitialAssignmentsMode.INDIVIDUAL
+            )
+            pedigree.save_ascending_genealogy_as_diploid(filepath=clade_ascending_pedigree_filename,
+                                                         vertices=pedigree_probands)
             os.chdir("..")
         os.chdir("..")
 

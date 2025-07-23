@@ -24,8 +24,8 @@ class SubtreeMatcher:
             root_coalescent_tree (int): Represents the vertex id of the root of the coalescent tree
             root_pedigree (int): Represents the vertex in the pedigree to which root_coalescent_tree
             can be mapped.
-            children_assignments ([{int: SubtreeMatcher}]): The dictionaries representing the assignments to the children
-            vertices which make root_pedigree a valid assignment to root_coalescent_tree
+            children_assignments ([{int: SubtreeMatcher}]): The dictionaries representing the assignments
+            to the children vertices which make root_pedigree a valid assignment to root_coalescent_tree
         """
         self.root_coalescent_tree = root_coalescent_tree
         self.root_pedigree = root_pedigree

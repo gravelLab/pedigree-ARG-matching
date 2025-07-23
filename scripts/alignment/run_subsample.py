@@ -38,9 +38,10 @@ def run_interactive_session():
             except FileExistsError:
                 print("This simulation directory already exists, adding a timestamp")
                 current_time_seconds = time.time()
-                run_alignment_with_multiple_clades_and_save_results(directory=separate_simulation,
-                                                                    result_directory_name=f"{result_directory}_{current_time_seconds}",
-                                                                    pedigree=pedigree)
+                run_alignment_with_multiple_clades_and_save_results(
+                    directory=separate_simulation,
+                    result_directory_name=f"{result_directory}_{current_time_seconds}",
+                    pedigree=pedigree)
             os.chdir(separate_simulation)
             clade_names = [file for file in os.listdir() if os.path.isfile(file) and not file.endswith('.pedigree') and
                            not file.endswith("SKIP")]
@@ -62,7 +63,7 @@ def run_interactive_session():
             print("Done")
         os.chdir("..")
     result_file.close()
-    # save_dictionary_to_file(dictionary=subsample_directory_average_results, dictionary_filename=dictionary_result_file)
+    #save_dictionary_to_file(dictionary=subsample_directory_average_results, dictionary_filename=dictionary_result_file)
 
 
 if __name__ == "__main__":

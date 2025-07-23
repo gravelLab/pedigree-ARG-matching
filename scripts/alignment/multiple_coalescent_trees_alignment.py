@@ -1,10 +1,11 @@
+from lineagekit.core.CoalescentTree import CoalescentTree
+
 from alignment.configuration import logs_default_directory_name
 from alignment.graph_matcher import GraphMatcher, get_initial_simulation_mapping_for_mode
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
-from graph.coalescent_tree import CoalescentTree
-from scripts.alignment.run_alignment import save_alignment_result_to_files
-from scripts.utility.basic_utility import *
+from scripts.alignment.run_alignment import save_alignment_result_to_files, get_store_and_save_vertex_alignment_callback
 from scripts.utility.alignment_utility import read_mapping_from_file
+from scripts.utility.basic_utility import *
 
 alignment_general_results_filename = "results.txt"
 
@@ -33,11 +34,9 @@ def run_interactive_session():
     pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path,
                                                                          separation_symbol="\t",
                                                                          missing_parent_notation=["0"],
-                                                                         preprocess_graph=False
+                                                                         preprocess_graph=True,
+                                                                         probands=pedigree_probands
                                                                          )
-    pedigree.reduce_to_ascending_genealogy(pedigree_probands, recalculate_levels=True)
-    pedigree.initialize_potential_mrca_map()
-
     alignment_number_with_solutions = []
     current_index = 0
     coalescent_trees_folder_files = list(os.listdir('.'))
@@ -47,21 +46,25 @@ def run_interactive_session():
             coalescent_tree_path = os.path.abspath(coalescent_tree_filename)
             coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=coalescent_tree_path)
             os.chdir(result_directory)
+            alignment_general_results, save_results_callback = get_store_and_save_vertex_alignment_callback(
+                coalescent_tree=coalescent_tree,
+                directory_path=""
+            )
             graph_matcher = GraphMatcher(processed_graph=pedigree,
                                          coalescent_tree=coalescent_tree,
                                          initial_mapping=initial_mapping,
-                                         logs_path=logs_default_directory_name)
-
+                                         logs_path=logs_default_directory_name,
+                                         result_callback_function=save_results_callback)
             dir_name = f"{current_index}"
             os.mkdir(dir_name)
             os.chdir(dir_name)
-            alignment_results = graph_matcher.find_mapping()
+            graph_matcher.find_alignments()
             save_alignment_result_to_files(pedigree=pedigree,
                                            coalescent_tree=coalescent_tree,
-                                           alignment_result=alignment_results
+                                           alignment_result=alignment_general_results
                                            )
-            clade_root = next(iter(alignment_results))
-            alignments = alignment_results[clade_root]
+            clade_root = next(iter(alignment_general_results.clade_root_to_clade_results))
+            alignments = alignment_general_results.clade_root_to_clade_results[clade_root].alignments
             if alignments:
                 alignment_number_with_solutions.append(current_index)
             current_index += 1

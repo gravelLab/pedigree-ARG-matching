@@ -2,8 +2,9 @@ import os
 from pathlib import Path
 
 import pytest
+from networkx import HasACycle
 
-from alignment.driver_file import YAMLValidationError, ParsedDriverFile
+from alignment.driver_file import YAMLValidationError, ParsedDriverFile, ProcessedDriverFile
 
 
 @pytest.fixture
@@ -70,3 +71,63 @@ def test_missing_pedigree_ids(invalid_alignment_missing_pedigree_ids_filepath):
 
 def test_duplicate_coalescent_ids(invalid_alignment_duplicate_coalescent_ids_filepath):
     validate_raises_yaml_validation_error(invalid_alignment_duplicate_coalescent_ids_filepath)
+
+
+@pytest.fixture
+def reject_tree_with_cycles_1():
+    return Path(os.path.dirname(os.path.abspath(__file__))) / "test_reject_tree_with_cycles_1" / "driver_file.yaml"
+
+
+def test_reject_tree_with_cycles_1(reject_tree_with_cycles_1):
+    parsed_driver_file = ParsedDriverFile.parse_driver_file_and_validate_initial_assignments(
+        reject_tree_with_cycles_1
+    )
+    assert parsed_driver_file.coalescent_tree_parsing_rules.verify_graph_has_no_cycles
+    with pytest.raises(HasACycle) as exc_info:
+        ProcessedDriverFile.finish_driver_file_processing(parsed_driver_file)
+        assert "tree" in exc_info.value
+
+
+@pytest.fixture
+def reject_tree_with_cycles_2():
+    return Path(os.path.dirname(os.path.abspath(__file__))) / "test_reject_tree_with_cycles_2" / "driver_file.yaml"
+
+
+def test_reject_tree_with_cycles_2(reject_tree_with_cycles_2):
+    parsed_driver_file = ParsedDriverFile.parse_driver_file_and_validate_initial_assignments(
+        reject_tree_with_cycles_2
+    )
+    assert parsed_driver_file.coalescent_tree_parsing_rules.verify_graph_has_no_cycles
+    with pytest.raises(HasACycle) as exc_info:
+        ProcessedDriverFile.finish_driver_file_processing(parsed_driver_file)
+        assert "tree" in exc_info.value
+
+
+@pytest.fixture
+def reject_pedigree_with_cycles_1():
+    return Path(os.path.dirname(os.path.abspath(__file__))) / "test_reject_pedigree_with_cycles_1" / "driver_file.yaml"
+
+
+def test_reject_pedigree_with_cycles_1(reject_pedigree_with_cycles_1):
+    parsed_driver_file = ParsedDriverFile.parse_driver_file_and_validate_initial_assignments(
+        reject_pedigree_with_cycles_1
+    )
+    assert parsed_driver_file.coalescent_tree_parsing_rules.verify_graph_has_no_cycles
+    with pytest.raises(HasACycle) as exc_info:
+        ProcessedDriverFile.finish_driver_file_processing(parsed_driver_file)
+        assert "pedigree" in exc_info.value
+
+
+@pytest.fixture
+def reject_pedigree_with_cycles_2():
+    return Path(os.path.dirname(os.path.abspath(__file__))) / "test_reject_pedigree_with_cycles_2" / "driver_file.yaml"
+
+
+def test_reject_pedigree_with_cycles_2(reject_pedigree_with_cycles_2):
+    parsed_driver_file = ParsedDriverFile.parse_driver_file_and_validate_initial_assignments(
+        reject_pedigree_with_cycles_2
+    )
+    assert parsed_driver_file.coalescent_tree_parsing_rules.verify_graph_has_no_cycles
+    with pytest.raises(HasACycle) as exc_info:
+        ProcessedDriverFile.finish_driver_file_processing(parsed_driver_file)
+        assert "pedigree" in exc_info.value

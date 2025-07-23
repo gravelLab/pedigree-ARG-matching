@@ -1,7 +1,7 @@
 import msprime.ancestry
+from lineagekit.core.CoalescentTree import CoalescentTree
 from tskit import TreeSequence, Tree
 
-from graph.coalescent_tree import CoalescentTree
 from scripts.utility.basic_utility import *
 
 sequence_length = 4
@@ -11,11 +11,11 @@ def save_coalescent_tree(tskit_tree: Tree, individual_id_dict: dict, filename: s
     coalescent_tree_file = open(filename, 'w')
     coalescent_tree = CoalescentTree.get_coalescent_tree(tskit_tree)
     coalescent_tree: CoalescentTree
-
-    for level in coalescent_tree.levels:
+    tree_levels = coalescent_tree.get_levels()
+    for level in tree_levels:
         for vertex in level:
-            if vertex in coalescent_tree.parents_map:
-                [parent] = coalescent_tree.parents_map[vertex]
+            parent = coalescent_tree.get_vertex_parent(vertex)
+            if parent:
                 parent = individual_id_dict[parent]
                 vertex = individual_id_dict[vertex]
                 coalescent_tree_file.write(f"{vertex} {parent}\n")

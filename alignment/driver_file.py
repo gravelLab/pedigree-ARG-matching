@@ -4,10 +4,15 @@ import os
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
+
+import networkx as nx
+from lineagekit.core.CoalescentTree import CoalescentTree
+from networkx import NetworkXNoCycle, HasACycle
+
 from alignment.configuration import *
 import yaml
-from alignment.potential_mrca_processed_graph import *
-from graph.coalescent_tree import CoalescentTree
+
+from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 
 
 class YAMLValidationError(Exception):
@@ -26,9 +31,10 @@ class GraphParsingRules:
     missing_parent_notation: str
     separation_symbol: str
     skip_first_line: bool
+    verify_graph_has_no_cycles: bool
 
     @staticmethod
-    def parse_graph_parsing_rules(yaml_dict: dict) -> GraphParsingRules:
+    def parse_graph_parsing_rules(yaml_dict: dict, verify_graph_has_no_cycles: bool) -> GraphParsingRules:
         path = yaml_dict[path_key]
         separation_symbol = default_separation_symbol
         missing_parent_notation = default_missing_parent_notation
@@ -39,11 +45,14 @@ class GraphParsingRules:
             missing_parent_notation = yaml_dict[missing_parent_notation_key]
         if skip_first_line_key in yaml_dict:
             skip_first_line = yaml_dict[skip_first_line_key]
+        if verify_graph_has_no_cycles_key in yaml_dict:
+            verify_graph_has_no_cycles = yaml_dict[verify_graph_has_no_cycles_key]
         return GraphParsingRules(
             filepath=path,
             separation_symbol=separation_symbol,
             missing_parent_notation=missing_parent_notation,
-            skip_first_line=skip_first_line
+            skip_first_line=skip_first_line,
+            verify_graph_has_no_cycles=verify_graph_has_no_cycles
         )
 
 
@@ -54,7 +63,8 @@ class ParsedDriverFile:
     initial_assignments: dict[int, [int]]
     output_path: str | Path
     driver_file_path: str | Path
-    alignment_mode: MatchingMode
+    vertex_alignment_mode: AlignmentVertexMode
+    edge_alignment_mode: AlignmentEdgeMode
 
     def _identify_path(self, path: str | Path):
         # Firstly, verify is the path is valid for the current working directory
@@ -105,8 +115,10 @@ class ParsedDriverFile:
             for data_name, graph_data in parsing_data:
                 if path_key not in graph_data:
                     raise YAMLValidationError(f"The path for the {data_name} is not specified")
-            pedigree_parsing_rules = GraphParsingRules.parse_graph_parsing_rules(pedigree_parsing_data)
-            coalescent_tree_parsing_rules = GraphParsingRules.parse_graph_parsing_rules(coalescent_tree_parsing_data)
+            pedigree_parsing_rules = GraphParsingRules.parse_graph_parsing_rules(pedigree_parsing_data,
+                                                                                 verify_graph_has_no_cycles=False)
+            coalescent_tree_parsing_rules = GraphParsingRules.parse_graph_parsing_rules(coalescent_tree_parsing_data,
+                                                                                        verify_graph_has_no_cycles=True)
             output_path = data[output_path_key]
             if not output_path:
                 raise YAMLValidationError("Output path is empty")
@@ -160,18 +172,25 @@ class ParsedDriverFile:
                     raise YAMLValidationError(f"No pedigree ids specified for {coalescent_id}")
                 # Add to the dictionary
                 initial_assignments_dictionary[coalescent_id] = pedigree_processed_ids
-            alignment_mode = MatchingMode.ALL_ALIGNMENTS
-            if alignment_mode_key in data:
-                specified_alignment_mode = data[alignment_mode_key]
-                if specified_alignment_mode not in alignment_mode_dict:
-                    raise YAMLValidationError("Invalid alignment mode specified")
-                alignment_mode = alignment_mode_dict[specified_alignment_mode]
+            vertex_alignment_mode = AlignmentVertexMode.ALL_ALIGNMENTS
+            edge_alignment_mode = AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT
+            if alignment_vertex_mode_key in data:
+                specified_alignment_mode = data[alignment_vertex_mode_key]
+                if specified_alignment_mode not in alignment_vertex_mode_dict:
+                    raise YAMLValidationError(f"Invalid alignment mode specified: \"{specified_alignment_mode}\"")
+                vertex_alignment_mode = alignment_vertex_mode_dict[specified_alignment_mode]
+            if alignment_edge_mode_key in data:
+                specified_alignment_mode = data[alignment_edge_mode_key]
+                if specified_alignment_mode not in alignment_edge_mode_dict:
+                    raise YAMLValidationError(f"Invalid alignment mode specified: \"{specified_alignment_mode}\"")
+                edge_alignment_mode = alignment_edge_mode_dict[specified_alignment_mode]
             return ParsedDriverFile(pedigree_parsing_rules=pedigree_parsing_rules,
                                     coalescent_tree_parsing_rules=coalescent_tree_parsing_rules,
                                     initial_assignments=initial_assignments_dictionary,
                                     driver_file_path=filepath,
                                     output_path=output_path,
-                                    alignment_mode=alignment_mode
+                                    vertex_alignment_mode=vertex_alignment_mode,
+                                    edge_alignment_mode=edge_alignment_mode
                                     )
         except yaml.YAMLError as e:
             raise YAMLValidationError(f"Error parsing YAML file: {e}")
@@ -183,7 +202,8 @@ class ProcessedDriverFile:
     coalescent_tree: CoalescentTree
     output_path: str | Path
     initial_assignments: dict[int, [int]]
-    alignment_mode: MatchingMode
+    alignment_vertex_mode: AlignmentVertexMode
+    alignment_edge_mode: AlignmentEdgeMode
 
     def preprocess_graphs_for_alignment(self):
         self.preprocess_pedigree()
@@ -194,12 +214,12 @@ class ProcessedDriverFile:
 
     def preprocess_pedigree(self):
         pedigree_probands = self.get_pedigree_probands_for_alignment()
-        self.pedigree.reduce_to_ascending_genealogy(probands=pedigree_probands, recalculate_levels=True)
-        self.pedigree.initialize_vertex_to_level_map()
+        self.pedigree.reduce_to_ascending_graph(probands=pedigree_probands)
+        self.pedigree.get_levels()
         self.pedigree.initialize_potential_mrca_map()
 
     def preprocess_coalescent_tree(self):
-        self.coalescent_tree.initialize_vertex_to_level_map()
+        self.coalescent_tree.get_levels()
         self.coalescent_tree.remove_unary_nodes()
 
     @staticmethod
@@ -218,14 +238,20 @@ class ProcessedDriverFile:
         tree_skip_first_line = parsed_driver_file.coalescent_tree_parsing_rules.skip_first_line
         coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(
             filepath=coalescent_tree_path,
-            initialize_levels=False,
             missing_parent_notation=[tree_missing_parent_notation],
             separation_symbol=tree_separation_symbol,
             skip_first_line=tree_skip_first_line
         )
+        if parsed_driver_file.coalescent_tree_parsing_rules.verify_graph_has_no_cycles:
+            try:
+                cycle = nx.find_cycle(coalescent_tree, orientation='original')
+                raise HasACycle(f"The coalescent tree has a cycle: {cycle}")
+            except NetworkXNoCycle:
+                # No errors are found
+                pass
         initial_assignments = parsed_driver_file.initial_assignments
         specified_probands = initial_assignments.keys()
-        coalescent_tree.reduce_to_ascending_genealogy(probands=specified_probands)
+        coalescent_tree.reduce_to_ascending_graph(probands=specified_probands)
         # Parse the pedigree
         pedigree_missing_parent_notation = parsed_driver_file.pedigree_parsing_rules.missing_parent_notation
         pedigree_separation_symbol = parsed_driver_file.pedigree_parsing_rules.separation_symbol
@@ -237,12 +263,15 @@ class ProcessedDriverFile:
             separation_symbol=pedigree_separation_symbol,
             skip_first_line=pedigree_skip_first_line
         )
+        if parsed_driver_file.pedigree_parsing_rules.verify_graph_has_no_cycles:
+            try:
+                cycle = nx.find_cycle(pedigree, orientation='original')
+                raise HasACycle(f"The pedigree has a cycle: {cycle}")
+            except NetworkXNoCycle:
+                # No errors are found
+                pass
         # Calculate the leaf vertices in the coalescent tree for which mapping isn't specified
-        coalescent_tree_probands = coalescent_tree.get_probands()
-        # tree_leaf_vertices_missing_assignments = set(initial_assignments.keys()).difference(coalescent_tree_probands)
-        # if tree_leaf_vertices_missing_assignments:
-        #     raise YAMLValidationError("Missing initial assignments for tree's leaf vertices "
-        #                               f"{tree_leaf_vertices_missing_assignments}")
+        coalescent_tree_probands = coalescent_tree.get_sink_vertices()
         for coalescent_vertex, pedigree_vertices in initial_assignments.items():
             if coalescent_vertex not in coalescent_tree_probands:
                 raise ValueError(f"The specified coalescent vertex {coalescent_vertex} either does not exist or isn't"
@@ -255,7 +284,8 @@ class ProcessedDriverFile:
             pedigree=pedigree,
             initial_assignments=initial_assignments,
             output_path=parsed_driver_file.output_path,
-            alignment_mode=parsed_driver_file.alignment_mode
+            alignment_vertex_mode=parsed_driver_file.vertex_alignment_mode,
+            alignment_edge_mode=parsed_driver_file.edge_alignment_mode
         )
 
     @staticmethod
@@ -274,10 +304,17 @@ pedigree_ids_key = "pedigree_ids"
 separation_symbol_key = "separation_symbol"
 missing_parent_notation_key = "missing_parent_notation"
 skip_first_line_key = "skip_first_line"
+verify_graph_has_no_cycles_key = "check_for_cycles"
 output_path_key = "output_path"
-alignment_mode_key = "alignment_mode"
+alignment_vertex_mode_key = "alignment_vertex_mode"
+alignment_edge_mode_key = "alignment_edge_mode"
 
-alignment_mode_dict = {
-    "default": MatchingMode.ALL_ALIGNMENTS,
-    "example_per_root_assignment": MatchingMode.EXAMPLE_PER_ROOT_ASSIGNMENT
+alignment_vertex_mode_dict = {
+    "all": AlignmentVertexMode.ALL_ALIGNMENTS,
+    "example_per_root_assignment": AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT
+}
+
+alignment_edge_mode_dict = {
+    "one": AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
+    "all": AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS
 }

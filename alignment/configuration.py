@@ -1,18 +1,27 @@
 from enum import Enum
 
-
-class InitialMatchingMode(Enum):
-    PLOID = 1
-    INDIVIDUAL = 2
+section_separator = 60 * "#" + '\n'
+subsection_separator = 60 * "-" + '\n'
 
 
-class MatchingMode(Enum):
+class ProbandInitialAssignmentsMode(Enum):
+    PLOID = 1,
+    INDIVIDUAL = 2,
+
+
+class AlignmentVertexMode(Enum):
     ALL_ALIGNMENTS = 1,
     EXAMPLE_PER_ROOT_ASSIGNMENT = 2,
 
 
-default_initial_mapping_mode = InitialMatchingMode.INDIVIDUAL
-default_alignment_mode = MatchingMode.EXAMPLE_PER_ROOT_ASSIGNMENT
+class AlignmentEdgeMode(Enum):
+    EXAMPLE_EDGE_ALIGNMENT = 1,
+    ALL_EDGE_ALIGNMENTS = 2,
+
+
+default_proband_initial_assignments_mode = ProbandInitialAssignmentsMode.INDIVIDUAL
+default_alignment_vertex_mode = AlignmentVertexMode.ALL_ALIGNMENTS
+default_alignment_edge_mode = AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS
 
 # Alignment statistics section start
 calculate_distances_histogram = False

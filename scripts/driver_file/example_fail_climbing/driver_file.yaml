@@ -1,22 +1,20 @@
 initial_assignments:
   - coalescent_id: 1
-    pedigree_ids: [10P, 10M, 11M, 11P]
+    pedigree_ids: [1P, 1M]
   - coalescent_id: 2
-    pedigree_ids: [12M, 12P]
+    pedigree_ids: [2M, 2P]
   - coalescent_id: 3
-    pedigree_ids: [15P, 15M]
+    pedigree_ids: [3P, 3M]
 coalescent_tree:
   path: "example_data/example_tree"
   missing_parent_notation: ""
   separation_symbol: ";"
   skip_first_line: true
-  check_for_cycles: true
 pedigree:
   path: "example_data/example_pedigree.pedigree"
   missing_parent_notation: "-1"
   separation_symbol: " "
   skip_first_line: false
-  check_for_cycles: true
-output_path: "example_output_verify_cycles"
+output_path: "example_output_fail_climbing"
 alignment_vertex_mode: "all"
-alignment_edge_mode: "all"
+alignment_edge_mode: "one"

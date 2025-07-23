@@ -16,9 +16,21 @@ Specifically, given the following inputs:
 2. **The ARG** :math:`A`: An ARG with a set of leaf vertices :math:`L`, representing genetic transmissions within :math:`P`;
 3. **Initial Assignments**: A mapping :math:`f: L \to 2^{V(P)} \setminus \{\emptyset\}`, specifying initial relationships between ARG leaves and pedigree vertices,
 
-the algorithm computes all possible **alignments** between :math:`A` and :math:`P`. An alignment is a function that assigns every vertex in the ARG to a vertex in the pedigree.
+the algorithm computes all possible **vertex alignments** between :math:`A` and :math:`P`.
 
-Formally, it is defined as :math:`h: V(A) \to 2^{V(P)} \setminus \{\emptyset\}`.
+A **vertex alignment** is a function that assigns each vertex in :math:`A` to a vertex in :math:`P`.
+
+.. math::
+
+   h: V(A) \to 2^{V(P)} \setminus \{\emptyset\}
+
+We say that a vertex alignment is **valid** if the corresponding vertices in :math:`P`
+represent a history of genetic transmissions that respect :math:`A`.
+
+
+In order to verify that a given vertex alignment is indeed valid,
+the algorithms finds at least one valid **edge alignment** (that is, an alignment that maps
+every edge in :math:`E(A)` to a path in :math:`P`) that corresponds to the given vertex alignment.
 
 In other words, the goal is to find valid extensions of the initial assignments provided as input.
 
@@ -61,13 +73,16 @@ The driver file is a YAML file that specifies the input data in the following us
      missing_parent_notation: "-1"
      separation_symbol: " "
      skip_first_line: false
+     check_for_cycles: true
    pedigree:
      path: "example_pedigree.pedigree"
      missing_parent_notation: "-1"
      separation_symbol: " "
      skip_first_line: false
+     check_for_cycles: true
    output_path: "example_output"
-   alignment_mode: "default"
+   alignment_vertex_mode: "all"
+   alignment_edge_mode: "one"
 
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -101,6 +116,7 @@ The ``pedigree`` and ``coalescent_tree`` sections describe the parsing rules use
      missing_parent_notation: "-1"        # (optional)
      separation_symbol: " "               # (optional)
      skip_first_line: false               # (optional)
+     check_for_cycles: true               # (optional)
 
 - **path**: Specifies the path to the file to be parsed.
   The program resolves this path using the following logic:
@@ -115,6 +131,8 @@ Once the file is located, the program checks for any user-specified parsing rule
 - **separation_symbol** *(optional)*: The sequence of characters used to separate the columns in the input file. The default value is ``" "``.
 
 - **skip_first_line** *(optional)*: Indicates whether the first line in the file should be skipped. This can be useful when the file includes a header. The default value is ``false``.
+
+- **check_for_cycles** *(optional)*: Indicates whether we need to verify that there are no directed cycles in the graph. Notice that both the pedigree and the tree must be DAGs. By default, ``true`` for the coalescent tree and ``false`` for the pedigree.
 
 """"""""""""""""""""""""""""""
 Pedigree File Structure
@@ -154,17 +172,40 @@ To parse this file, use the following YAML configuration:
 
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Alignment mode
+Alignment modes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-You can also optionally specify the **alignment mode** that the algorithm will use by using the ``alignment_mode``
-option in the input file. There are two possible modes that you can use:
+You can also optionally customize the **alignment mode** that the algorithm will use by using the ``alignment_vertex_mode``
+and the ``alignment_edge_mode`` options in the input file.
 
-1. ``default`` — Uses the default alignment approach and finds all the valid alignments between
-the pedigree and the tree. This is the default mode.
+------------------------------------
+Alignment vertex mode
+------------------------------------
 
-2. ``example_per_root_assignment`` — Finds only one alignment per a valid ploid pedigree candidate. In other words,
-it only finds a subset of all the valid alignments. This can be useful when you care only about possible clade root
-assignments and want to avoid generating a large number of alignments.
+This option specifies whether the algorithm should find all the vertex alignments or only a subset of them.
+
+There are two possible modes that you can use:
+
+1. ``all`` — Finds all the valid alignments between the pedigree and the tree.
+   This is the default mode.
+
+2. ``example_per_root_assignment`` — Finds only one alignment for each valid pedigree candidate for every clade.
+   In other words, it only finds a subset of all the valid alignments.
+   This can be useful when you care only about possible clade root assignments and want to avoid
+   generating a large number of solutions.
+
+------------------------------------
+Alignment edge mode
+------------------------------------
+
+In order to verify whether a given vertex alignment is correct, the algorithm searches for at least one valid edge
+alignment which is always reported. But it's also possible to find the exhaustive set of all the edge alignments for
+every vertex alignment.
+
+Again, there are two possible modes that you can use:
+
+1. ``one`` — Finds a single edge alignment per vertex alignment to justify its correctness. This is the default mode.
+
+2. ``all`` — Finds all possible edge alignments for each vertex alignment.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Output
@@ -242,7 +283,7 @@ Inside each clade folder:
 
 2. **Statistics File**:
 
-   - A file named ``clade_{root_id}`` will also be included. This file aggregates the data and provides statistical insights about the alignments.
+   - A file named ``_clade_{root_id}`` will also be included. This file aggregates the data and provides statistical insights about the alignments.
 
 .. note:: **No Alignments**
 
@@ -259,12 +300,14 @@ Alignment Format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Each alignment result is stored as a separate plain text file with a simple structure.
-The file consists of two sections:
+The file consists of the following sections:
 
-1. **Statistical Data** — A block containing relevant statistics.
-2. **Alignment Data** — A mapping of coalescent vertex IDs to pedigree ploid IDs.
+1. **Vertex alignment statistical data** — A block containing relevant statistics about the vertex alignment.
+2. **Vertex alignment** — A mapping of coalescent vertex IDs to pedigree ploid IDs.
+3. **Edge alignment statistical data** — A block containing relevant statistics about the edge alignments.
+4. **Edge alignments** — Either one or all the edge alignments corresponding to this vertex alignment.
 
-The alignment data follows the format ``{coalescent_vertex_id}: {pedigree_individual_id}{ploid_type}``
+The vertex alignment data follows the format ``{coalescent_vertex_id}: {pedigree_individual_id}{ploid_type}``
 
 - **coalescent_vertex_id** — The coalescent vertex ID.
 - **pedigree_individual_id** — The individual's ID to which the coalescent vertex is mapped.
@@ -274,16 +317,47 @@ The alignment data follows the format ``{coalescent_vertex_id}: {pedigree_indivi
 
 .. code-block:: text
 
-    // Statistical data
+    // Vertex alignment statistical data
     ...
-    // Alignment
+    // Vertex alignment
     5: 1M
     3: 15M
     4: 3P
     2: 12M
     1: 10P
+    ...
+    // Edge alignment statistical data
+    ...
+    // Edge alignment
+    ------------------------------------------------------------
+    There is 1 edge alignment
+    ------------------------------------------------------------
+    4:
+        (1, 4): [10P, 6P, 3P]
+        (2, 4): [12M, 7P, 3P]
+    5:
+        (4, 5): [3P, 1M]
+        (3, 5): [15M, 13P, 1M]
 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Failure Format
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+If the algorithm fails to find any potential vertex alignments (during the 'climbing stage'), the algorithm will report
+additional information about the failure in the ``_clade_{root_id}`` file. This information can help you identify
+errors in your input data. For example, this may look like this:
+
+.. code-block:: text
+
+    Failed climbing at 5
+    There are 3 children for the failed vertex
+    The pedigree candidates for every child vertex:
+    1: ['1P', '1M']
+    2: ['2M', '2P']
+    3: ['3P', '3M']
+
+Note that the algorithm will still try to align other clades in the tree even if the climbing process
+for one clade fails.
 
 .. toctree::
    :maxdepth: 2
