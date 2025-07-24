@@ -1,13 +1,14 @@
 import os
 import random
 from pathlib import Path
+from typing import cast
 
 import networkx
 import pytest
 from lineagekit.core.CoalescentTree import CoalescentTree
 from lineagekit.core.GenGraph import GenGraph
 
-from alignment.alignment_result import FullAlignmentResult
+from alignment.alignment_result import FullAlignmentResult, AlignmentResult, FailedClimbingAlignmentResult
 from alignment.configuration import AlignmentVertexMode, ProbandInitialAssignmentsMode, AlignmentEdgeMode
 from alignment.graph_matcher import GraphMatcher, get_initial_simulation_mapping_for_mode
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
@@ -323,9 +324,8 @@ def verify_alignment_on_random_small_coalescent_trees(potential_mrca_graph: Pote
                     # If the intersection is not empty, paths intersect before the common ancestor
                     if path1_set & path2_set:
                         continue
-                    else:
-                        valid_pedigree_mrca.add(common_ancestor)
-                        break
+                    valid_pedigree_mrca.add(common_ancestor)
+                    break
         coalescent_tree = CoalescentTree()
         root = -1
         coalescent_tree.add_edge(child=first_proband, parent=root)
@@ -334,11 +334,16 @@ def verify_alignment_on_random_small_coalescent_trees(potential_mrca_graph: Pote
         initial_mapping = {first_proband: [second_proband], second_proband: [first_proband]}
         result = []
 
-        def collect_results(alignment_result: FullAlignmentResult):
-            assert alignment_result.is_valid
-            assert alignment_result.clade_root is not None
-            if alignment_result.clade_root == root:
-                result.append(alignment_result.vertex_alignment)
+        def collect_results(alignment_result: AlignmentResult):
+            match alignment_result:
+                case FailedClimbingAlignmentResult():
+                    return
+                case FullAlignmentResult():
+                    alignment_result = cast(FullAlignmentResult, alignment_result)
+                    assert alignment_result.is_valid
+                    assert alignment_result.clade_root is not None
+                    if alignment_result.clade_root == root:
+                        result.append(alignment_result.vertex_alignment)
 
         matcher = GraphMatcher(processed_graph=potential_mrca_graph, coalescent_tree=coalescent_tree,
                                alignment_vertex_mode=AlignmentVertexMode.ALL_ALIGNMENTS,
