@@ -10,6 +10,9 @@ def run_interactive_session():
     filepath = get_filepath("Specify the path to the coalescent tree. It should consist of one clade for more "
                             "meaningful results:\n")
     coalescent_tree: CoalescentTree = CoalescentTree.get_coalescent_tree_from_file(filepath=filepath)
+    clade_number = len(coalescent_tree.get_connected_components())
+    if clade_number != 1:
+        raise ValueError(f"The coalescent tree must have 1 clade, found {clade_number} instead")
     tree_probands = coalescent_tree.get_sink_vertices()
     pedigree_probands = get_pedigree_simulation_probands_for_alignment_mode(
                                                                 vertices=tree_probands,
@@ -26,7 +29,7 @@ def run_interactive_session():
     os.chdir(simulation_dir_name)
     probands = list(coalescent_tree.get_sink_vertices())
     tests_per_step = 100
-    values_for_simulation = list(range(40, 80))
+    values_for_simulation = list(range(10, 100))
 
     for probands_left in values_for_simulation:
         os.makedirs(f"{probands_left}")

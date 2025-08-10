@@ -93,8 +93,6 @@ def save_alignment_result_and_store_vertex_alignment(
 
 def get_store_and_save_vertex_alignment_callback(coalescent_tree: CoalescentTree, directory_path: str | Path) \
         -> TreeAlignmentResults:
-    # result_dict = dict()
-    # vertex_to_appearance = defaultdict(int)
     root_vertices = coalescent_tree.get_founders()
     clade_root_to_clade_results = {
         x: SuccessCladeAlignmentResults(
@@ -104,8 +102,6 @@ def get_store_and_save_vertex_alignment_callback(coalescent_tree: CoalescentTree
     }
     alignment_result = TreeAlignmentResults(
         clade_root_to_clade_results=clade_root_to_clade_results
-        # clade_root_to_alignments=result_dict,
-        # pedigree_vertex_to_edge_alignment_appearance_number=vertex_to_appearance,
     )
     return alignment_result, partial(save_alignment_result_and_store_vertex_alignment,
                                      coalescent_tree=coalescent_tree,
