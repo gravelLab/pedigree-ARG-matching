@@ -243,7 +243,7 @@ class AlignmentResultsFileAccess:
         self.general_result_file = open(self.general_result_filepath, 'a')
         self.detailed_result_file = open(self.detailed_result_filepath, 'a')
 
-    def log_solutions_to_detailed_results_file(self, alignments: list[dict]):
+    def log_solutions_to_detailed_results_file(self, alignments: list[FullAlignmentResult]):
         # Saving the information about the alignments into the detailed file
         self.detailed_result_file.write(line_section_divider)
         self.detailed_result_file.write("Next simulation\n")
@@ -255,7 +255,7 @@ class AlignmentResultsFileAccess:
         self.detailed_result_file.write(line_section_divider)
         self.detailed_result_file.flush()
 
-    def log_solutions_to_general_results_file(self, alignments: list[dict]):
+    def log_solutions_to_general_results_file(self, alignments: list[FullAlignmentResult]):
         # Saving the information about the alignments into the general file
         self.general_result_file.write(line_section_divider)
         self.general_result_file.write("Next simulation step\n")
@@ -263,7 +263,7 @@ class AlignmentResultsFileAccess:
             f"Number of alignments in this simulation {len(alignments)}\n")
         self.general_result_file.flush()
 
-    def log_solutions(self, alignments: list[dict]):
+    def log_solutions(self, alignments: list[FullAlignmentResult]):
         self.log_solutions_to_detailed_results_file(alignments)
         self.log_solutions_to_general_results_file(alignments)
 
@@ -399,7 +399,11 @@ class AlignmentTask(AbstractAlignmentTask):
         # result = alignment_general_results.clade_root_to_alignments
         clade_root = coalescent_tree.get_root_vertex()
         clade_alignment_results = alignment_general_results.clade_root_to_clade_results[clade_root]
-        alignment_results = clade_alignment_results.alignments
+        if isinstance(clade_alignment_results, FailedClimbingCladeAlignmentResults):
+            alignment_results = []
+        else:
+            clade_results = cast(SuccessCladeAlignmentResults, clade_alignment_results)
+            alignment_results = clade_results.alignments
         self.classify_results(resulting_alignments=alignment_results, coalescent_tree=coalescent_tree,
                               pedigree=pedigree)
         return alignment_general_results, coalescent_tree, pedigree
@@ -908,7 +912,7 @@ def run_specific_error_pedigree_directories_parallel(paths: list[str], error_ped
                                                      simulation_subpath: str | Path, max_workers: int):
     error_pedigrees_folder_path = Path(error_pedigrees_folder_path)
     error_pedigree_parent_directory = error_pedigrees_folder_path.parent
-    simulation_directory_path = error_pedigree_parent_directory / simulation_subpath
+    simulation_directory_path = error_pedigree_parent_directory / results_dir_name / simulation_subpath
     os.makedirs(name=simulation_directory_path, exist_ok=True)
 
     tree_alignment_comparisons: [ErrorPedigreesAlignmentComparison] = []
@@ -989,7 +993,7 @@ def specific_error_pedigree_directories_mode():
                                             simulation_subpath=input_simulation_subpath)
 
 
-def get_absolute_paths_to_subfolders(directory_path: str) -> list[str]:
+def get_absolute_paths_to_subfolders(directory_path: str | Path) -> list[str]:
     return [
         os.path.abspath(os.path.join(directory_path, subdir))
         for subdir in os.listdir(directory_path)
@@ -1018,6 +1022,46 @@ def children_tree_directories_error_pedigree_directory_mode():
                                             simulation_subpath=input_simulation_name,
                                             parallelize=parallel_processing,
                                             max_workers=max_workers)
+
+
+def tree_directories_grouped_by_proband_number_and_error_pedigree_directory():
+    current_working_directory = Path.cwd()
+    error_pedigrees_directory_path = get_directory_path("Specify the absolute path to the error pedigrees directory:")
+    tree_super_directory_path = get_directory_path("Specify the absolute path to a parent directory with subdirectories"
+                                                   "grouped by proband number:")
+    os.chdir(error_pedigrees_directory_path)
+    input_simulation_name = get_non_existing_path("Specify the simulation subpath:")
+    input_simulation_name = Path(input_simulation_name)
+    os.chdir(current_working_directory)
+    parallel_processing = get_yes_or_no("Do you want to parallelize the alignments?")
+    max_workers = 0
+    if parallel_processing:
+        max_workers = get_natural_number_with_lower_bound(input_request="Specify the number of worker"
+                                                                        " processed to be used (at least 2): ",
+                                                          lower_bound=2
+                                                          )
+    error_pedigrees_directory_path_parent = Path(error_pedigrees_directory_path).parent
+    result_directory_path = error_pedigrees_directory_path_parent / input_simulation_name
+    os.makedirs(result_directory_path, exist_ok=True)
+    results_csv_filepath = error_pedigrees_directory_path_parent / input_simulation_name / results_csv_filename
+    with open(results_csv_filepath, "a") as results_file:
+        results_file.write(classification_csv_header)
+        for proband_tree_directory in os.listdir(tree_super_directory_path):
+            try:
+                # Check if the directory name is an integer to avoid warnings
+                int(proband_tree_directory)
+            except ValueError:
+                continue
+            proband_tree_directory_path = Path(tree_super_directory_path) / proband_tree_directory
+            tree_pedigree_paths = get_absolute_paths_to_subfolders(proband_tree_directory_path)
+            proband_directory_simulation_name = Path(input_simulation_name) / proband_tree_directory
+            results = run_specific_error_pedigree_directories(paths=tree_pedigree_paths,
+                                                              error_pedigrees_folder_path=error_pedigrees_directory_path,
+                                                              simulation_subpath=proband_directory_simulation_name,
+                                                              parallelize=parallel_processing,
+                                                              max_workers=max_workers)
+            for parent_dir_name, tree_results in results:
+                results_file.write(tree_results.csv_row(proband_number=parent_dir_name))
 
 
 def process_multiple_tree_pedigree_directories_and_corresponding_tree_error_directories(
@@ -1349,24 +1393,32 @@ def edge_cut_maximum_alignable_subclade():
 
 def run_interactive_session():
     script_menu = ("Choose the running mode:\n"
-                   "1) Specify the path to the initial tree-pedigree pair and a parent directory of error-simulated "
+                   "1) (Pedigree error simulation) Specify the path to the initial tree-pedigree "
+                   "pair and a parent directory of error-simulated "
                    "pedigree directories\n"
-                   "2) Specify the path to multiple tree-pedigree pair directories and a parent directory of "
+                   "2) (Pedigree error simulation) Specify the path to multiple tree-pedigree pair"
+                   " directories and a parent directory of "
                    "error-simulated pedigree directories\n"
-                   "3) Specify the path to a parent directory containing tree-pedigree pair directories and "
+                   "3) (Pedigree error simulation) Specify the path to a parent directory containing "
+                   "tree-pedigree pair directories and "
                    "a parent directory of error-simulated pedigree directories\n"
-                   "4) Specify the path to initial tree-pedigree pair and a parent directory of error-simulated "
+                   "4) (Pedigree error simulation) Specify the path to a super-parent directory whose "
+                   "subdirectories are grouped by the proband number. Then, specify a parent directory of "
+                   "error-simulated pedigree directories \n"
+                   "5) (Tree errors)"
+                   " Specify the path to initial tree-pedigree pair and a parent directory of error-simulated "
                    "trees\n"
-                   "5) Run the alignments for multiple tree-pedigree pairs and their corresponding error trees\n"
-                   "6) (Create/Resolve polytomy) Specify a super-parent directory whose subdirectories are "
+                   "6) (Tree errors) Run the alignments for multiple tree-pedigree pairs and their"
+                   " corresponding error trees\n"
+                   "7) (Create/Resolve polytomy) Specify a super-parent directory whose subdirectories are "
                    "grouped by the proband number. Then, specify a super-parent directory with modified trees "
                    "directories\n"
-                   "7) (Edge cut simulation) Align the maximum alignable subclade\n"
-                   "8) (Perfect data) Specify a super-parent directory whose subdirectories are "
+                   "8) (Edge cut simulation) Align the maximum alignable subclade\n"
+                   "9) (Perfect data) Specify a super-parent directory whose subdirectories are "
                    "grouped by the proband number\n"
                    )
-    menu_option = get_natural_number_input_in_bounds(script_menu, 1, 8)
-    if menu_option < 7:
+    menu_option = get_natural_number_input_in_bounds(script_menu, 1, 9)
+    if menu_option < 8:
         prompt_top_founders()
     match menu_option:
         case 1:
@@ -1376,14 +1428,16 @@ def run_interactive_session():
         case 3:
             children_tree_directories_error_pedigree_directory_mode()
         case 4:
-            single_initial_data_directory_tree_error_directory_alignment_mode()
+            tree_directories_grouped_by_proband_number_and_error_pedigree_directory()
         case 5:
-            multiple_tree_pedigree_directories_and_corresponding_tree_error_directories()
+            single_initial_data_directory_tree_error_directory_alignment_mode()
         case 6:
-            create_or_resolve_polytomy_script()
+            multiple_tree_pedigree_directories_and_corresponding_tree_error_directories()
         case 7:
-            edge_cut_maximum_alignable_subclade()
+            create_or_resolve_polytomy_script()
         case 8:
+            edge_cut_maximum_alignable_subclade()
+        case 9:
             tree_pedigree_subdirectories()
 
 

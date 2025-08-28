@@ -71,6 +71,10 @@ class FullAlignmentResult(AlignmentResult):
     def __getitem__(self, key):
         return self.vertex_alignment[key]
 
+    # Syntax sugar for printing the alignment
+    def __str__(self):
+        return str(self.vertex_alignment)
+
     def save_to_file(self, filepath: str | Path, tree: CoalescentTree):
         text = self._prepare_text_for_writing(tree=tree)
         # Launch the IO operation on a separate thread
