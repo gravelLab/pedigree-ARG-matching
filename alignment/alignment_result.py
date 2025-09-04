@@ -18,8 +18,8 @@ def save_text_to_file(text: str, path: str):
         f.write(text)
 
 
-def get_vertex_alignment_estimated_likelihood(coalescent_tree: CoalescentTree, pedigree: PotentialMrcaProcessedGraph,
-                                              alignment: dict):
+def get_vertex_alignment_estimated_length(coalescent_tree: CoalescentTree, pedigree: PotentialMrcaProcessedGraph,
+                                          alignment: dict):
     def get_coalescent_vertex_mapped_level_difference(ancestor: int, descendant: int) -> int:
         return pedigree.get_minimal_path_length(ancestor=alignment[ancestor],
                                                 descendant=alignment[descendant]
@@ -35,6 +35,17 @@ def get_vertex_alignment_estimated_likelihood(coalescent_tree: CoalescentTree, p
                                                                                          descendant=child)
             total_length += level_distance_approximation
     return total_length
+
+
+def get_vertex_alignment_phasing_accuracy(vertex_alignment: dict[int, int], proband_truth_alignment: dict[int, int]):
+    proband_number = len(proband_truth_alignment)
+    cumulative_phasing_accuracy = 0
+    for proband, proband_pedigree_candidate in proband_truth_alignment.items():
+        proband_alignment_candidate = vertex_alignment[proband]
+        if proband_pedigree_candidate == proband_alignment_candidate:
+            cumulative_phasing_accuracy += 1
+    resulting_accuracy = cumulative_phasing_accuracy / proband_number
+    return resulting_accuracy
 
 
 def get_edge_alignment_probability(edge_alignment: dict) -> float:

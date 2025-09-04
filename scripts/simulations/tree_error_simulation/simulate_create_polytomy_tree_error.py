@@ -41,7 +41,7 @@ def run_interactive_session_single_directory():
     possible_error_vertices = [x for x in coalescent_tree if coalescent_tree.has_parents(x) and
                                coalescent_tree.has_children(x)]
     max_error_number = len(possible_error_vertices)
-    merge_error_operations_per_simulation = get_natural_number_input_in_bounds(
+    merge_error_operations_per_simulation = get_number_input_in_bounds(
         input_request=f"Specify the number of merge operations that"
                       f"are to be done per simulation"
                       f" (max value is {max_error_number}):",
@@ -53,7 +53,7 @@ def run_interactive_session_single_directory():
                              "1) Perform given number of simulations (with possible duplicates)\n"
                              f"2) Generate all the possible errors. There are {possible_trees_number} possible trees\n")
 
-    simulation_mode = get_natural_number_input_in_bounds(simulation_mode_input, 1, 2)
+    simulation_mode = get_number_input_in_bounds(simulation_mode_input, 1, 2)
     simulation_number = -1
     if simulation_mode == 1:
         custom_simulation_number_input_request = (f"Specify the number of simulations. Notice that there are "
@@ -161,7 +161,7 @@ def run_interactive_session():
                           "2) Specify a parent directory containing tree-pedigree subdirectories\n"
                           "3) Specify a super-parent directory whose subdirectories contain tree-pedigree directories "
                           "(Run the previous mode for all the subdirectories of a directory)\n")
-    running_mode = get_natural_number_input_in_bounds(running_mode_input, 1, 3)
+    running_mode = get_number_input_in_bounds(running_mode_input, 1, 3)
     match running_mode:
         case 1:
             run_interactive_session_single_directory()

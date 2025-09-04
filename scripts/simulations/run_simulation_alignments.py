@@ -8,20 +8,20 @@ import traceback
 import warnings
 from abc import ABC, abstractmethod
 from concurrent.futures import as_completed, ProcessPoolExecutor
-from typing import cast
 from functools import reduce
+from typing import cast
 
 from lineagekit.core.GenGraph import GenGraph
 from matplotlib import pyplot as plt
 from scipy import stats
 
 from alignment.alignment_result import TreeAlignmentResults, FailedClimbingCladeAlignmentResults, \
-    SuccessCladeAlignmentResults
+    SuccessCladeAlignmentResults, get_vertex_alignment_phasing_accuracy
 from alignment.graph_matcher import *
 from scripts.alignment.run_alignment import save_alignment_result_to_files, \
     get_store_and_save_vertex_alignment_callback, get_store_vertex_alignment_callback
 from scripts.alignment_statistics.alignment_similarity import calculate_percentage_of_correct_assignments
-from scripts.alignment_statistics.calculate_statistics import get_vertex_alignment_estimated_likelihood
+from scripts.alignment_statistics.calculate_statistics import get_vertex_alignments_normalized_probabilities
 from scripts.simulations.tree_error_simulation.simulate_resolve_polytomy_tree_error import oracle_filename
 from scripts.utility.alignment_utility import parse_dictionary_from_file
 from scripts.utility.basic_utility import *
@@ -32,17 +32,20 @@ general_result_filename = "simulation_result.txt"
 detailed_result_filename = "detailed_simulation_result.txt"
 results_csv_filename = "results_by_clade.csv"
 percentile_csv_filename = "percentiles_by_clade.csv"
+phasing_accuracy_csv_filename = "phasing_accuracy_csv_filename.csv"
 partial_results_csv_filename = "partial_results.csv"
 classification_csv_header = ("proband_number,no_solutions,individual_and_spouses,individual_and_non_spouse,"
                              "no_individual_spouse,neither_individual_nor_spouse,"
                              "neither_individual_nor_spouse_only_super_founders\n")
-percentile_csv_header = "proband_number,identity_percentile,number_of_alignments\n"
+percentile_csv_header = ("proband_number,identity_percentile,number_of_alignments,selected_alignments_length,"
+                         "selected_alignments_ceiling\n")
+phasing_accuracy_csv_header = "proband_number, phasing_accuracy, weighted_phasing_accuracy\n"
 results_dir_name = "results"
 
 # Alignment likelihoods
 alignment_likelihoods_csv_filename = "alignment_likelihoods.csv"
 alignment_likelihoods_svg_filename = "alignment_likelihoods.png"
-alignment_likelihoods_csv_header = "correctness_ration, alignment_likelihood\n"
+alignment_likelihoods_csv_header = "correctness_ratio, estimated_alignment_length\n"
 
 total_results_filename = "total_results.txt"
 line_content_divider = "------------------------------------\n"
@@ -83,6 +86,7 @@ script_help_description = """
                           """
 
 super_founders = []
+cumulative_alignment_likelihood_threshold = 0.95
 
 
 def prompt_top_founders():
@@ -350,7 +354,8 @@ class AlignmentTask(AbstractAlignmentTask):
                  root_vertex_info: RootVertexSpouses = None,
                  alignment_classification: AlignmentClassification = None,
                  alignment_vertex_mode: AlignmentVertexMode = default_alignment_vertex_mode,
-                 alignment_edge_mode: AlignmentEdgeMode = default_alignment_edge_mode):
+                 alignment_edge_mode: AlignmentEdgeMode = default_alignment_edge_mode
+                 ):
         super().__init__(file_access=file_access, alignment_classification=alignment_classification,
                          root_vertex_info=root_vertex_info)
         self.pedigree_path = pedigree_path
@@ -397,8 +402,8 @@ class AlignmentTask(AbstractAlignmentTask):
                                            pedigree=pedigree,
                                            directory_path=self.simulation_subdirectory_path)
         # result = alignment_general_results.clade_root_to_alignments
-        clade_root = coalescent_tree.get_root_vertex()
-        clade_alignment_results = alignment_general_results.clade_root_to_clade_results[clade_root]
+        # clade_root = coalescent_tree.get_root_vertex()
+        clade_alignment_results = alignment_general_results.get_unique_clade_results()
         if isinstance(clade_alignment_results, FailedClimbingCladeAlignmentResults):
             alignment_results = []
         else:
@@ -1168,40 +1173,28 @@ def create_or_resolve_polytomy_script():
     return global_alignment_classification
 
 
-def save_alignment_likelihood_to_file(alignment_filepath: str | Path, tree: CoalescentTree,
-                                      pedigree: PotentialMrcaProcessedGraph, alignments: [dict]):
-    results = []
-    identity_found = False
-    alignments_likelihoods = []
-    identity_likelihood = None
-    # Calculate all likelihoods
-    for alignment in alignments:
-        alignments_likelihood = get_vertex_alignment_estimated_likelihood(
-            coalescent_tree=tree,
-            pedigree=pedigree,
-            alignment=alignment
-        )
-        alignment_correctness_ration = calculate_percentage_of_correct_assignments(alignment)
-        alignment_is_identity = alignment_correctness_ration == 1.0
-        if alignment_is_identity:
-            identity_found = True
-            identity_likelihood = alignments_likelihood
-        alignments_likelihoods.append(alignments_likelihood)
-        results.append((alignment_correctness_ration, alignments_likelihood))
-    # Sort by likelihood in decreasing order
-    if not identity_found:
-        raise Exception("Identity not found")
-    results.sort(key=lambda x: x[1], reverse=True)
-    data_filepath = alignment_filepath / alignment_likelihoods_csv_filename
-    with open(data_filepath, "a") as likelihoods_file:
-        likelihoods_file.write(alignment_likelihoods_csv_header)
-        for alignment_is_identity, alignments_likelihood in results:
-            likelihoods_file.write(f"{alignment_is_identity},{alignments_likelihood}\n")
-    diagram_filepath = alignment_filepath / alignment_likelihoods_svg_filename
+def accumulate_alignment_likelihoods_until_percentile_reached(normalized_likelihoods: [float]):
+    # Conduct the cumulative likelihood calculations
+    sorted_likelihoods = sorted(normalized_likelihoods, reverse=True)
+    likelihoods_length = len(normalized_likelihoods)
+    # Collect until threshold is reached
+    cumulative = 0.0
+    selected = []
+    for val in sorted_likelihoods:
+        cumulative += val
+        selected.append(val)
+        if cumulative >= cumulative_alignment_likelihood_threshold:
+            break
+    selected_length = len(selected)
+    return selected_length, likelihoods_length
+
+
+def plot_alignment_likelihood_versus_correctness(correctness_likelihood_list: list[tuple[int, int]],
+                                                 result_filepath: str | Path):
     # Highlight the correct alignment
-    highlighted = [(y, x) for (y, x) in results if y == 1.0]
+    highlighted = [(y, x) for (y, x) in correctness_likelihood_list if y == 1.0]
     assert len(highlighted) == 1
-    others = [(y, x) for (y, x) in results if y != 1.0]
+    others = [(y, x) for (y, x) in correctness_likelihood_list if y != 1.0]
     y_vals_others, x_vals_others = zip(*others) if others else ([], [])
     y_vals_highlight, x_vals_highlight = zip(*highlighted) if highlighted else ([], [])
     plt.figure(figsize=(12, 9))
@@ -1213,18 +1206,45 @@ def save_alignment_likelihood_to_file(alignment_filepath: str | Path, tree: Coal
     plt.ylabel("Correctness Ratio (log scale)")
     plt.title("Correctness Ratio vs. Alignment Likelihood (Log-Log)")
     plt.grid(True, which="both", ls="--")
-    plt.savefig(diagram_filepath, dpi=300)
+    plt.savefig(result_filepath, dpi=300)
     plt.close()
-    return alignments_likelihoods, identity_likelihood
 
 
-def tree_pedigree_subdirectories():
-    parent_directory = Path(get_directory_path("Specify the path to the parent directory:"))
-    simulation_name = get_non_empty_string("Specify the simulation name:")
-    results_directory_path = parent_directory / results_dir_name
-    os.makedirs(results_directory_path, exist_ok=True)
-    simulation_directory_path = results_directory_path / simulation_name
-    os.mkdir(simulation_directory_path)
+def save_and_plot_alignment_likelihoods(alignment_filepath: str | Path, alignments: [dict],
+                                        normalized_alignment_likelihoods: list[float]):
+    alignment_correctness_ratios = []
+    identity_found = False
+    identity_likelihood = None
+    # Calculate all likelihoods
+    for index, alignment in enumerate(alignments):
+        alignment_correctness_ration = calculate_percentage_of_correct_assignments(alignment)
+        alignment_is_identity = alignment_correctness_ration == 1.0
+        if alignment_is_identity:
+            identity_found = True
+            identity_likelihood = normalized_alignment_likelihoods[index]
+        alignment_correctness_ratios.append(alignment_correctness_ration)
+    # Sort by likelihood in decreasing order
+    if not identity_found:
+        raise Exception("Identity not found")
+    results = list(zip(alignment_correctness_ratios, normalized_alignment_likelihoods))
+    results.sort(key=lambda x: x[1], reverse=True)
+    data_filepath = alignment_filepath / alignment_likelihoods_csv_filename
+    with open(data_filepath, "a") as likelihoods_file:
+        likelihoods_file.write(alignment_likelihoods_csv_header)
+        for alignment_is_identity, alignments_likelihood in results:
+            likelihoods_file.write(f"{alignment_is_identity},{alignments_likelihood}\n")
+    # # Calculate the actual estimated likelihood
+    # results = [(x, 2 ** (-y)) for x, y in results]
+    diagram_filepath = alignment_filepath / alignment_likelihoods_svg_filename
+    plot_alignment_likelihood_versus_correctness(results, diagram_filepath)
+    selected_length, likelihoods_length = accumulate_alignment_likelihoods_until_percentile_reached(
+        normalized_alignment_likelihoods
+    )
+    return identity_likelihood, selected_length, likelihoods_length
+
+
+def prepare_tree_pedigree_subdirectories_alignment_tasks(parent_directory: str | Path, simulation_name: str | Path,
+                                                         simulation_directory_path: str | Path):
     alignment_tasks = []
     file_access = AlignmentResultsFileAccess(simulation_directory_path=simulation_directory_path)
     proband_number_to_results = dict()
@@ -1258,44 +1278,87 @@ def tree_pedigree_subdirectories():
             continue
         proband_number_simulation_subpath = proband_number_directory_path / simulation_name
         proband_number_to_results[proband_number_simulation_subpath] = proband_alignment_tasks
+    return proband_number_to_results
+
+
+def run_perfect_data_alignment_and_calculate_statistics(alignment_task):
+    try:
+        tree_alignment_results, tree, pedigree = alignment_task.run()
+        tree_alignment_results: TreeAlignmentResults
+        tree: CoalescentTree
+    except KeyboardInterrupt:
+        warnings.warn("Skipping the alignment")
+        return None
+    # Process the results
+    clade_results = tree_alignment_results.get_unique_clade_results()
+    if isinstance(clade_results, FailedClimbingCladeAlignmentResults):
+        raise Exception("Climbing failed for perfect data")
+    clade_results = cast(SuccessCladeAlignmentResults, clade_results)
+    alignment_results = clade_results.alignments
+    alignments = [x.vertex_alignment for x in alignment_results]
+    alignment_number = len(alignments)
+    filepath = alignment_task.simulation_subdirectory_path
+    normalized_likelihoods = get_vertex_alignments_normalized_probabilities(
+        alignments=alignments, tree=tree, pedigree=pedigree
+    )
+    identity_likelihood, selected_alignments_length, alignments_length = \
+        save_and_plot_alignment_likelihoods(
+            normalized_alignment_likelihoods=normalized_likelihoods,
+            alignment_filepath=filepath, alignments=alignments
+        )
+    ceiling_selected_length = ceil(cumulative_alignment_likelihood_threshold * alignments_length)
+    proband_number = len(tree.get_sink_vertices())
+    identity_percentile = stats.percentileofscore(normalized_likelihoods, identity_likelihood,
+                                                  kind='mean')
+    # Calculate the phasing accuracy
+    proband_truth = {x: x for x in tree.get_sink_vertices()}
+    phasing_accuracies = [get_vertex_alignment_phasing_accuracy(vertex_alignment=alignment,
+                                                                proband_truth_alignment=proband_truth)
+                          for alignment in alignments]
+    total_phasing_accuracy = sum(phasing_accuracies) / len(phasing_accuracies)
+    weighted_phasing_accuracies = [phasing_accuracy * normalized_likelihood for
+                                   phasing_accuracy, normalized_likelihood in
+                                   zip(phasing_accuracies, normalized_likelihoods)]
+    total_weighted_phasing_accuracy = sum(weighted_phasing_accuracies)
+    return (proband_number, identity_percentile, alignment_number, selected_alignments_length, ceiling_selected_length,
+            total_phasing_accuracy, total_weighted_phasing_accuracy)
+
+
+def run_tree_pedigree_subdirectories_results(proband_number_to_results: dict, simulation_directory_path: str | Path):
     # Run the alignments and save the likelihoods
     alignment_classifications = []
     results_csv_filepath = simulation_directory_path / results_csv_filename
     average_percentile_per_proband_number_csv = simulation_directory_path / percentile_csv_filename
+    phasing_accuracy_per_proband_number_csv = simulation_directory_path / phasing_accuracy_csv_filename
     with (open(results_csv_filepath, "a") as results_csv_file,
-          open(average_percentile_per_proband_number_csv, "a") as percentile_csv_file):
+          open(average_percentile_per_proband_number_csv, "a") as percentile_csv_file,
+          open(phasing_accuracy_per_proband_number_csv, "a") as phasing_accuracy_csv_file):
         results_csv_file.write(classification_csv_header)
         percentile_csv_file.write(percentile_csv_header)
-        for proband_simulation_path, proband_alignment_tasks in proband_number_to_results.items():
-            proband_alignment_tasks: [AlignmentTask]
-            for alignment_task in proband_alignment_tasks:
-                try:
-                    tree_alignment_results, tree, pedigree = alignment_task.run()
-                    tree_alignment_results: TreeAlignmentResults
-                    tree: CoalescentTree
-                except KeyboardInterrupt:
-                    warnings.warn("Skipping the alignment")
+        phasing_accuracy_csv_file.write(phasing_accuracy_csv_header)
+        with ProcessPoolExecutor() as executor:
+            futures = []
+            for proband_simulation_path, proband_alignment_tasks in proband_number_to_results.items():
+                proband_alignment_tasks: [AlignmentTask]
+                for alignment_task in proband_alignment_tasks:
+                    futures.append(
+                        executor.submit(run_perfect_data_alignment_and_calculate_statistics, alignment_task)
+                    )
+            for future in as_completed(futures):
+                result = future.result()
+                if result is None:
                     continue
-                if len(tree_alignment_results.clade_root_to_clade_results) != 1:
-                    raise Exception(f"The tree {alignment_task.coalescent_tree_path} does not have a single root")
-                clade_results = tree_alignment_results.clade_root_to_clade_results[
-                    alignment_task.root_vertex_info.vertex_ploid_id]
-                if isinstance(clade_results, FailedClimbingCladeAlignmentResults):
-                    raise Exception("Climbing failed for perfect data")
-                clade_results = cast(SuccessCladeAlignmentResults, clade_results)
-                alignment_results = clade_results.alignments
-                alignments = [x.vertex_alignment for x in alignment_results]
-                # alignments = alignment_dictionary[alignment_task.root_vertex_info.vertex_ploid_id]
-                filepath = alignment_task.simulation_subdirectory_path
-                alignments_likelihoods, identity_likelihood = save_alignment_likelihood_to_file(
-                    alignment_filepath=filepath, tree=tree,
-                    pedigree=pedigree, alignments=alignments
-                )
-                proband_number = len(tree.get_sink_vertices())
-                identity_percentile = stats.percentileofscore(alignments_likelihoods, identity_likelihood,
-                                                              kind='mean')
-                percentile_csv_file.write(f"{proband_number},{identity_percentile},{len(alignments)}\n")
+                (proband_number, identity_percentile,
+                 alignment_number, selected_alignments_length,
+                 ceiling_selected_length,
+                 total_phasing_accuracy,
+                 total_weighted_phasing_accuracy) = result
+                percentile_csv_file.write(f"{proband_number},{identity_percentile},"
+                                          f"{alignment_number},{selected_alignments_length},{ceiling_selected_length}\n")
                 percentile_csv_file.flush()
+                phasing_accuracy_csv_file.write(f"{proband_number},{total_phasing_accuracy},"
+                                                f"{total_weighted_phasing_accuracy}\n")
+                phasing_accuracy_csv_file.flush()
             initial_directory_name = proband_simulation_path.parent.name
             proband_results_path = proband_simulation_path / total_results_filename
             os.mkdir(proband_simulation_path)
@@ -1312,6 +1375,24 @@ def tree_pedigree_subdirectories():
                 proband_number=initial_directory_name
             )
             results_csv_file.flush()
+    return alignment_classifications
+
+
+def tree_pedigree_subdirectories():
+    parent_directory = Path(get_directory_path("Specify the path to the parent directory:"))
+    simulation_name = get_non_empty_string("Specify the simulation name:")
+    results_directory_path = parent_directory / results_dir_name
+    os.makedirs(results_directory_path, exist_ok=True)
+    simulation_directory_path = results_directory_path / simulation_name
+    os.mkdir(simulation_directory_path)
+    simulation_directory_path = results_directory_path / simulation_name
+    proband_number_to_results = prepare_tree_pedigree_subdirectories_alignment_tasks(
+        parent_directory=parent_directory,
+        simulation_name=simulation_name,
+        simulation_directory_path=simulation_directory_path
+    )
+    alignment_classifications = run_tree_pedigree_subdirectories_results(proband_number_to_results,
+                                                                         simulation_directory_path)
     return alignment_classifications
 
 
@@ -1417,7 +1498,7 @@ def run_interactive_session():
                    "9) (Perfect data) Specify a super-parent directory whose subdirectories are "
                    "grouped by the proband number\n"
                    )
-    menu_option = get_natural_number_input_in_bounds(script_menu, 1, 9)
+    menu_option = get_number_input_in_bounds(script_menu, 1, 9)
     if menu_option < 8:
         prompt_top_founders()
     match menu_option:

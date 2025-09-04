@@ -79,7 +79,7 @@ def run_interactive_single_tree_mode(results_directory_paths: Path):
                         "1) Perform given number of 1 independent polytomy resolution\n"
                         "2) Generate all the possible 1 polytomy resolutions\n")
 
-    error_mode = get_natural_number_input_in_bounds(error_mode_input, 1, 2)
+    error_mode = get_number_input_in_bounds(error_mode_input, 1, 2)
     if error_mode == 1:
         possible_trees_number = len(possible_error_vertices)
         custom_simulation_number_input_request = (f"Specify the number of simulations. Notice that there are "
@@ -169,9 +169,9 @@ def run_interactive_session():
                    "3) Specify a directory whose subdirectories contain tree-pedigree directories "
                    "(Run the previous mode for all the subdirectories of a directory).\n")
 
-    mode = get_natural_number_input_in_bounds(input_request=mode_prompt,
-                                              lower_bound=1,
-                                              upper_bound=3)
+    mode = get_number_input_in_bounds(input_request=mode_prompt,
+                                      lower_bound=1,
+                                      upper_bound=3)
     result_directory_paths = Path(get_non_empty_string("Specify the path where the results are to be stored:"))
     os.makedirs(result_directory_paths, exist_ok=True)
     match mode:

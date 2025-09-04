@@ -15,15 +15,15 @@ def run_interactive_session():
         raise ValueError(f"The coalescent tree must have 1 clade, found {clade_number} instead")
     tree_probands = coalescent_tree.get_sink_vertices()
     pedigree_probands = get_pedigree_simulation_probands_for_alignment_mode(
-                                                                vertices=tree_probands,
-                                                                alignment_mode=ProbandInitialAssignmentsMode.INDIVIDUAL
+        vertices=tree_probands,
+        alignment_mode=ProbandInitialAssignmentsMode.INDIVIDUAL
     )
     pedigree_filepath = get_filepath("Specify the path to the pedigree file:\n")
     genealogical_graph = PloidPedigree.get_ploid_pedigree_from_file(filepath=pedigree_filepath,
                                                                     probands=pedigree_probands)
-    saving_format = get_natural_number_input_in_bounds("Specify the output format:\n"
-                                                       "1) Tree-pedigree directories\n"
-                                                       "2) Trees grouped by proband size\n", 1, 2)
+    saving_format = get_number_input_in_bounds("Specify the output format:\n"
+                                               "1) Tree-pedigree directories\n"
+                                               "2) Trees grouped by proband size\n", 1, 2)
     simulation_dir_name = get_non_existing_path("Specify the name for the simulation directory:\n")
     os.makedirs(simulation_dir_name)
     os.chdir(simulation_dir_name)

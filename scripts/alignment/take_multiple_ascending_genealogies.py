@@ -124,7 +124,7 @@ def run_interactive_session():
                     "1) Take ascending genealogies for pedigree directories\n"
                     "2) Take ascending genealogies for coalescent trees\n"
                     "3) Take ascending genealogies for pedigree-tree directories\n")
-    selected_mode = get_natural_number_input_in_bounds(input_prompt, 1, 3)
+    selected_mode = get_number_input_in_bounds(input_prompt, 1, 3)
     match selected_mode:
         case 1:
             run_interactive_session_pedigrees_ascending()

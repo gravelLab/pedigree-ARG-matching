@@ -92,6 +92,39 @@ def get_non_existing_path(input_request: str):
             return path
 
 
+def get_number_input(input_request: str):
+    while True:
+        try:
+            result = int(input(input_request))
+            return result
+        except ValueError:
+            print("You need to specify an integer")
+
+
+def get_number_input_with_lower_bound(input_request: str, lower_bound: int):
+    while True:
+        try:
+            result = int(input(input_request))
+            if result < lower_bound:
+                print(f"The specified number has to be larger than the lower bound: {lower_bound}.")
+                continue
+            return result
+        except ValueError:
+            print("You need to specify an integer")
+
+
+def get_number_input_in_bounds(input_request: str, lower_bound: int, upper_bound: int):
+    while True:
+        try:
+            result = int(input(input_request))
+            if result < lower_bound or result > upper_bound:
+                print("The specified number is outside the specified bounds.")
+                continue
+            return result
+        except ValueError:
+            print("You need to specify an integer")
+
+
 def get_natural_number_input(input_request: str):
     while True:
         try:
@@ -102,17 +135,6 @@ def get_natural_number_input(input_request: str):
                 return result
         except ValueError:
             print("You need to specify an integer")
-
-
-def get_natural_number_input_in_bounds(input_request: str, lower_bound: int, upper_bound: int):
-    if lower_bound >= upper_bound:
-        raise ValueError("Lower bound cannot be greater than upper bound")
-    while True:
-        value = get_natural_number_input(input_request)
-        if value < lower_bound or value > upper_bound:
-            print("Value out of bounds, try again")
-            continue
-        return value
 
 
 def get_natural_number_with_lower_bound(input_request: str, lower_bound: int):

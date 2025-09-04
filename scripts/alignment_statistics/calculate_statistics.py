@@ -7,7 +7,7 @@ from typing import Iterable
 
 from lineagekit.core.CoalescentTree import CoalescentTree
 
-from alignment.alignment_result import FullAlignmentResult, get_vertex_alignment_estimated_likelihood, \
+from alignment.alignment_result import FullAlignmentResult, get_vertex_alignment_estimated_length, \
     FailedClimbingCladeAlignmentResults
 from alignment.configuration import calculate_distances_histogram, section_separator
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
@@ -38,6 +38,22 @@ def save_coalescent_vertex_pedigree_candidates(statistics_file, clade_alignment_
             percentage = count / alignments_number
             formatted_pedigree_vertex = convert_ploid_id_to_individual(pedigree_candidate)
             statistics_file.write(f"        {formatted_pedigree_vertex} ({percentage});\n")
+
+
+def get_vertex_alignments_normalized_probabilities(alignments: list[dict], tree: CoalescentTree,
+                                                   pedigree: PotentialMrcaProcessedGraph):
+    alignment_likelihoods = []
+    for alignment in alignments:
+        alignment_likelihood = get_vertex_alignment_estimated_length(
+            coalescent_tree=tree,
+            pedigree=pedigree,
+            alignment=alignment
+        )
+        alignment_likelihood = 2 ** (-alignment_likelihood)
+        alignment_likelihoods.append(alignment_likelihood)
+    likelihood_sum = sum(x for x in alignment_likelihoods)
+    normalized_likelihoods = [x / likelihood_sum for x in alignment_likelihoods]
+    return normalized_likelihoods
 
 
 @dataclass
@@ -165,9 +181,9 @@ class SuccessCladeAlignmentMetadata(CladeAlignmentMetadata):
         # TODO: Cache the distance between two vertices per pedigree
         for counter, valid_alignment in enumerate(self.clade_alignment_result.alignments):
             valid_alignment: FullAlignmentResult
-            alignment_length = get_vertex_alignment_estimated_likelihood(pedigree=self.pedigree,
-                                                                         coalescent_tree=self.coalescent_tree,
-                                                                         alignment=valid_alignment.vertex_alignment)
+            alignment_length = get_vertex_alignment_estimated_length(pedigree=self.pedigree,
+                                                                     coalescent_tree=self.coalescent_tree,
+                                                                     alignment=valid_alignment.vertex_alignment)
             if calculate_distances_histogram:
                 if min_length == alignment_length:
                     min_length_alignments.append(counter)
@@ -189,7 +205,7 @@ class SuccessCladeAlignmentMetadata(CladeAlignmentMetadata):
             alignment_path = self.results_filepath / alignment_filename
             with open(alignment_path, "a") as dictionary_file:
                 if self.clade_alignment_statistics_metadata.calculate_alignments_likelihoods:
-                    alignment_likelihood = get_vertex_alignment_estimated_likelihood(
+                    alignment_likelihood = get_vertex_alignment_estimated_length(
                         pedigree=self.pedigree,
                         coalescent_tree=self.coalescent_tree,
                         alignment=alignment.vertex_alignment

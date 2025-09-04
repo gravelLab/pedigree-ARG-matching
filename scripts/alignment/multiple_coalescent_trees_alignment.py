@@ -16,9 +16,9 @@ def run_interactive_session():
     initial_mapping_source_prompt = ("Specify how you want to get the initial mapping:\n"
                                      "1) Read from a file\n"
                                      "2) Get from the initial coalescent tree\n")
-    initial_mapping_source_option = get_natural_number_input_in_bounds(input_request=initial_mapping_source_prompt,
-                                                                       lower_bound=1,
-                                                                       upper_bound=2)
+    initial_mapping_source_option = get_number_input_in_bounds(input_request=initial_mapping_source_prompt,
+                                                               lower_bound=1,
+                                                               upper_bound=2)
     if initial_mapping_source_option == 1:
         initial_mapping_file = get_filepath("Specify the path to the initial mapping:")
         initial_mapping = read_mapping_from_file(initial_mapping_file)
