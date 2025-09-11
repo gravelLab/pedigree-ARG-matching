@@ -1271,7 +1271,7 @@ def prepare_tree_pedigree_subdirectories_alignment_tasks(parent_directory: str |
                                            # Deduct root vertex information automatically, as it stays the same
                                            root_vertex_info=None,
                                            alignment_vertex_mode=AlignmentVertexMode.ALL_ALIGNMENTS,
-                                           alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT)
+                                           alignment_edge_mode=AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS)
             alignment_tasks.append(alignment_task)
             proband_alignment_tasks.append(alignment_task)
         if not proband_alignment_tasks:

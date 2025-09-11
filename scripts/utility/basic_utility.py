@@ -53,6 +53,10 @@ def get_filepath(input_request: str):
             return file_path
 
 
+def get_basename_without_extension(filepath: str) -> str:
+    return os.path.splitext(os.path.basename(filepath))[0]
+
+
 def verify_filepath(path: str) -> bool:
     return os.path.exists(path) and os.path.isfile(path)
 
@@ -81,10 +85,12 @@ def get_non_empty_string(input_request: str) -> str:
             return response
 
 
-def get_non_existing_path(input_request: str):
+def get_non_existing_path(input_request: str, exit_on_empty: bool = False) -> str:
     while True:
         path = input(input_request)
         if not path:
+            if exit_on_empty:
+                return path
             print("Specify a non-empty string")
         elif os.path.exists(path):
             print("The specified path exists, try again")

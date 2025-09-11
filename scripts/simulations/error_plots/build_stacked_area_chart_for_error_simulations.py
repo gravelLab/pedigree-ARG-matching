@@ -3,20 +3,20 @@ from pathlib import Path
 
 import pandas as pd
 import matplotlib.pyplot as plt
-from scripts.utility.basic_utility import get_filepath, get_non_existing_path
+from scripts.utility.basic_utility import get_filepath, get_non_existing_path, get_basename_without_extension
 
 
 def main():
     filepath = get_filepath("Specify the path to the data file:")
     os.chdir(Path(filepath).parent)
-    result_name = get_non_existing_path("Specify the resulting figure's filename (without extension):")
-    title = input("Specify the title of the figure:")
+    result_path = get_non_existing_path("Specify the resulting figure's filename (without extension):",
+                                        exit_on_empty=True)
+    if not result_path:
+        result_path = Path(filepath).parent / get_basename_without_extension(filepath)
+    # title = input("Specify the title of the figure:")
     df = pd.read_csv(filepath)
-    # Ensure proband_number is sorted
-    # df = df.sort_values(by='proband_number')
     # Define x-axis and values to plot
     x = df['proband_number']
-    # x = range(len(df))
     y_columns = ['no_solutions', 'individual_and_spouses', 'individual_and_non_spouse',
                  'no_individual_spouse', 'neither_individual_nor_spouse',
                  #'neither_individual_nor_spouse_only_super_founders'
@@ -30,7 +30,7 @@ def main():
     # Calculate cumulative sum for stacked plot
     cumulative_sum = df[y_columns].cumsum(axis=1)
 
-    plt.figure(figsize=(27.16, 14))
+    plt.figure(figsize=(32, 16))
 
     colors = ['#898989', '#00452c', '#00965f', '#f1c338', '#be5103', '#b0aeae']
     handles = []
@@ -49,45 +49,46 @@ def main():
                                     label=col, alpha=0.7)
         handles.append(fill)
 
-    plt.xlabel("Proband Number", fontsize=30)
-    plt.ylabel("Percentage (%)", fontsize=30)
-    plt.title(title, fontsize=30, pad=30)
+    plt.xlabel("Proband Number", fontsize=40)
+    plt.ylabel("Percentage (%)", fontsize=40)
+
+    #plt.title(title, fontsize=30, pad=30)
 
     # Set y-axis limits explicitly
     plt.ylim(0, 100)
 
-    # Define custom legend
-    legend_labels = [
-        "No solutions",
-        "Individual present, the rest are the spouses",
-        "Individual present, and a non-spouse assignment present",
-        "Individual not present, spouse present",
-        "Neither individual nor spouse present",
-        #"Neither individual nor spouse present, only super founders"
-    ]
-    grouped_handles = handles
+    # # Define custom legend
+    # legend_labels = [
+    #     "No solutions",
+    #     "Individual present, the rest are the spouses",
+    #     "Individual present, and a non-spouse assignment present",
+    #     "Individual not present, spouse present",
+    #     "Neither individual nor spouse present",
+    #     #"Neither individual nor spouse present, only super founders"
+    # ]
+    # grouped_handles = handles
+    #
+    # plt.legend(
+    #     grouped_handles,
+    #     legend_labels,
+    #     title="Categories",
+    #     title_fontsize=28,
+    #     loc="upper center",
+    #     bbox_to_anchor=(0.5, -0.15),
+    #     ncol=3,
+    #     columnspacing=1.5,
+    #     frameon=False,
+    #     fontsize=18
+    # )
 
-    plt.legend(
-        grouped_handles,
-        legend_labels,
-        title="Categories",
-        title_fontsize=28,
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.15),
-        ncol=3,
-        columnspacing=1.5,
-        frameon=False,
-        fontsize=18
-    )
+    plt.xticks(ticks=x, labels=x, fontsize=40)
+    plt.yticks(fontsize=40)
+    plt.tick_params(axis="x", pad=40)
+    plt.tick_params(axis="y", pad=40)
 
-    plt.xticks(ticks=x, labels=x, fontsize=28)
-    # plt.gca().axes.get_xaxis().set_visible(False)
-
-    plt.yticks(fontsize=28)
-    # plt.xlim(min(x), max(x))
-    plt.xlim(4, max(x))
+    plt.xlim(2, max(x))
     # Use tight_layout for better adjustment
-    plt.tight_layout()
+    # plt.tight_layout()
 
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
@@ -95,7 +96,7 @@ def main():
     plt.gca().spines['bottom'].set_visible(False)
 
     # Save and display the plot
-    plt.savefig(fname=f"{result_name}.svg")
+    plt.savefig(fname=f"{result_path}.svg")
     plt.show()
 
 

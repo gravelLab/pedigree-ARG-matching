@@ -8,10 +8,9 @@ from typing import Iterable
 from lineagekit.core.CoalescentTree import CoalescentTree
 
 from alignment.alignment_result import FullAlignmentResult, get_vertex_alignment_estimated_length, \
-    FailedClimbingCladeAlignmentResults
+    FailedClimbingCladeAlignmentResults, SuccessCladeAlignmentResults
 from alignment.configuration import calculate_distances_histogram, section_separator
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
-from scripts.alignment.run_alignment import SuccessCladeAlignmentResults
 from scripts.alignment_statistics.alignment_similarity import get_alignments_similarity, get_alignments_ind_similarity
 from scripts.utility.alignment_utility import convert_ploid_id_to_individual
 

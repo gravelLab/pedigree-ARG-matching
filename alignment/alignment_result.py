@@ -3,6 +3,7 @@ import threading
 from abc import ABC
 from collections import defaultdict
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import List
 
@@ -52,7 +53,7 @@ def get_edge_alignment_probability(edge_alignment: dict) -> float:
     total_length = 0
     for pedigree_path in edge_alignment.values():
         total_length += len(pedigree_path)
-    return 2 ** -total_length
+    return Decimal(2) ** (-total_length)
 
 
 @dataclass
@@ -123,17 +124,19 @@ class FullAlignmentResult(AlignmentResult):
 
     @staticmethod
     def _save_vertex_probability(text_lines: list[str], vertex_alignment, edge_alignments, tree: CoalescentTree):
+        assert edge_alignments
         edge_alignment_probabilities = []
-        vertex_to_probability = defaultdict(float)
+        vertex_to_probability = defaultdict(Decimal)
         for edge_alignment in edge_alignments:
-            vertex_probability = get_edge_alignment_probability(edge_alignment)
-            edge_alignment_probabilities.append(vertex_probability)
+            edge_alignment_probability = get_edge_alignment_probability(edge_alignment)
+            assert edge_alignment_probability > 0
+            edge_alignment_probabilities.append(edge_alignment_probability)
             for pedigree_path in edge_alignment.values():
                 for pedigree_vertex in pedigree_path[1:-1]:
-                    vertex_to_probability[pedigree_vertex] += vertex_probability
+                    vertex_to_probability[pedigree_vertex] += edge_alignment_probability
             for coalescent_vertex in tree:
                 pedigree_vertex = vertex_alignment[coalescent_vertex]
-                vertex_to_probability[pedigree_vertex] += vertex_probability
+                vertex_to_probability[pedigree_vertex] += edge_alignment_probability
         sum_edge_alignment_probabilities = sum(edge_alignment_probabilities)
         assert sum_edge_alignment_probabilities != 0
         vertex_to_probability = {key: value / sum_edge_alignment_probabilities
@@ -145,10 +148,10 @@ class FullAlignmentResult(AlignmentResult):
             factor = 10 ** decimals
             return math.floor(x * factor) / factor
 
-        for vertex, vertex_probability in sorted(vertex_to_probability.items(), key=lambda x: x[1], reverse=True):
-            assert vertex_probability <= 1.0
+        for vertex, edge_alignment_probability in sorted(vertex_to_probability.items(), key=lambda x: x[1], reverse=True):
+            assert edge_alignment_probability <= 1.0
             converted_vertex = convert_ploid_id_to_individual(vertex)
-            rounded_prob = round_down(vertex_probability, 5)
+            rounded_prob = round_down(edge_alignment_probability, 5)
             text_lines.append(f"{converted_vertex}: {rounded_prob}\n")
 
     @staticmethod

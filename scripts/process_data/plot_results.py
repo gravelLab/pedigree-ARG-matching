@@ -1,10 +1,10 @@
 import csv
-import os
 from pathlib import Path
 
 from matplotlib import pyplot as plt
 
-from scripts.utility.basic_utility import get_filepath, get_number_input_with_lower_bound, get_number_input_in_bounds
+from scripts.utility.basic_utility import get_filepath, get_number_input_with_lower_bound, get_number_input_in_bounds, \
+    get_basename_without_extension
 
 axis_options = ("Types of axis:\n"
                 "1) Linear axis\n"
@@ -14,12 +14,14 @@ log_axis_options = 2
 
 def main():
     input_csv_filepath = get_filepath("Specify the input csv file path:")
-    input_filename_no_ext = os.path.splitext(os.path.basename(input_csv_filepath))[0]
+    input_filename_no_ext = get_basename_without_extension(input_csv_filepath)
     output_filename = f"{input_filename_no_ext}.png"
     output_filepath = Path(input_csv_filepath).parent / output_filename
     x_axis_column_index = get_number_input_with_lower_bound("Specify the x-axis column index in the csv file:",
                                                             0)
     y_axis_column_index = get_number_input_with_lower_bound("Specify the y-axis column index in the csv file:",
+                                                            0)
+    y_axis_column_index_2 = get_number_input_with_lower_bound("Specify the y-axis column index in the csv file:",
                                                             0)
     figure_title = input("Specify the figure title: ")
     x_axis_title = input("Specify the x-axis title: ")
@@ -33,7 +35,7 @@ def main():
         for row in reader:
             try:
                 x_vals.append(float(row[x_axis_column_index]))
-                y_vals.append(float(row[y_axis_column_index]))
+                y_vals.append(float(row[y_axis_column_index]) / float(row[y_axis_column_index_2]))
             except (ValueError, IndexError):
                 continue  # skip bad rows
     plt.figure(figsize=(12, 9))
@@ -46,7 +48,12 @@ def main():
     plt.xlabel(x_axis_title)
     plt.ylabel(y_axis_title)
     plt.title(figure_title)
-    plt.grid(True, which="both", ls="--")
+    # Plot the y=0.95x line
+    # x_vals = np.array(x_vals)
+    # x_line = np.linspace(x_vals.min(), x_vals.max(), 1000)
+    # y_line = x_line
+    # plt.plot(x_line, y_line, color="blue", linestyle="-", label="y = x")
+    plt.grid(True, which='major', linestyle='--', linewidth=1)
     plt.savefig(output_filepath, dpi=300)
     print(f"Scatter plot saved to {output_filepath}")
 
