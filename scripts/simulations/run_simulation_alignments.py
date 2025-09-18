@@ -21,7 +21,6 @@ from alignment.graph_matcher import *
 from scripts.alignment.run_alignment import save_alignment_result_to_files, \
     get_store_and_save_vertex_alignment_callback, get_store_vertex_alignment_callback
 from scripts.alignment_statistics.alignment_similarity import calculate_percentage_of_correct_assignments
-from scripts.alignment_statistics.calculate_statistics import get_vertex_alignments_normalized_probabilities
 from scripts.simulations.tree_error_simulation.simulate_resolve_polytomy_tree_error import oracle_filename
 from scripts.utility.alignment_utility import parse_dictionary_from_file
 from scripts.utility.basic_utility import *
@@ -288,7 +287,7 @@ class AbstractAlignmentTask(ABC):
         if not alignment_classification:
             alignment_classification = AlignmentClassification()
         self.file_access = file_access
-        self.error_results = alignment_classification
+        self.alignment_classification = alignment_classification
         # If root_vertex_info is None, it will be deducted automatically
         self.root_vertex_info = root_vertex_info
 
@@ -306,7 +305,7 @@ class AbstractAlignmentTask(ABC):
                 oracle_dict=oracle_dict
             )
         # resulting_alignments: [AlignmentResult] = [d for lst in result.values() for d in lst]
-        self.error_results.total_simulation_number += 1
+        self.alignment_classification.total_simulation_number += 1
         # Get the root assignments for this simulation
         simulation_root_vertex_individual_assignments = {x[coalescent_tree_root] // 2 for x in
                                                          resulting_alignments}
@@ -318,28 +317,28 @@ class AbstractAlignmentTask(ABC):
                                                        f"{simulation_root_vertex_individual_assignments}\n")
             # Can close the files earlier to let other processes work with them
             self.file_access.close_files()
-            self.error_results.total_number_of_root_vertex_individual_assignments += (
+            self.alignment_classification.total_number_of_root_vertex_individual_assignments += (
                 len(simulation_root_vertex_individual_assignments))
-            self.error_results.add_root_assignments(simulation_root_vertex_individual_assignments)
-            self.error_results.simulations_with_solutions += 1
+            self.alignment_classification.add_root_assignments(simulation_root_vertex_individual_assignments)
+            self.alignment_classification.simulations_with_solutions += 1
             # Classify the simulation result
             if self.root_vertex_info.vertex_individual_id in simulation_root_vertex_individual_assignments:
                 if simulation_root_vertex_individual_assignments.issubset(
                         self.root_vertex_info.individual_and_spouses):
-                    self.error_results.only_individual_and_spouses_counter += 1
+                    self.alignment_classification.only_individual_and_spouses_counter += 1
                 else:
-                    self.error_results.individual_and_non_spouse_present_counter += 1
+                    self.alignment_classification.individual_and_non_spouse_present_counter += 1
             else:
                 if simulation_root_vertex_individual_assignments.intersection(
                         self.root_vertex_info.individual_and_spouses):
-                    self.error_results.individual_not_present_spouse_present_counter += 1
+                    self.alignment_classification.individual_not_present_spouse_present_counter += 1
                 else:
                     if simulation_root_vertex_individual_assignments.intersection(super_founders):
-                        self.error_results.superfounder_present_individual_and_spouses_not_present += 1
+                        self.alignment_classification.superfounder_present_individual_and_spouses_not_present += 1
                     else:
-                        self.error_results.neither_individual_nor_spouse_present_counter += 1
+                        self.alignment_classification.neither_individual_nor_spouse_present_counter += 1
         else:
-            self.error_results.no_solutions_counter += 1
+            self.alignment_classification.no_solutions_counter += 1
         self.file_access.close_files()
 
     @abstractmethod
@@ -354,7 +353,8 @@ class AlignmentTask(AbstractAlignmentTask):
                  root_vertex_info: RootVertexSpouses = None,
                  alignment_classification: AlignmentClassification = None,
                  alignment_vertex_mode: AlignmentVertexMode = default_alignment_vertex_mode,
-                 alignment_edge_mode: AlignmentEdgeMode = default_alignment_edge_mode
+                 alignment_edge_mode: AlignmentEdgeMode = default_alignment_edge_mode,
+                 alignment_calculate_posterior_probabilities: bool = default_calculate_posterior_probabilities
                  ):
         super().__init__(file_access=file_access, alignment_classification=alignment_classification,
                          root_vertex_info=root_vertex_info)
@@ -364,6 +364,7 @@ class AlignmentTask(AbstractAlignmentTask):
         self.simulation_subdirectory_path = Path(simulation_subdirectory_path)
         self.alignment_vertex_mode = alignment_vertex_mode
         self.alignment_edge_mode = alignment_edge_mode
+        self.alignment_calculate_posterior_probabilities = alignment_calculate_posterior_probabilities
 
     def run(self) -> (TreeAlignmentResults, CoalescentTree, PotentialMrcaProcessedGraph):
         print(f"Parsing {self.pedigree_path} [{self.coalescent_tree_path}]")
@@ -394,12 +395,12 @@ class AlignmentTask(AbstractAlignmentTask):
                                initial_mapping=initial_mapping,
                                alignment_vertex_mode=self.alignment_vertex_mode,
                                alignment_edge_mode=self.alignment_edge_mode,
+                               calculate_posterior_probabilities=self.alignment_calculate_posterior_probabilities,
                                result_callback_function=callback_function)
         matcher.find_alignments()
         if self.file_access.save_alignments:
             save_alignment_result_to_files(alignment_result=alignment_general_results,
-                                           coalescent_tree=coalescent_tree,
-                                           pedigree=pedigree,
+                                           graph_matcher=matcher,
                                            directory_path=self.simulation_subdirectory_path)
         # result = alignment_general_results.clade_root_to_alignments
         # clade_root = coalescent_tree.get_root_vertex()
@@ -457,7 +458,7 @@ class MaximumAlignableSubcladeTask(AbstractAlignmentTask):
         if not processed_tree_subclade_paths:
             warnings.warn(f"Skipping, received an invalid tree-subclades directory path: "
                           f"{self.tree_subclades_dir_path}")
-            return proband_number, self.error_results
+            return proband_number, self.alignment_classification
         oracle_filepath = self.tree_subclades_dir_path / oracle_filename
         oracle_dict = None
         if os.path.exists(oracle_filepath):
@@ -483,7 +484,8 @@ class MaximumAlignableSubcladeTask(AbstractAlignmentTask):
                                        initial_mapping=initial_mapping,
                                        alignment_vertex_mode=AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT,
                                        alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
-                                       result_callback_function=callback_function)
+                                       result_callback_function=callback_function,
+                                       calculate_posterior_probabilities=False)
                 matcher.find_alignments()
                 clade_results = alignment_general_results.get_unique_clade_results()
                 resulting_alignments = None
@@ -500,8 +502,7 @@ class MaximumAlignableSubcladeTask(AbstractAlignmentTask):
                     solution_found = True
                     if self.file_access.save_alignments:
                         save_alignment_result_to_files(alignment_result=alignment_general_results,
-                                                       coalescent_tree=coalescent_tree,
-                                                       pedigree=self.pedigree,
+                                                       graph_matcher=matcher,
                                                        directory_path=tree_results_path)
                     break
             except Exception as ex:
@@ -511,8 +512,8 @@ class MaximumAlignableSubcladeTask(AbstractAlignmentTask):
         # It's still theoretically possible that there are no alignable subclades
         # even if a minimum proband number threshold is applied
         if not solution_found:
-            self.error_results.no_solutions_counter += 1
-        return proband_number, self.error_results, alignment
+            self.alignment_classification.no_solutions_counter += 1
+        return proband_number, self.alignment_classification, alignment
 
 
 def run_initial_alignment(coalescent_tree: CoalescentTree, initial_pedigree: PotentialMrcaProcessedGraph,
@@ -534,12 +535,12 @@ def run_initial_alignment(coalescent_tree: CoalescentTree, initial_pedigree: Pot
                                    initial_mapping=initial_mapping, logs_path=log_directory_path,
                                    alignment_vertex_mode=AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT,
                                    alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
-                                   result_callback_function=callback_function)
+                                   result_callback_function=callback_function,
+                                   calculate_posterior_probabilities=False)
     initial_matcher.find_alignments()
     if save_alignments_to_files:
         save_alignment_result_to_files(alignment_result=alignment_general_results,
-                                       coalescent_tree=coalescent_tree,
-                                       pedigree=initial_pedigree,
+                                       graph_matcher=initial_matcher,
                                        directory_path=result_filepath)
     return alignment_general_results
 
@@ -707,7 +708,8 @@ class ErrorPedigreesAlignmentComparison(BaseErrorAlignmentComparison):
                 alignment_classification=self.error_comparison_results,
                 root_vertex_info=root_vertex_info,
                 alignment_vertex_mode=AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT,
-                alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT
+                alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
+                alignment_calculate_posterior_probabilities=False
             )
             alignment_tasks.append(alignment_task)
         return alignment_tasks
@@ -753,7 +755,8 @@ class ErrorTreesAlignmentComparison(BaseErrorAlignmentComparison):
                 alignment_classification=self.error_comparison_results,
                 root_vertex_info=root_vertex_info,
                 alignment_vertex_mode=AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT,
-                alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT
+                alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
+                alignment_calculate_posterior_probabilities=False
             )
             alignment_tasks.append(alignment_task)
         return alignment_tasks
@@ -849,7 +852,7 @@ def process_path(path_to_process: str | Path, simulation_folder_path: str | Path
     return error_pedigree_alignment_comparison
 
 
-def save_error_alignments_to_file(filepath: str | Path, error_alignments_results: AlignmentClassification):
+def save_alignment_results_to_file(filepath: str | Path, error_alignments_results: AlignmentClassification):
     with open(filepath, "a") as results_file:
         results_file.write(f"The number of simulations with solutions: "
                            f"{error_alignments_results.simulations_with_solutions}\n")
@@ -948,7 +951,7 @@ def run_specific_error_pedigree_directories_parallel(paths: list[str], error_ped
         for future in as_completed(futures):
             alignment_task = future.result()
             alignment_comparison = coalescent_path_to_alignment_comparison[alignment_task.coalescent_tree_path]
-            alignment_comparison.error_comparison_results.add_results(alignment_task.error_results)
+            alignment_comparison.error_comparison_results.add_results(alignment_task.alignment_classification)
             print(f"Finished alignment {alignment_task.coalescent_tree_path} | {alignment_task.pedigree_path}")
     # Save and return the results
     clade_results_list = []
@@ -1122,7 +1125,7 @@ def multiple_tree_pedigree_directories_and_corresponding_tree_error_directories(
             input_simulation_subpath=input_simulation_subpath
         ))
     total_results_filepath = simulation_path / total_results_filename
-    save_error_alignments_to_file(total_results_filepath, total_error_comparison_results)
+    save_alignment_results_to_file(total_results_filepath, total_error_comparison_results)
     return total_error_comparison_results
 
 
@@ -1247,7 +1250,7 @@ def prepare_tree_pedigree_subdirectories_alignment_tasks(parent_directory: str |
                                                          simulation_directory_path: str | Path):
     alignment_tasks = []
     file_access = AlignmentResultsFileAccess(simulation_directory_path=simulation_directory_path)
-    proband_number_to_results = dict()
+    proband_simulation_path_to_results = dict()
     for proband_number_directory in os.listdir(parent_directory):
         proband_number_directory_path = parent_directory / proband_number_directory
         if not os.path.isdir(proband_number_directory_path):
@@ -1271,17 +1274,18 @@ def prepare_tree_pedigree_subdirectories_alignment_tasks(parent_directory: str |
                                            # Deduct root vertex information automatically, as it stays the same
                                            root_vertex_info=None,
                                            alignment_vertex_mode=AlignmentVertexMode.ALL_ALIGNMENTS,
-                                           alignment_edge_mode=AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS)
+                                           alignment_edge_mode=AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS,
+                                           alignment_calculate_posterior_probabilities=True)
             alignment_tasks.append(alignment_task)
             proband_alignment_tasks.append(alignment_task)
         if not proband_alignment_tasks:
             continue
         proband_number_simulation_subpath = proband_number_directory_path / simulation_name
-        proband_number_to_results[proband_number_simulation_subpath] = proband_alignment_tasks
-    return proband_number_to_results
+        proband_simulation_path_to_results[proband_number_simulation_subpath] = proband_alignment_tasks
+    return proband_simulation_path_to_results
 
 
-def run_perfect_data_alignment_and_calculate_statistics(alignment_task):
+def run_perfect_data_alignment_and_calculate_statistics(proband_simulation_path, alignment_task):
     try:
         tree_alignment_results, tree, pedigree = alignment_task.run()
         tree_alignment_results: TreeAlignmentResults
@@ -1298,9 +1302,11 @@ def run_perfect_data_alignment_and_calculate_statistics(alignment_task):
     alignments = [x.vertex_alignment for x in alignment_results]
     alignment_number = len(alignments)
     filepath = alignment_task.simulation_subdirectory_path
-    normalized_likelihoods = get_vertex_alignments_normalized_probabilities(
-        alignments=alignments, tree=tree, pedigree=pedigree
-    )
+    alignment_probability_dictionary = clade_results.clade_alignment_posterior_probabilities.vertex_alignment_to_posterior_probability
+    normalized_likelihoods = [float(alignment_probability_dictionary[k]) for k in range(alignment_number)]
+    # normalized_likelihoods_estimated = get_vertex_alignments_normalized_probabilities(
+    #     alignments=alignments, tree=tree, pedigree=pedigree
+    # )
     identity_likelihood, selected_alignments_length, alignments_length = \
         save_and_plot_alignment_likelihoods(
             normalized_alignment_likelihoods=normalized_likelihoods,
@@ -1320,7 +1326,8 @@ def run_perfect_data_alignment_and_calculate_statistics(alignment_task):
                                    phasing_accuracy, normalized_likelihood in
                                    zip(phasing_accuracies, normalized_likelihoods)]
     total_weighted_phasing_accuracy = sum(weighted_phasing_accuracies)
-    return (proband_number, identity_percentile, alignment_number, selected_alignments_length, ceiling_selected_length,
+    return (alignment_task, proband_simulation_path, proband_number, identity_percentile,
+            alignment_number, selected_alignments_length, ceiling_selected_length,
             total_phasing_accuracy, total_weighted_phasing_accuracy)
 
 
@@ -1330,25 +1337,30 @@ def run_tree_pedigree_subdirectories_results(proband_number_to_results: dict, si
     results_csv_filepath = simulation_directory_path / results_csv_filename
     average_percentile_per_proband_number_csv = simulation_directory_path / percentile_csv_filename
     phasing_accuracy_per_proband_number_csv = simulation_directory_path / phasing_accuracy_csv_filename
+    proband_simulation_path_to_alignment_classifications = defaultdict(list)
     with (open(results_csv_filepath, "a") as results_csv_file,
           open(average_percentile_per_proband_number_csv, "a") as percentile_csv_file,
           open(phasing_accuracy_per_proband_number_csv, "a") as phasing_accuracy_csv_file):
         results_csv_file.write(classification_csv_header)
         percentile_csv_file.write(percentile_csv_header)
         phasing_accuracy_csv_file.write(phasing_accuracy_csv_header)
+
         with ProcessPoolExecutor() as executor:
             futures = []
+            # Prepare the alignment tasks
             for proband_simulation_path, proband_alignment_tasks in proband_number_to_results.items():
                 proband_alignment_tasks: [AlignmentTask]
                 for alignment_task in proband_alignment_tasks:
                     futures.append(
-                        executor.submit(run_perfect_data_alignment_and_calculate_statistics, alignment_task)
+                        executor.submit(run_perfect_data_alignment_and_calculate_statistics,
+                                        proband_simulation_path, alignment_task)
                     )
+            # Run the alignment tasks
             for future in as_completed(futures):
                 result = future.result()
                 if result is None:
                     continue
-                (proband_number, identity_percentile,
+                (alignment_task, proband_simulation_path, proband_number, identity_percentile,
                  alignment_number, selected_alignments_length,
                  ceiling_selected_length,
                  total_phasing_accuracy,
@@ -1359,22 +1371,26 @@ def run_tree_pedigree_subdirectories_results(proband_number_to_results: dict, si
                 phasing_accuracy_csv_file.write(f"{proband_number},{total_phasing_accuracy},"
                                                 f"{total_weighted_phasing_accuracy}\n")
                 phasing_accuracy_csv_file.flush()
-            initial_directory_name = proband_simulation_path.parent.name
-            proband_results_path = proband_simulation_path / total_results_filename
-            os.mkdir(proband_simulation_path)
-            # Calculating the accumulative result for this proband number
-            proband_classifications = [x.error_results for x in proband_alignment_tasks]
-            proband_result = reduce(lambda x, y: x.add_results(y),
-                                    proband_classifications)
-            save_error_alignments_to_file(proband_results_path, proband_result)
-            alignment_classifications.extend(proband_classifications)
-            # Log the results separately for every clade
-            save_multiple_alignment_classifications(
-                results_csv_file=results_csv_file,
-                alignment_classifications=proband_classifications,
-                proband_number=initial_directory_name
-            )
-            results_csv_file.flush()
+                proband_simulation_path_to_alignment_classifications[proband_simulation_path].append(
+                    alignment_task.alignment_classification
+                )
+            # Process the alignment results. These results are accumulated before writing, so we're doing separately
+            for proband_simulation_path, alignment_classifications in proband_simulation_path_to_alignment_classifications.items():
+                initial_directory_name = proband_simulation_path.parent.name
+                proband_results_path = proband_simulation_path / total_results_filename
+                os.mkdir(proband_simulation_path)
+                # Calculating the accumulative result for this proband number
+                proband_classifications = [x.alignment_classification for x in proband_alignment_tasks]
+                proband_result = reduce(lambda x, y: x.add_results(y), proband_classifications)
+                save_alignment_results_to_file(proband_results_path, proband_result)
+                alignment_classifications.extend(proband_classifications)
+                # Log the results separately for every clade
+                save_multiple_alignment_classifications(
+                    results_csv_file=results_csv_file,
+                    alignment_classifications=proband_classifications,
+                    proband_number=initial_directory_name
+                )
+                results_csv_file.flush()
     return alignment_classifications
 
 
@@ -1386,12 +1402,12 @@ def tree_pedigree_subdirectories():
     simulation_directory_path = results_directory_path / simulation_name
     os.mkdir(simulation_directory_path)
     simulation_directory_path = results_directory_path / simulation_name
-    proband_number_to_results = prepare_tree_pedigree_subdirectories_alignment_tasks(
+    proband_simulation_path_to_results = prepare_tree_pedigree_subdirectories_alignment_tasks(
         parent_directory=parent_directory,
         simulation_name=simulation_name,
         simulation_directory_path=simulation_directory_path
     )
-    alignment_classifications = run_tree_pedigree_subdirectories_results(proband_number_to_results,
+    alignment_classifications = run_tree_pedigree_subdirectories_results(proband_simulation_path_to_results,
                                                                          simulation_directory_path)
     return alignment_classifications
 

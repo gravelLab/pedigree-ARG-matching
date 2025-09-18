@@ -59,8 +59,7 @@ def run_interactive_session():
             os.mkdir(dir_name)
             os.chdir(dir_name)
             graph_matcher.find_alignments()
-            save_alignment_result_to_files(pedigree=pedigree,
-                                           coalescent_tree=coalescent_tree,
+            save_alignment_result_to_files(graph_matcher=graph_matcher,
                                            alignment_result=alignment_general_results
                                            )
             clade_root = next(iter(alignment_general_results.clade_root_to_clade_results))

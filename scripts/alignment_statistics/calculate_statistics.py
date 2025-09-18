@@ -13,6 +13,7 @@ from alignment.configuration import calculate_distances_histogram, section_separ
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from scripts.alignment_statistics.alignment_similarity import get_alignments_similarity, get_alignments_ind_similarity
 from scripts.utility.alignment_utility import convert_ploid_id_to_individual
+from scripts.utility.basic_utility import prepend_to_file, round_down
 
 
 def calculate_coalescent_vertex_pedigree_candidates(clade_alignment_result: [FullAlignmentResult]):
@@ -163,10 +164,12 @@ class SuccessCladeAlignmentMetadata(CladeAlignmentMetadata):
 
     def save(self):
         super().save()
-        self.save_alignment_individual_metadata()
-        self.save_clade_metadata()
+        if self.clade_alignment_statistics_metadata.calculate_alignments_likelihoods:
+            self.clade_alignment_result.calculate_posterior_probabilities()
+        self._save_alignment_individual_metadata()
+        self._save_clade_metadata()
 
-    def save_alignments_similarities(self, statistics_file):
+    def _save_alignments_similarities(self, statistics_file):
         alignments = [x.vertex_alignment for x in self.clade_alignment_result.alignments]
         alignments_similarity = get_alignments_similarity(alignments, self.probands)
         alignments_ind_similarity = get_alignments_ind_similarity(alignments, self.probands)
@@ -174,7 +177,7 @@ class SuccessCladeAlignmentMetadata(CladeAlignmentMetadata):
         statistics_file.write(f"The alignments individual similarity: {alignments_ind_similarity}\n")
         statistics_file.write(section_separator)
 
-    def save_distance_histograms(self, statistics_file):
+    def _save_distance_histograms(self, statistics_file):
         min_length = sys.maxsize
         min_length_alignments = []
         # TODO: Cache the distance between two vertices per pedigree
@@ -193,45 +196,48 @@ class SuccessCladeAlignmentMetadata(CladeAlignmentMetadata):
         statistics_file.write(f"The corresponding alignments: {min_length_alignments}\n")
         statistics_file.write(section_separator)
 
-    def save_basic_alignments_metadata(self, statistics_file):
+    def _save_basic_alignments_metadata(self, statistics_file):
         statistics_file.write(section_separator)
         alignments_number = len(self.clade_alignment_result.alignments)
         statistics_file.write(f"The total number of alignments is: {alignments_number}\n")
 
-    def save_alignment_individual_metadata(self):
-        for counter, alignment in enumerate(self.clade_alignment_result.alignments):
-            alignment_filename = f"alignment_{counter}"
+    def _save_alignments_posterior_probabilities(self):
+        if not self.clade_alignment_result.clade_alignment_posterior_probabilities:
+            return
+        probability_dictionary = self.clade_alignment_result.clade_alignment_posterior_probabilities.vertex_alignment_to_posterior_probability
+        for index, alignment_likelihood in probability_dictionary.items():
+            rounded_alignment_likelihood = round_down(alignment_likelihood)
+            alignment_filename = f"alignment_{index}"
             alignment_path = self.results_filepath / alignment_filename
-            with open(alignment_path, "a") as dictionary_file:
-                if self.clade_alignment_statistics_metadata.calculate_alignments_likelihoods:
-                    alignment_likelihood = get_vertex_alignment_estimated_length(
-                        pedigree=self.pedigree,
-                        coalescent_tree=self.coalescent_tree,
-                        alignment=alignment.vertex_alignment
-                    )
-                    dictionary_file.write(section_separator)
-                    dictionary_file.write(f"Approximated alignment length: {alignment_likelihood}\n")
+            prefix_string = f"Posterior alignment likelihood: {rounded_alignment_likelihood}\n{section_separator}"
+            prepend_to_file(alignment_path, prefix_string)
 
-    def save_clade_metadata(self):
+    def _save_alignment_individual_metadata(self):
+        self._save_alignments_posterior_probabilities()
+
+    def _save_clade_metadata(self):
         metadata_filepath = self.get_clade_metadata_path()
         with open(metadata_filepath, 'w') as statistics_file:
             self.save_tree_metadata(statistics_file)
-            self.save_number_of_pedigree_candidates_per_clade_vertex(statistics_file)
-            if self.clade_alignment_result.pedigree_vertex_to_edge_alignment_appearance_number:
-                self.save_pedigree_vertex_appearance_in_edge_alignments(statistics_file)
+            self._save_basic_alignments_metadata(statistics_file)
+            self._save_number_of_pedigree_candidates_per_clade_vertex(statistics_file)
             if not self.clade_alignment_statistics_metadata:
                 return
-            self.save_basic_alignments_metadata(statistics_file)
+            if self.clade_alignment_result.clade_alignment_posterior_probabilities:
+                self._save_vertex_alignments_posterior_probabilities(statistics_file)
+                self._save_pedigree_vertex_inclusion_probabilities(statistics_file)
+            else:
+                statistics_file.write("The posterior probabilities were not calculated\n")
             if self.clade_alignment_statistics_metadata.calculate_similarity:
-                self.save_alignments_similarities(statistics_file)
+                self._save_alignments_similarities(statistics_file)
             else:
                 statistics_file.write("The similarities among the trees were not calculated\n")
             if self.clade_alignment_statistics_metadata.calculate_distances_histogram:
-                self.save_distance_histograms(statistics_file)
+                self._save_distance_histograms(statistics_file)
             else:
                 statistics_file.write("The distance histograms were not calculated\n")
 
-    def save_number_of_pedigree_candidates_per_clade_vertex(self, statistics_file):
+    def _save_number_of_pedigree_candidates_per_clade_vertex(self, statistics_file):
         coalescent_vertex_pedigree_candidates_number = \
             {x: len({alignment.vertex_alignment[x] for alignment in
                      self.clade_alignment_result.alignments})
@@ -251,14 +257,25 @@ class SuccessCladeAlignmentMetadata(CladeAlignmentMetadata):
             clade=self.clade
         )
 
-    def save_pedigree_vertex_appearance_in_edge_alignments(self, statistics_file):
+    def _save_vertex_alignments_posterior_probabilities(self, statistics_file):
         statistics_file.write(section_separator)
-        statistics_file.write("The pedigree vertex frequency in edge alignments for the clade:\n")
-        appearance_dictionary = self.clade_alignment_result.pedigree_vertex_to_edge_alignment_appearance_number
-        for vertex, appearance_number in sorted(appearance_dictionary.items(), key=lambda x: x[1], reverse=True):
-            appearance_proportion = appearance_number / self.clade_alignment_result.edge_alignment_total_number
+        statistics_file.write("The vertex alignments posterior probabilities:\n")
+        probability_dictionary = self.clade_alignment_result.clade_alignment_posterior_probabilities.vertex_alignment_to_posterior_probability
+        for index, probability in sorted(probability_dictionary.items(), key=lambda x: x[1], reverse=True):
+            statistics_file.write(f"alignment_{index}: {probability}\n")
+
+    def _save_pedigree_vertex_inclusion_probabilities(self, statistics_file):
+        statistics_file.write(section_separator)
+        statistics_file.write("The pedigree vertex inclusion probabilities:\n")
+        probability_dictionary = self.clade_alignment_result.clade_alignment_posterior_probabilities.vertex_posterior_probabilities
+        for vertex, probability in sorted(probability_dictionary.items(), key=lambda x: x[1], reverse=True):
             converted_vertex_id = convert_ploid_id_to_individual(vertex)
-            statistics_file.write(f"{converted_vertex_id}: {appearance_proportion}\n")
+            statistics_file.write(f"{converted_vertex_id}: {probability}\n")
+        # Save the vertex inclusion probabilities for every alignment separately
+        for alignment_result in self.clade_alignment_result.alignments:
+            alignment_result.save_vertex_inclusion_probabilities(
+                global_vertex_inclusion_probability=probability_dictionary
+            )
 
 
 def save_statistics_to_file(clade_alignment_result: SuccessCladeAlignmentResults,

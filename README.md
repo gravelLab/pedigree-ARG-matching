@@ -11,7 +11,7 @@ the algorithm computes all possible **vertex alignments** between $A$ and $P$.
 A **vertex alignment** is a function that assigns each vertex in $A$ to a vertex in $P$. That is:
 
 $$
-h: V(A) \to 2^{V(P)} \setminus \\{\emptyset\\}
+h: V(A) \to V(P)
 $$
 
 We say that a vertex alignment is **valid** if the corresponding vertices in $P$ represent a history

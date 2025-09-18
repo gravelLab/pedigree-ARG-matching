@@ -1,7 +1,7 @@
-import math
 from itertools import combinations
 
 from lineagekit.core.CoalescentTree import CoalescentTree
+
 from scripts.utility.basic_utility import *
 
 

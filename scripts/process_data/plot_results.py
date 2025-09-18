@@ -22,7 +22,7 @@ def main():
     y_axis_column_index = get_number_input_with_lower_bound("Specify the y-axis column index in the csv file:",
                                                             0)
     y_axis_column_index_2 = get_number_input_with_lower_bound("Specify the y-axis column index in the csv file:",
-                                                            0)
+                                                              0)
     figure_title = input("Specify the figure title: ")
     x_axis_title = input("Specify the x-axis title: ")
     y_axis_title = input("Specify the y-axis title: ")

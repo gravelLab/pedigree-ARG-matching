@@ -22,7 +22,7 @@ A **vertex alignment** is a function that assigns each vertex in :math:`A` to a 
 
 .. math::
 
-   h: V(A) \to 2^{V(P)} \setminus \{\emptyset\}
+   h: V(A) \to V(P)
 
 We say that a vertex alignment is **valid** if the corresponding vertices in :math:`P`
 represent a history of genetic transmissions that respect :math:`A`.
@@ -30,7 +30,7 @@ represent a history of genetic transmissions that respect :math:`A`.
 
 In order to verify that a given vertex alignment is indeed valid,
 the algorithms finds at least one valid **edge alignment** (that is, an alignment that maps
-every edge in :math:`E(A)` to a path in :math:`P` that corresponds to the given vertex alignment.
+every edge in :math:`E(A)` to a path in :math:`P`) that corresponds to the given vertex alignment.
 
 In other words, the goal is to find valid extensions of the initial assignments provided as input.
 

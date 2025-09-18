@@ -4,11 +4,13 @@ from pathlib import Path
 from typing import cast
 
 import networkx
+import numpy
 import pytest
 from lineagekit.core.CoalescentTree import CoalescentTree
 from lineagekit.core.GenGraph import GenGraph
 
-from alignment.alignment_result import FullAlignmentResult, AlignmentResult, FailedClimbingAlignmentResult
+from alignment.alignment_result import FullAlignmentResult, AlignmentResult, FailedClimbingAlignmentResult, \
+    SuccessCladeAlignmentResults
 from alignment.configuration import AlignmentVertexMode, ProbandInitialAssignmentsMode, AlignmentEdgeMode
 from alignment.graph_matcher import GraphMatcher, get_initial_simulation_mapping_for_mode
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
@@ -158,7 +160,8 @@ def verify_pedigree_coalescent_tree_alignment(pedigree: PotentialMrcaProcessedGr
                                                alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
                                                initial_mapping=initial_mapping,
                                                logs_path=None,
-                                               result_callback_function=collect_results
+                                               result_callback_function=collect_results,
+                                               calculate_posterior_probabilities=False
                                                )
     graph_matcher.find_alignments()
     coalescent_tree_roots = coalescent_tree.get_founders()
@@ -349,7 +352,8 @@ def verify_alignment_on_random_small_coalescent_trees(potential_mrca_graph: Pote
                                alignment_vertex_mode=AlignmentVertexMode.ALL_ALIGNMENTS,
                                alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
                                logs_path=None, initial_mapping=initial_mapping,
-                               result_callback_function=collect_results)
+                               result_callback_function=collect_results,
+                               calculate_posterior_probabilities=False)
         matcher.find_alignments()
         valid_candidates = {x[root] for x in result}
         assert valid_candidates == valid_pedigree_mrca
@@ -405,30 +409,45 @@ def test_invalid_alignment_discarded_1(invalid_alignment_discarded_1):
     tree = CoalescentTree.get_coalescent_tree_from_file(tree_path)
     initial_mapping = get_initial_simulation_mapping_for_mode(coalescent_tree=tree,
                                                               mode=ProbandInitialAssignmentsMode.INDIVIDUAL)
-    alignments = []
+    alignments: [FullAlignmentResult] = []
 
     def collect_results(alignment_result: FullAlignmentResult):
         assert alignment_result.is_valid
-        alignments.append(alignment_result.vertex_alignment)
+        alignments.append(alignment_result)
 
     matcher = GraphMatcher(
         processed_graph=pedigree,
         coalescent_tree=tree,
         alignment_vertex_mode=AlignmentVertexMode.ALL_ALIGNMENTS,
-        alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
+        alignment_edge_mode=AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS,
         logs_path=None,
         initial_mapping=initial_mapping,
-        result_callback_function=collect_results
+        result_callback_function=collect_results,
+        calculate_posterior_probabilities=True
     )
     matcher.find_alignments()
+    clade_results: SuccessCladeAlignmentResults = SuccessCladeAlignmentResults(
+        clade_root=tree.get_root_vertex(),
+        alignments=alignments
+    )
+    clade_results.calculate_posterior_probabilities()
+    alignment_to_posterior_probability = clade_results.clade_alignment_posterior_probabilities.vertex_alignment_to_posterior_probability
+    vertex_to_posterior_probability = clade_results.clade_alignment_posterior_probabilities.vertex_posterior_probabilities
     expected_alignments = [
         {2: 2, 4: 4, 3: 6},
         {2: 2, 4: 4, 3: 7},
         {2: 2, 4: 4, 3: 12},
         {2: 2, 4: 4, 3: 13}
     ]
-
-    assert dict_list_equal_ignore_order(alignments, expected_alignments), "Didn't find the expected alignments"
+    alignment_posterior_probabilities = [4/9, 4/9, 1/18, 1/18]
+    alignment_simple_probabilities = [0.25, 0.25, 2 ** -5, 2 ** -5]
+    expected_vertex_to_posterior_probability = {
+        2: 1, 4: 1, 6: 5/9, 7: 5/9, 12: 1/18, 13: 1/18,
+        8: 1/9, 10: 1/9,
+    }
+    resulting_vertex_alignments = [x.vertex_alignment for x in alignments]
+    assert dict_list_equal_ignore_order(resulting_vertex_alignments, expected_alignments), \
+        "Didn't find the expected alignments"
     invalid_alignments = [
         {
             2: 6, 4: 8, 3: 12
@@ -454,6 +473,31 @@ def test_invalid_alignment_discarded_1(invalid_alignment_discarded_1):
     ]
     for invalid_alignment in invalid_alignments:
         assert not matcher._verify_valid_alignment(invalid_alignment)
+    # Verify the posterior probabilities
+    for alignment in alignments:
+        alignment: FullAlignmentResult
+        assert alignment.posterior_probabilities
+        vertex_alignment = alignment.vertex_alignment
+        try:
+            index = expected_alignments.index(vertex_alignment)
+        except ValueError:
+            pytest.fail(f"Received an unexpected alignment: {vertex_alignment}")
+        expected_alignment_probability = alignment_simple_probabilities[index]
+        actual_alignment_probability = float(alignment.posterior_probabilities.vertex_alignment_probability)
+        assert numpy.isclose(actual_alignment_probability, expected_alignment_probability), \
+            (f"Invalid vertex alignment probability {actual_alignment_probability}, "
+             f"expected {expected_alignment_probability} instead. The alignment: {vertex_alignment}")
+        expected_alignment_posterior_probability = alignment_posterior_probabilities[index]
+        actual_alignment_posterior_probability = alignment_to_posterior_probability[index]
+        assert numpy.isclose(actual_alignment_posterior_probability, expected_alignment_posterior_probability), \
+            (f"Invalid vertex alignment posterior probability {actual_alignment_probability}, "
+             f"expected {expected_alignment_probability} instead. The alignment: {vertex_alignment}")
+    assert len(vertex_to_posterior_probability) == len(expected_vertex_to_posterior_probability)
+    for vertex, vertex_posterior_probability in expected_vertex_to_posterior_probability.items():
+        result_posterior_probability = vertex_to_posterior_probability[vertex]
+        assert numpy.isclose(vertex_posterior_probability, result_posterior_probability), \
+            (f"Invalid posterior probability for vertex {vertex}: {result_posterior_probability}, "
+             f"expected {vertex_posterior_probability} instead")
 
 
 def find_alignments_for_tree_pedigree_directory(directory_path: str | Path, initial_mapping: dict[int, [int]]):
@@ -477,7 +521,8 @@ def find_alignments_for_tree_pedigree_directory(directory_path: str | Path, init
         alignment_vertex_mode=AlignmentVertexMode.ALL_ALIGNMENTS,
         alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
         logs_path=None,
-        result_callback_function=collect_results
+        result_callback_function=collect_results,
+        calculate_posterior_probabilities=False
     )
     matcher.find_alignments()
     return matcher, result

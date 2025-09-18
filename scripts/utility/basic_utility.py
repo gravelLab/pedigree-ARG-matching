@@ -1,4 +1,7 @@
+import math
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 from scipy.stats import poisson
@@ -212,3 +215,25 @@ def get_paths_from_tree_pedigree_directory(tree_pedigree_directory_path: str | P
     pedigree_filepath = tree_pedigree_directory_path / pedigree_filename
     tree_filepath = tree_pedigree_directory_path / tree_filename
     return pedigree_filepath, tree_filepath
+
+
+def round_down(x, decimals=5):
+    factor = 10 ** decimals
+    return math.floor(x * factor) / factor
+
+
+def prepend_to_file(filepath, text):
+    # Create a temporary file in the same directory
+    dir_name = os.path.dirname(filepath)
+    with tempfile.NamedTemporaryFile("w", delete=False, dir=dir_name) as tmp:
+        # write the new text first
+        tmp.write(text)
+
+        # Copy the original file contents in streaming mode
+        with open(filepath, "r") as original:
+            shutil.copyfileobj(original, tmp)
+
+        temp_name = tmp.name
+
+    # Replace the original file with the new one
+    os.replace(temp_name, filepath)

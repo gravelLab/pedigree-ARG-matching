@@ -5,13 +5,14 @@ from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import List
 
+import numpy
 from lineagekit.core.CoalescentTree import CoalescentTree
 
-from alignment.configuration import section_separator, subsection_separator
+from alignment.configuration import section_separator, subsection_separator, save_edge_alignments
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from scripts.utility.alignment_utility import convert_ploid_id_to_individual
+from scripts.utility.basic_utility import round_down
 
 
 def save_text_to_file(text: str, path: str):
@@ -49,10 +50,10 @@ def get_vertex_alignment_phasing_accuracy(vertex_alignment: dict[int, int], prob
     return resulting_accuracy
 
 
-def get_edge_alignment_probability(edge_alignment: dict) -> float:
+def get_edge_alignment_probability(edge_alignment: dict) -> Decimal:
     total_length = 0
     for pedigree_path in edge_alignment.values():
-        total_length += len(pedigree_path)
+        total_length += len(pedigree_path) - 1
     return Decimal(2) ** (-total_length)
 
 
@@ -68,11 +69,24 @@ class FailedClimbingAlignmentResult(AlignmentResult):
 
 
 @dataclass
+class VertexAlignmentPosteriorProbabilities:
+    # The posterior probability for a vertex given a fixed vertex alignment. This value can be used
+    # to calculate the posterior inclusion probability for a vertex
+    # Specifically, for we can take the sum vertex_alignment_posterior_probability * vertex_posterior_probability
+    vertex_posterior_probabilities_for_vertex_alignment: dict[int, float]
+    # The sum of simple edge alignment probabilities for the given vertex alignment. We use this value later
+    # to calculate the posterior probability of a vertex alignment
+    vertex_alignment_probability: Decimal
+
+
+@dataclass
 class FullAlignmentResult(AlignmentResult):
     vertex_alignment: dict
     is_valid: bool
     example_edge_alignment: dict | None = None
     edge_alignments: list[dict] | None = None
+    posterior_probabilities: VertexAlignmentPosteriorProbabilities | None = None
+    result_filepath: str | Path | None = None
 
     # Syntax sugar allowing us to write if alignment_result: ...
     # This can be useful when we only want to check whether the result is correct
@@ -88,6 +102,7 @@ class FullAlignmentResult(AlignmentResult):
         return str(self.vertex_alignment)
 
     def save_to_file(self, filepath: str | Path, tree: CoalescentTree):
+        self.result_filepath = filepath
         text = self._prepare_text_for_writing(tree=tree)
         # Launch the IO operation on a separate thread
         threading.Thread(target=save_text_to_file, args=(text, filepath), daemon=True).start()
@@ -99,6 +114,8 @@ class FullAlignmentResult(AlignmentResult):
 
     @staticmethod
     def _save_edge_alignments(text_lines: list[str], alignment, edge_alignments, tree: CoalescentTree):
+        if not save_edge_alignments:
+            return
         count = len(edge_alignments)
         text_lines.append(subsection_separator)
         verb = "is" if count == 1 else "are"
@@ -122,37 +139,51 @@ class FullAlignmentResult(AlignmentResult):
                         text_lines.append(f"{padding}({vertex_child}, {vertex}): [{formatted_path}]\n")
             text_lines.append(subsection_separator)
 
-    @staticmethod
-    def _save_vertex_probability(text_lines: list[str], vertex_alignment, edge_alignments, tree: CoalescentTree):
-        assert edge_alignments
-        edge_alignment_probabilities = []
+    def calculate_vertex_inclusion_probabilities(self):
+        assert self.edge_alignments
+        assert self.vertex_alignment
+        sum_edge_alignment_probabilities = 0
         vertex_to_probability = defaultdict(Decimal)
-        for edge_alignment in edge_alignments:
+        for edge_alignment in self.edge_alignments:
             edge_alignment_probability = get_edge_alignment_probability(edge_alignment)
             assert edge_alignment_probability > 0
-            edge_alignment_probabilities.append(edge_alignment_probability)
+            sum_edge_alignment_probabilities += edge_alignment_probability
             for pedigree_path in edge_alignment.values():
                 for pedigree_vertex in pedigree_path[1:-1]:
                     vertex_to_probability[pedigree_vertex] += edge_alignment_probability
-            for coalescent_vertex in tree:
-                pedigree_vertex = vertex_alignment[coalescent_vertex]
-                vertex_to_probability[pedigree_vertex] += edge_alignment_probability
-        sum_edge_alignment_probabilities = sum(edge_alignment_probabilities)
         assert sum_edge_alignment_probabilities != 0
-        vertex_to_probability = {key: value / sum_edge_alignment_probabilities
+        vertex_to_probability = {key: float(value / sum_edge_alignment_probabilities)
                                  for key, value in vertex_to_probability.items()}
-        text_lines.append(subsection_separator)
-        text_lines.append("Pedigree vertex appearance probabilities:\n")
 
-        def round_down(x, decimals=5):
-            factor = 10 ** decimals
-            return math.floor(x * factor) / factor
+        # The pedigree candidates for coalescent vertices appear in all edge alignments
+        for pedigree_vertex in self.vertex_alignment.values():
+            vertex_to_probability[pedigree_vertex] = 1
+        self.posterior_probabilities = VertexAlignmentPosteriorProbabilities(
+            vertex_posterior_probabilities_for_vertex_alignment=vertex_to_probability,
+            vertex_alignment_probability=sum_edge_alignment_probabilities
+        )
 
-        for vertex, edge_alignment_probability in sorted(vertex_to_probability.items(), key=lambda x: x[1], reverse=True):
-            assert edge_alignment_probability <= 1.0
-            converted_vertex = convert_ploid_id_to_individual(vertex)
-            rounded_prob = round_down(edge_alignment_probability, 5)
-            text_lines.append(f"{converted_vertex}: {rounded_prob}\n")
+    def save_vertex_inclusion_probabilities(self, global_vertex_inclusion_probability: dict[int, float]):
+        assert self.result_filepath
+        with (open(self.result_filepath, "a") as file):
+            file.write(subsection_separator)
+            file.write("Pedigree vertex appearance probabilities:\n")
+            file.write("The format is:\n")
+            file.write("{ploid_id}: {vertex_inclusion_probability_given_current_vertex_alignment}"
+                       " {vertex_inclusion_probability}\n")
+
+            for vertex, vertex_posterior_inclusion_probability in sorted(
+                    self.posterior_probabilities.vertex_posterior_probabilities_for_vertex_alignment.items(),
+                    key=lambda x: x[1],
+                    reverse=True):
+                assert vertex_posterior_inclusion_probability <= 1.0
+                global_vertex_probability = global_vertex_inclusion_probability[vertex]
+                assert vertex_posterior_inclusion_probability >= global_vertex_probability or \
+                       numpy.isclose(vertex_posterior_inclusion_probability, global_vertex_probability)
+                converted_vertex = convert_ploid_id_to_individual(vertex)
+                rounded_prob = round_down(vertex_posterior_inclusion_probability, 5)
+                global_probability_rounded_prob = round_down(global_vertex_probability, 5)
+                file.write(f"{converted_vertex}: {rounded_prob} ({global_probability_rounded_prob})\n")
 
     @staticmethod
     def _build_edge_to_path_map(edge_alignments) -> dict:
@@ -222,9 +253,6 @@ class FullAlignmentResult(AlignmentResult):
             # Save the edge to path map
             self._save_edge_to_path_map(text_lines=text_lines,
                                         edge_alignments=edge_alignments)
-            # Calculate the probability for every pedigree vertex
-            self._save_vertex_probability(text_lines=text_lines, vertex_alignment=alignment,
-                                          edge_alignments=edge_alignments, tree=tree)
             # Save the edge alignments
             self._save_edge_alignments(text_lines=text_lines, alignment=alignment,
                                        edge_alignments=edge_alignments, tree=tree)
@@ -241,25 +269,47 @@ class FailedClimbingCladeAlignmentResults(CladeAlignmentResults):
     failed_climbing_alignment_info: FailedClimbingAlignmentResult
 
 
+@dataclass
+class CladeAlignmentPosteriorProbabilities:
+    # Dictionary mapping the vertex alignment index to the posterior probability
+    vertex_alignment_to_posterior_probability: dict[int, float]
+    vertex_posterior_probabilities: dict[int, float]
+
+
 class SuccessCladeAlignmentResults(CladeAlignmentResults):
     clade_root: int
-    alignments: List[FullAlignmentResult]
-    pedigree_vertex_to_edge_alignment_appearance_number: defaultdict[int, int]
-    edge_alignment_total_number: int = 0
+    alignments: list[FullAlignmentResult]
+    clade_alignment_posterior_probabilities: CladeAlignmentPosteriorProbabilities | None = None
 
-    def __init__(self, clade_root: int, alignments=None,
-                 pedigree_vertex_to_edge_alignment_appearance_number=None,
-                 edge_alignment_total_number=None):
+    def __init__(self, clade_root: int, alignments=None):
         self.clade_root = clade_root
         if alignments is None:
             alignments = []
         self.alignments = alignments
-        if pedigree_vertex_to_edge_alignment_appearance_number is None:
-            pedigree_vertex_to_edge_alignment_appearance_number = defaultdict(int)
-        self.pedigree_vertex_to_edge_alignment_appearance_number = pedigree_vertex_to_edge_alignment_appearance_number
-        if edge_alignment_total_number is None:
-            edge_alignment_total_number = 0
-        self.edge_alignment_total_number = edge_alignment_total_number
+
+    def calculate_posterior_probabilities(self):
+        if self.clade_alignment_posterior_probabilities:
+            return
+        # Verify that all the vertex alignments have posterior probabilities calculated
+        for alignment in self.alignments:
+            if not alignment.posterior_probabilities:
+                return
+        vertex_inclusion_probability_dict = defaultdict(float)
+        vertex_alignment_probabilities_sum = sum(x.posterior_probabilities.vertex_alignment_probability
+                                                 for x in self.alignments)
+        vertex_alignment_posterior_probability = dict()
+        for index, vertex_alignment in enumerate(self.alignments):
+            alignment_posterior_probability = float(
+                    vertex_alignment.posterior_probabilities.vertex_alignment_probability
+                    / vertex_alignment_probabilities_sum
+            )
+            vertex_alignment_posterior_probability[index] = alignment_posterior_probability
+            for vertex, vertex_inclusion_probability in vertex_alignment.posterior_probabilities.vertex_posterior_probabilities_for_vertex_alignment.items():
+                vertex_inclusion_probability_dict[vertex] += vertex_inclusion_probability * alignment_posterior_probability
+        self.clade_alignment_posterior_probabilities = CladeAlignmentPosteriorProbabilities(
+            vertex_alignment_to_posterior_probability=vertex_alignment_posterior_probability,
+            vertex_posterior_probabilities=vertex_inclusion_probability_dict
+        )
 
 
 @dataclass

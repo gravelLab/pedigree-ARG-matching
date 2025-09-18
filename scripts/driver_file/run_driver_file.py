@@ -26,8 +26,7 @@ def run_driver_file(driver_filepath):
     run_alignments(graph_matcher=graph_matcher)
     save_alignment_result_to_files(
         alignment_result=alignment_general_results,
-        coalescent_tree=processed_driver_file.coalescent_tree,
-        pedigree=processed_driver_file.pedigree,
+        graph_matcher=graph_matcher,
         directory_path=processed_driver_file.output_path
     )
 

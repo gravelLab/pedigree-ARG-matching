@@ -140,7 +140,8 @@ class GraphMatcher:
                  initial_mapping: dict[int, [int]], result_callback_function,
                  logs_path: str | Path = None,
                  alignment_vertex_mode: AlignmentVertexMode = default_alignment_vertex_mode,
-                 alignment_edge_mode: AlignmentEdgeMode = default_alignment_edge_mode
+                 alignment_edge_mode: AlignmentEdgeMode = default_alignment_edge_mode,
+                 calculate_posterior_probabilities: bool = default_calculate_posterior_probabilities
                  ):
         """
         Initializes the GraphMatcher object.
@@ -162,6 +163,7 @@ class GraphMatcher:
         self.alignment_vertex_mode = alignment_vertex_mode
         self.alignment_edge_mode = alignment_edge_mode
         self.result_callback_function = result_callback_function
+        self.calculate_posterior_likelihoods = calculate_posterior_probabilities
         if logs_path and logs_enabled:
             self.logger = GraphMatcher.MatcherLogger(logs_directory_path=logs_path)
         else:
@@ -341,6 +343,10 @@ class GraphMatcher:
                                                             new_ploid=new_ploid,
                                                             coalescent_tree=self.coalescent_tree
                                                             )
+        # Update the posterior probabilities if calculated
+        if symmetric_result.posterior_probabilities:
+            symmetric_result.posterior_probabilities.vertex_posterior_probabilities_for_vertex_alignment.pop(old_ploid)
+            symmetric_result.posterior_probabilities.vertex_posterior_probabilities_for_vertex_alignment[new_ploid] = 1
         return symmetric_result
 
     def _filter_alignments(self, coalescent_tree_vertex_to_subtrees: dict):
@@ -556,17 +562,9 @@ class GraphMatcher:
         valid_edge_alignments = list(map(partial_func, edge_alignments))
         if len(valid_edge_alignments) > 0:
             potential_alignment.edge_alignments = valid_edge_alignments
-            # formatted_edge_to_path_map = dict()
-            # for edge, paths in edge_to_all_pedigree_paths.items():
-            #     formatted_paths = [self._map_trimmed_path_to_readable_format(
-            #         vertex_alignment=potential_alignment.vertex_alignment,
-            #         network_graph=network_graph,
-            #         edge=edge,
-            #         trimmed_path=path
-            #     ) for path in paths]
-            #     formatted_edge_to_path_map[edge] = formatted_paths
-            # potential_alignment.edge_to_path_map = formatted_edge_to_path_map
             potential_alignment.is_valid = True
+            if self.calculate_posterior_likelihoods:
+                potential_alignment.calculate_vertex_inclusion_probabilities()
         return potential_alignment
 
     def _get_example_edge_alignment(self, potential_alignment: FullAlignmentResult,
@@ -659,7 +657,8 @@ class GraphMatcher:
                 # If the necessary condition doesn't hold, there are no edge alignments
                 if not necessary_condition:
                     return potential_alignment
-                # We can additionally check if the alignment is correct. If so, we can use it as an example alignment
+                # We can additionally check if the alignment is correct
+                # If so, we can use it as an example alignment
                 edge_alignment = self._verify_example_edge_alignment_from_flow(
                     alignment=potential_alignment.vertex_alignment,
                     alignment_flow=maximum_flow

@@ -25,8 +25,9 @@ default_alignment_edge_mode = AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS
 
 # Alignment statistics section start
 calculate_distances_histogram = False
-calculate_likelihood = False
+default_calculate_posterior_probabilities = True
 calculate_similarity = False
+save_edge_alignments = False
 # Alignment statistics section end
 
 default_missing_parent_notation = "-1"
