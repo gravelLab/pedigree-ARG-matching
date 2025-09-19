@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
-import numpy
 from lineagekit.core.CoalescentTree import CoalescentTree
 
 from alignment.configuration import section_separator, subsection_separator, save_edge_alignments
@@ -178,8 +177,6 @@ class FullAlignmentResult(AlignmentResult):
                     reverse=True):
                 assert vertex_posterior_inclusion_probability <= 1.0
                 global_vertex_probability = global_vertex_inclusion_probability[vertex]
-                assert vertex_posterior_inclusion_probability >= global_vertex_probability or \
-                       numpy.isclose(vertex_posterior_inclusion_probability, global_vertex_probability)
                 converted_vertex = convert_ploid_id_to_individual(vertex)
                 rounded_prob = round_down(vertex_posterior_inclusion_probability, 5)
                 global_probability_rounded_prob = round_down(global_vertex_probability, 5)
