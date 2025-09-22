@@ -1,17 +1,20 @@
 import math
 import threading
 from abc import ABC
-from collections import defaultdict
+from collections import defaultdict, Counter
 from dataclasses import dataclass
 from decimal import Decimal
+from itertools import chain
 from pathlib import Path
 
+import numpy
 from lineagekit.core.CoalescentTree import CoalescentTree
+from lineagekit.core.PloidPedigree import PloidPedigree
 
 from alignment.configuration import section_separator, subsection_separator, save_edge_alignments
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from scripts.utility.alignment_utility import convert_ploid_id_to_individual
-from scripts.utility.basic_utility import round_down
+from scripts.utility.basic_utility import round_down, float_not_greater, verify_and_cap_probability
 
 
 def save_text_to_file(text: str, path: str):
@@ -151,12 +154,12 @@ class FullAlignmentResult(AlignmentResult):
                 for pedigree_vertex in pedigree_path[1:-1]:
                     vertex_to_probability[pedigree_vertex] += edge_alignment_probability
         assert sum_edge_alignment_probabilities != 0
-        vertex_to_probability = {key: float(value / sum_edge_alignment_probabilities)
-                                 for key, value in vertex_to_probability.items()}
-
+        vertex_to_probability = {key: verify_and_cap_probability(float(value / sum_edge_alignment_probabilities))
+                                 for key, value in vertex_to_probability.items()
+                                 }
         # The pedigree candidates for coalescent vertices appear in all edge alignments
         for pedigree_vertex in self.vertex_alignment.values():
-            vertex_to_probability[pedigree_vertex] = 1
+            vertex_to_probability[pedigree_vertex] = 1.0
         self.posterior_probabilities = VertexAlignmentPosteriorProbabilities(
             vertex_posterior_probabilities_for_vertex_alignment=vertex_to_probability,
             vertex_alignment_probability=sum_edge_alignment_probabilities
@@ -169,7 +172,7 @@ class FullAlignmentResult(AlignmentResult):
             file.write("Pedigree vertex appearance probabilities:\n")
             file.write("The format is:\n")
             file.write("{ploid_id}: {vertex_inclusion_probability_given_current_vertex_alignment}"
-                       " {vertex_inclusion_probability}\n")
+                       " ({vertex_inclusion_probability})\n")
 
             for vertex, vertex_posterior_inclusion_probability in sorted(
                     self.posterior_probabilities.vertex_posterior_probabilities_for_vertex_alignment.items(),
@@ -257,6 +260,112 @@ class FullAlignmentResult(AlignmentResult):
         return full_text
 
 
+def verify_probabilities_values(inclusion_probability_dictionary: dict[int, float]):
+    assert all(v <= 1 for v in inclusion_probability_dictionary.values()), \
+        f"Values >1 found: {[f'{k}: {v}' for k, v in inclusion_probability_dictionary.items() if v > 1]}"
+
+
+def verify_pedigree_candidates_inclusion_probabilities(vertex_alignment: dict[int, int],
+                                                       inclusion_probability_dictionary: dict[int, float]):
+    for pedigree_candidate in vertex_alignment.values():
+        inclusion_probability = inclusion_probability_dictionary[pedigree_candidate]
+        assert inclusion_probability == 1.0, (f"The inclusion probability "
+                                              f"of a pedigree candidate {pedigree_candidate}"
+                                              f"must be 1, got {inclusion_probability} instead")
+
+
+def verify_vertex_inclusion_likelihoods_are_consistent_for_vertex_alignment(
+        inclusion_probability_dictionary: dict[int, float],
+        vertex_alignment: dict[int, int],
+        tree: CoalescentTree,
+        clade_root: int,
+        pedigree: PloidPedigree,
+        initial_mapping: dict[int, [int]]):
+    verify_probabilities_values(inclusion_probability_dictionary)
+    verify_pedigree_candidates_inclusion_probabilities(vertex_alignment, inclusion_probability_dictionary)
+    reverse_alignment = {v: k for k, v in vertex_alignment.items()}
+    carriers = set(chain.from_iterable(initial_mapping.values()))
+    pedigree_candidates = set(vertex_alignment.values())
+    clade_root_candidate = vertex_alignment[clade_root]
+    # Verify that the posterior probabilities are correct
+    for parent_ploid in pedigree:
+        other_ploid = pedigree.get_other_ploid(parent_ploid)
+        parents = {parent_ploid, other_ploid}
+        if parent_ploid in carriers or other_ploid in carriers:
+            continue
+        children = pedigree.get_children(parent_ploid)
+        # Non-carriers with no children or parents of the clade root's pedigree candidate
+        # can never appear in an edge alignment
+        if not children or clade_root_candidate in children:
+            non_carriers_with_no_children_inclusion_probability = sum(
+                inclusion_probability_dictionary.get(x, 0) for x in parents)
+            assert non_carriers_with_no_children_inclusion_probability == 0.0
+            continue
+        expected_parents = set(chain.from_iterable([pedigree.get_parents(x) for x in children]))
+        assert set(pedigree.get_children(other_ploid)) == set(children)
+        assert expected_parents == parents, f"Expected {expected_parents} as parents, got {parents} instead"
+        children_inclusion_probability = sum(inclusion_probability_dictionary.get(x, 0) for x in children)
+        parent_candidates = pedigree_candidates.intersection(parents)
+        other_parents = [x for x in parents if x not in parent_candidates]
+        parents_inclusion_probability = 0
+        for parent_candidate in parent_candidates:
+            candidate_probability = inclusion_probability_dictionary.get(parent_candidate, 0)
+            tree_vertex = reverse_alignment[parent_candidate]
+            children_number = len(tree.get_children(tree_vertex))
+            parents_inclusion_probability += children_number * candidate_probability
+        parents_inclusion_probability += sum(inclusion_probability_dictionary.get(x, 0) for x in other_parents)
+        assert numpy.isclose(parents_inclusion_probability, children_inclusion_probability)
+
+
+def verify_initial_mapping_vertex_probabilities(inclusion_probability_dictionary: dict[int, float],
+                                                pedigree: PloidPedigree,
+                                                initial_mapping: dict[int, [int]]):
+    all_pedigree_candidates = [v for lst in initial_mapping.values() for v in lst]
+    # Count occurrences
+    value_counts = Counter(all_pedigree_candidates)
+    # Keep only values that appear exactly once
+    unique_pedigree_candidates = {v for v, count in value_counts.items() if count == 1}
+    for candidate_vertices in initial_mapping.values():
+        probabilities_sum = sum(inclusion_probability_dictionary.get(x, 0) for x in candidate_vertices)
+        if unique_pedigree_candidates.issuperset(candidate_vertices):
+            assert numpy.isclose(probabilities_sum, 1.0), \
+                (f"The sum of posterior probabilities of unique pedigree candidates {candidate_vertices} "
+                 f"must be 1, got {probabilities_sum} instead")
+        else:
+            assert float_not_greater(1, probabilities_sum), \
+                (f"The total inclusion probabilities sum for the "
+                 f"coalescent vertex candidates must be at least 1, "
+                 f"got {probabilities_sum} instead")
+        candidate_parents = chain.from_iterable(pedigree.get_parents(x) for x in candidate_vertices)
+        parents_probabilities_sum = sum(inclusion_probability_dictionary.get(x, 0) for x in candidate_parents)
+        assert float_not_greater(1, parents_probabilities_sum), \
+            ("The initial_mapping's parents' probabilities "
+             "must be at least 1, got "
+             f"{parents_probabilities_sum} instead")
+
+
+def verify_global_vertex_inclusion_likelihoods_are_consistent(inclusion_probability_dictionary: dict[int, float],
+                                                              pedigree: PloidPedigree,
+                                                              tree_root: int,
+                                                              initial_mapping: dict[int, [int]],
+                                                              vertex_alignments: [FullAlignmentResult]
+                                                              ):
+    verify_probabilities_values(inclusion_probability_dictionary)
+    verify_initial_mapping_vertex_probabilities(initial_mapping=initial_mapping,
+                                                pedigree=pedigree,
+                                                inclusion_probability_dictionary=inclusion_probability_dictionary)
+    tree_candidates = {alignment_result.vertex_alignment[tree_root] for alignment_result in vertex_alignments}
+    for child_ploid in pedigree:
+        if child_ploid in tree_candidates:
+            continue
+        parents = pedigree.get_parents(child_ploid)
+        if not parents:
+            continue
+        child_inclusion_probability = inclusion_probability_dictionary.get(child_ploid, 0)
+        parents_inclusion_probability = sum(inclusion_probability_dictionary.get(x, 0) for x in parents)
+        assert float_not_greater(child_inclusion_probability, parents_inclusion_probability)
+
+
 class CladeAlignmentResults(ABC):
     pass
 
@@ -291,21 +400,27 @@ class SuccessCladeAlignmentResults(CladeAlignmentResults):
         for alignment in self.alignments:
             if not alignment.posterior_probabilities:
                 return
-        vertex_inclusion_probability_dict = defaultdict(float)
+        global_vertex_inclusion_probability_dict = defaultdict(float)
         vertex_alignment_probabilities_sum = sum(x.posterior_probabilities.vertex_alignment_probability
                                                  for x in self.alignments)
         vertex_alignment_posterior_probability = dict()
         for index, vertex_alignment in enumerate(self.alignments):
             alignment_posterior_probability = float(
-                    vertex_alignment.posterior_probabilities.vertex_alignment_probability
-                    / vertex_alignment_probabilities_sum
+                vertex_alignment.posterior_probabilities.vertex_alignment_probability
+                / vertex_alignment_probabilities_sum
             )
+            alignment_posterior_probability = verify_and_cap_probability(alignment_posterior_probability)
             vertex_alignment_posterior_probability[index] = alignment_posterior_probability
             for vertex, vertex_inclusion_probability in vertex_alignment.posterior_probabilities.vertex_posterior_probabilities_for_vertex_alignment.items():
-                vertex_inclusion_probability_dict[vertex] += vertex_inclusion_probability * alignment_posterior_probability
+                global_vertex_inclusion_probability_dict[
+                    vertex] += vertex_inclusion_probability * alignment_posterior_probability
+        resulting_global_vertex_inclusion_probability_dict = {
+            vertex: verify_and_cap_probability(probability)
+            for vertex, probability in global_vertex_inclusion_probability_dict.items()
+        }
         self.clade_alignment_posterior_probabilities = CladeAlignmentPosteriorProbabilities(
             vertex_alignment_to_posterior_probability=vertex_alignment_posterior_probability,
-            vertex_posterior_probabilities=vertex_inclusion_probability_dict
+            vertex_posterior_probabilities=resulting_global_vertex_inclusion_probability_dict
         )
 
 

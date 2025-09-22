@@ -1,7 +1,9 @@
 import os
 import random
+from collections import Counter, defaultdict
+from itertools import combinations
 from pathlib import Path
-from typing import cast
+from typing import cast, Iterable
 
 import networkx
 import numpy
@@ -10,15 +12,14 @@ from lineagekit.core.CoalescentTree import CoalescentTree
 from lineagekit.core.GenGraph import GenGraph
 
 from alignment.alignment_result import FullAlignmentResult, AlignmentResult, FailedClimbingAlignmentResult, \
-    SuccessCladeAlignmentResults
+    SuccessCladeAlignmentResults, verify_probabilities_values, \
+    verify_global_vertex_inclusion_likelihoods_are_consistent, \
+    verify_vertex_inclusion_likelihoods_are_consistent_for_vertex_alignment
 from alignment.configuration import AlignmentVertexMode, ProbandInitialAssignmentsMode, AlignmentEdgeMode
 from alignment.graph_matcher import GraphMatcher, get_initial_simulation_mapping_for_mode
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
-from itertools import combinations
-from collections import Counter
-
-from scripts.utility.basic_utility import get_paths_from_tree_pedigree_directory
 from scripts.utility.alignment_utility import dict_has_duplicate_values
+from scripts.utility.basic_utility import get_paths_from_tree_pedigree_directory
 
 logs_folder_name = "logs"
 pedigrees_main_folder_name = "pedigrees"
@@ -146,40 +147,73 @@ def build_descendant_ancestor_paths_dict(graph: GenGraph) -> dict[int, dict[int,
     return all_descendant_paths
 
 
-def verify_pedigree_coalescent_tree_alignment(pedigree: PotentialMrcaProcessedGraph, coalescent_tree: CoalescentTree):
+def verify_pedigree_coalescent_tree_alignment(pedigree: PotentialMrcaProcessedGraph,
+                                              coalescent_tree: CoalescentTree):
     initial_mapping = get_initial_simulation_mapping_for_mode(coalescent_tree=coalescent_tree)
-    alignments = []
+    clade_root_to_alignment_results = defaultdict(list)
 
-    def collect_results(alignment_result: FullAlignmentResult):
-        assert alignment_result.is_valid
-        alignments.append(alignment_result.vertex_alignment)
+    def collect_results(found_alignment_result: FullAlignmentResult):
+        assert found_alignment_result.is_valid
+        clade_root_to_alignment_results[found_alignment_result.clade_root].append(found_alignment_result)
 
     graph_matcher: GraphMatcher = GraphMatcher(processed_graph=pedigree,
                                                coalescent_tree=coalescent_tree,
                                                alignment_vertex_mode=AlignmentVertexMode.ALL_ALIGNMENTS,
-                                               alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
+                                               alignment_edge_mode=AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS,
                                                initial_mapping=initial_mapping,
                                                logs_path=None,
                                                result_callback_function=collect_results,
-                                               calculate_posterior_probabilities=False
+                                               calculate_posterior_probabilities=True
                                                )
     graph_matcher.find_alignments()
     coalescent_tree_roots = coalescent_tree.get_founders()
     for coalescent_tree_root in coalescent_tree_roots:
-        clade_alignments = alignments[coalescent_tree_root]
+        clade_alignments = clade_root_to_alignment_results[coalescent_tree_root]
         assert clade_alignments
+        clade_vertices = coalescent_tree.get_connected_component_for_vertex(coalescent_tree_root)
+        vertex_alignments = [x.vertex_alignment for x in clade_alignments]
         verify_identity_present_for_clade(coalescent_tree=coalescent_tree,
                                           coalescent_tree_root=coalescent_tree_root,
-                                          clade_alignments=clade_alignments)
+                                          clade_alignments=vertex_alignments,
+                                          clade_vertices=clade_vertices)
         verify_clade_alignments_locally_consistent(coalescent_tree=coalescent_tree, pedigree=pedigree,
-                                                   clade_alignments=clade_alignments)
-        verify_all_root_candidate_ploids_found(clade_alignments=clade_alignments, clade_root=coalescent_tree_root)
-        for alignment in clade_alignments:
+                                                   clade_alignments=vertex_alignments)
+        verify_all_root_candidate_ploids_found(clade_alignments=vertex_alignments, clade_root=coalescent_tree_root)
+        clade_results: SuccessCladeAlignmentResults = SuccessCladeAlignmentResults(
+            clade_root=coalescent_tree_root,
+            alignments=clade_alignments
+        )
+        clade_results.calculate_posterior_probabilities()
+        clade_probabilities = clade_results.clade_alignment_posterior_probabilities
+        assert clade_probabilities
+        verify_probabilities_values(clade_probabilities.vertex_alignment_to_posterior_probability)
+        if len(clade_vertices) == 1:
+            # Skip trivial clades
+            continue
+        clade_initial_mapping = {key: initial_mapping[key] for key in clade_vertices if key in initial_mapping}
+        verify_global_vertex_inclusion_likelihoods_are_consistent(
+            initial_mapping=clade_initial_mapping,
+            pedigree=pedigree,
+            inclusion_probability_dictionary=clade_probabilities.vertex_posterior_probabilities,
+            vertex_alignments=clade_alignments,
+            tree_root=coalescent_tree_root
+        )
+        for alignment_result in clade_alignments:
+            vertex_alignment = alignment_result.vertex_alignment
             assert verify_alignment_necessary_condition_networkx(
                 coalescent_tree=coalescent_tree,
                 pedigree=pedigree,
-                alignment=alignment,
+                alignment=vertex_alignment,
                 root_vertex=coalescent_tree_root
+            )
+            alignment_inclusion_probability_dictionary = alignment_result.posterior_probabilities.vertex_posterior_probabilities_for_vertex_alignment
+            verify_vertex_inclusion_likelihoods_are_consistent_for_vertex_alignment(
+                inclusion_probability_dictionary=alignment_inclusion_probability_dictionary,
+                initial_mapping=clade_initial_mapping,
+                pedigree=pedigree,
+                tree=coalescent_tree,
+                vertex_alignment=alignment_result.vertex_alignment,
+                clade_root=coalescent_tree_root
             )
 
 
@@ -246,8 +280,9 @@ def verify_all_root_candidate_ploids_found(clade_alignments: [dict[int, int]], c
 
 
 def verify_identity_present_for_clade(coalescent_tree: CoalescentTree, coalescent_tree_root: int,
-                                      clade_alignments: [dict[int, int]]):
-    clade_vertices = coalescent_tree.get_connected_component_for_vertex(coalescent_tree_root)
+                                      clade_alignments: [dict[int, int]], clade_vertices: Iterable[int] = None ):
+    if not clade_vertices:
+        clade_vertices = coalescent_tree.get_connected_component_for_vertex(coalescent_tree_root)
     identity_solution = {x: x for x in clade_vertices}
     assert identity_solution in clade_alignments, "The identity solution is not present in the solution set"
 
@@ -360,7 +395,6 @@ def verify_alignment_on_random_small_coalescent_trees(potential_mrca_graph: Pote
 
 
 def run_verification_for_pedigree_directory(directory_name):
-    coalescent_trees = []
     paths = get_paths_from_tree_pedigree_directory(directory_name)
     if not paths:
         raise ValueError(f"{invalid_alignment_discarded_1} is not a valid tree-pedigree directory")
@@ -368,14 +402,13 @@ def run_verification_for_pedigree_directory(directory_name):
     pedigree = PotentialMrcaProcessedGraph.get_processed_graph_from_file(filepath=pedigree_path)
     vertex_to_ancestors_paths_dict = build_descendant_ancestor_paths_dict(pedigree)
     verify_preprocessed_pedigree(pedigree, vertex_to_ancestors_paths_dict)
-    for coalescent_tree_name in coalescent_trees:
-        # Verify that all the alignments are "locally" consistent. Specifically, we want to verify that
-        # every non-leaf vertex in the coalescent tree is assigned to a pedigree ploid that is a valid pmrca
-        # for the children vertices
-        coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(coalescent_tree_name)
-        coalescent_tree.remove_unary_nodes()
-        verify_pedigree_coalescent_tree_alignment(pedigree=pedigree, coalescent_tree=coalescent_tree)
-        print(f"Alignment with {coalescent_tree_name} has been tested")
+    # Verify that all the alignments are "locally" consistent. Specifically, we want to verify that
+    # every non-leaf vertex in the coalescent tree is assigned to a pedigree ploid that is a valid pmrca
+    # for the children vertices
+    coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(tree_path)
+    coalescent_tree.remove_unary_nodes()
+    verify_pedigree_coalescent_tree_alignment(pedigree=pedigree, coalescent_tree=coalescent_tree)
+    print(f"Alignment with {tree_path} has been tested")
     verify_alignment_on_random_small_coalescent_trees(pedigree, vertex_to_ancestors_paths_dict)
 
 

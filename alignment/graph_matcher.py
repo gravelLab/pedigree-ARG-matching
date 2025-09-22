@@ -164,6 +164,9 @@ class GraphMatcher:
         self.alignment_edge_mode = alignment_edge_mode
         self.result_callback_function = result_callback_function
         self.calculate_posterior_likelihoods = calculate_posterior_probabilities
+        if calculate_posterior_probabilities and alignment_edge_mode != AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS:
+            raise ValueError("The posterior probabilities cannot be calculated without calculating "
+                             "all the edge alignments")
         if logs_path and logs_enabled:
             self.logger = GraphMatcher.MatcherLogger(logs_directory_path=logs_path)
         else:

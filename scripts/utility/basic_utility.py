@@ -4,6 +4,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import numpy
 from scipy.stats import poisson
 import random
 from math import ceil
@@ -237,3 +238,12 @@ def prepend_to_file(filepath, text):
 
     # Replace the original file with the new one
     os.replace(temp_name, filepath)
+
+
+def float_not_greater(smaller_value: float, larger_value: float):
+    return numpy.isclose(smaller_value, larger_value) or smaller_value <= larger_value
+
+
+def verify_and_cap_probability(probability: float):
+    assert float_not_greater(probability, 1.0)
+    return min(probability, 1.0)
