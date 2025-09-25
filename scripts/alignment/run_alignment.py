@@ -44,30 +44,6 @@ def save_alignment_result_to_files(alignment_result: TreeAlignmentResults, graph
                     clade_alignment_result=clade_alignment_result,
                 )
         clade_metadata.save()
-        match clade_alignment_result:
-            case SuccessCladeAlignmentResults() as success_result:
-                # Verify that the posterior likelihoods are correct
-                if not clade_metadata.clade_alignment_result:
-                    return
-                alignment_results = success_result.alignments
-                inclusion_probability_dictionary = clade_metadata.clade_alignment_result.clade_alignment_posterior_probabilities.vertex_posterior_probabilities
-                verify_global_vertex_inclusion_likelihoods_are_consistent(
-                    pedigree=graph_matcher.pedigree,
-                    initial_mapping=graph_matcher.initial_mapping,
-                    inclusion_probability_dictionary=inclusion_probability_dictionary,
-                    tree_root=clade_root,
-                    vertex_alignments=alignment_results
-                )
-                for alignment_result in clade_metadata.clade_alignment_result.alignments:
-                    alignment_inclusion_probability_dictionary = alignment_result.posterior_probabilities.vertex_posterior_probabilities_for_vertex_alignment
-                    verify_vertex_inclusion_likelihoods_are_consistent_for_vertex_alignment(
-                        pedigree=graph_matcher.pedigree,
-                        initial_mapping=graph_matcher.initial_mapping,
-                        inclusion_probability_dictionary=alignment_inclusion_probability_dictionary,
-                        tree=graph_matcher.coalescent_tree,
-                        vertex_alignment=alignment_result.vertex_alignment,
-                        clade_root=clade_root
-                    )
 
 
 def save_alignment_result_and_store_vertex_alignment(

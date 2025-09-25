@@ -1,4 +1,8 @@
-from alignment.driver_file import PloidType
+from pathlib import Path
+
+import yaml
+
+from alignment.alignment_constants import PloidType, coalescent_id_key, initial_assignments_key, pedigree_ids_key
 
 
 def dict_has_duplicate_values(dictionary: dict):
@@ -38,7 +42,7 @@ def convert_ploid_id_to_individual(ploid_id: int):
     return f"{individual_id}{ploid_type}"
 
 
-def read_mapping_from_file(filepath):
+def read_mapping_from_file(filepath: str | Path):
     parsed_dict = {}
     with open(filepath, 'r') as file:
         for line in file:
@@ -50,3 +54,34 @@ def read_mapping_from_file(filepath):
             # Add to the dictionary
             parsed_dict[key] = value
     return parsed_dict
+
+
+def convert_ploid_str_to_ploid_id(ploid_str: str) -> int:
+    try:
+        ploid_type = PloidType(ploid_str[-1])
+    except ValueError:
+        raise ValueError(
+            f"Invalid ploid_type: {ploid_str['ploid_type']}. Must be one of {[e.value for e in PloidType]}"
+        )
+    try:
+        unprocessed_pedigree_id = int(ploid_str[:-1])
+    except ValueError:
+        raise ValueError(f"Invalid pedigree id {ploid_str[:-1]}")
+    if unprocessed_pedigree_id < 0:
+        raise ValueError(f"Negative pedigree id {unprocessed_pedigree_id}")
+    if ploid_type == PloidType.Paternal:
+        return 2 * unprocessed_pedigree_id
+    return 2 * unprocessed_pedigree_id + 1
+
+
+def read_initial_assignments_from_driver_file(driver_filepath: str | Path) -> dict[int, list[int]]:
+    with open(driver_filepath, "r") as f:
+        data = yaml.safe_load(f)
+    assignments = data.get(initial_assignments_key, [])
+    result = dict()
+    for item in assignments:
+        coalescent_id = item[coalescent_id_key]
+        pedigree_ids = item[pedigree_ids_key]
+        parsed_pedigree_ids = [convert_ploid_str_to_ploid_id(x) for x in pedigree_ids]
+        result[coalescent_id] = parsed_pedigree_ids
+    return result

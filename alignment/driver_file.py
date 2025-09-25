@@ -13,16 +13,13 @@ from alignment.configuration import *
 import yaml
 
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
+from scripts.utility.alignment_utility import convert_ploid_str_to_ploid_id
+from alignment.alignment_constants import *
 
 
 class YAMLValidationError(Exception):
     """Custom exception for YAML validation errors."""
     pass
-
-
-class PloidType(Enum):
-    Paternal = "P"
-    Maternal = "M"
 
 
 @dataclass
@@ -149,24 +146,10 @@ class ParsedDriverFile:
                 pedigree_unprocessed_ids = entry[pedigree_ids_key]
                 pedigree_processed_ids = []
                 for pedigree_id in pedigree_unprocessed_ids:
-                    if not pedigree_id:
-                        raise YAMLValidationError(f"Pedigree id is empty")
                     try:
-                        ploid_type = PloidType(pedigree_id[-1])
-                    except ValueError:
-                        raise YAMLValidationError(
-                            f"Invalid ploid_type: {entry['ploid_type']}. Must be one of {[e.value for e in PloidType]}"
-                        )
-                    try:
-                        unprocessed_pedigree_id = int(pedigree_id[:-1])
-                    except ValueError:
-                        raise YAMLValidationError(f"Invalid pedigree id {pedigree_id[:-1]}")
-                    if unprocessed_pedigree_id < 0:
-                        raise YAMLValidationError(f"Negative pedigree id {unprocessed_pedigree_id}")
-                    if ploid_type == PloidType.Paternal:
-                        processed_pedigree_id = 2 * unprocessed_pedigree_id
-                    else:
-                        processed_pedigree_id = 2 * unprocessed_pedigree_id + 1
+                        processed_pedigree_id = convert_ploid_str_to_ploid_id(pedigree_id)
+                    except ValueError as e:
+                        raise YAMLValidationError(e)
                     pedigree_processed_ids.append(processed_pedigree_id)
                 if not pedigree_processed_ids:
                     raise YAMLValidationError(f"No pedigree ids specified for {coalescent_id}")
@@ -275,7 +258,7 @@ class ProcessedDriverFile:
         for coalescent_vertex, pedigree_vertices in initial_assignments.items():
             if coalescent_vertex not in coalescent_tree_probands:
                 raise ValueError(f"The specified coalescent vertex {coalescent_vertex} either does not exist or isn't"
-                                 f"a leaf vertex")
+                                 f" a leaf vertex")
             for pedigree_vertex in pedigree_vertices:
                 if pedigree_vertex not in pedigree:
                     raise ValueError(f"The specified pedigree vertex {pedigree_vertex} does not exist")
@@ -292,29 +275,3 @@ class ProcessedDriverFile:
     def process_driver_file(filepath: str | Path) -> ProcessedDriverFile:
         parsed_driver_file = ParsedDriverFile.parse_driver_file_and_validate_initial_assignments(filepath=filepath)
         return ProcessedDriverFile.finish_driver_file_processing(parsed_driver_file=parsed_driver_file)
-
-
-# YAML keys used in the driver file
-initial_assignments_key = "initial_assignments"
-coalescent_tree_key = "coalescent_tree"
-pedigree_key = "pedigree"
-coalescent_id_key = "coalescent_id"
-path_key = "path"
-pedigree_ids_key = "pedigree_ids"
-separation_symbol_key = "separation_symbol"
-missing_parent_notation_key = "missing_parent_notation"
-skip_first_line_key = "skip_first_line"
-verify_graph_has_no_cycles_key = "check_for_cycles"
-output_path_key = "output_path"
-alignment_vertex_mode_key = "alignment_vertex_mode"
-alignment_edge_mode_key = "alignment_edge_mode"
-
-alignment_vertex_mode_dict = {
-    "all": AlignmentVertexMode.ALL_ALIGNMENTS,
-    "example_per_root_assignment": AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT
-}
-
-alignment_edge_mode_dict = {
-    "one": AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
-    "all": AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS
-}

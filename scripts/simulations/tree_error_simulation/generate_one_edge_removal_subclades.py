@@ -9,7 +9,8 @@ from lineagekit.core.CoalescentTree import CoalescentTree
 from alignment.configuration import tree_extension
 from scripts.simulations.tree_error_simulation.simulate_resolve_polytomy_tree_error import oracle_filename
 from scripts.utility.basic_utility import (get_directory_path, get_non_existing_path,
-                                           get_unique_filename_with_specified_extension)
+                                           get_unique_filename_with_specified_extension, get_filepath,
+                                           get_number_input_in_bounds)
 from enum import Enum
 
 metadata_header = ("This file specifies the number of probands for every tree in this directory\n"
@@ -24,7 +25,7 @@ class Direction(Enum):
     DOWN = 2
 
 
-def process_tree(tree_filepath: Path, tree_result_directory):
+def process_tree(tree_filepath: Path, tree_result_directory: Path):
     try:
         original_coalescent_tree = CoalescentTree.get_coalescent_tree_from_file(filepath=tree_filepath)
     except Exception as ex:
@@ -82,7 +83,16 @@ def process_proband_directory(proband_directory, proband_result_filepath):
         process_tree_directory(tree_dir_path, result_tree_dir_path)
 
 
-def run_interactive_session():
+def process_single_tree():
+    tree_path = Path(get_filepath("Specify the path to the tree: "))
+    tree_path_parent_dir = tree_path.parent
+    os.chdir(tree_path_parent_dir)
+    result_directory_name = get_non_existing_path("Specify the resulting directory name/path:")
+    result_directory_path = tree_path_parent_dir / result_directory_name
+    process_tree(tree_path, result_directory_path)
+
+
+def process_proband_sorted_trees_for_error_simulations():
     parent_dir_filepath = get_directory_path("Specify the path to the parent directory with error simulated trees:")
     parent_dir_filepath = Path(parent_dir_filepath)
     result_path = get_non_existing_path("Specify the resulting path:")
@@ -100,6 +110,19 @@ def run_interactive_session():
             continue
         process_proband_directory(proband_directory=proband_filepath,
                                   proband_result_filepath=proband_result_filepath)
+
+
+def run_interactive_session():
+    menu_prompt = ("Specify the running mode:\n"
+                   "1) Create subclades from a single tree\n"
+                   "2) (Tree error simulations) Specify the path to a parent directory with trees grouped by the "
+                   "proband number\n")
+    menu_option = get_number_input_in_bounds(menu_prompt, 1, 2)
+    match menu_option:
+        case 1:
+            process_single_tree()
+        case 2:
+            process_proband_sorted_trees_for_error_simulations()
 
 
 if __name__ == '__main__':
