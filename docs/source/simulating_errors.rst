@@ -13,16 +13,4 @@ The general idea behind this approach is as follows:
 2. Simulate errors either within the pedigree or the tree.
 3. Run multiple alignments with the modified data and compare the alignment results.
 
-More information on this approach can be found in :doc:`error_alignments`.
-
------------------------------------------------
-Simulating pedigree errors
------------------------------------------------
-
-Some information regarding how pedigree errors are simulated
-
------------------------------------------------
-Simulating coalescent tree errors
------------------------------------------------
-
-Some information regarding how tree errors are simulated
+More information on this approach can be found in the paper.

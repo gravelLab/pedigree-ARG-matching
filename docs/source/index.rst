@@ -364,5 +364,4 @@ for one clade fails.
    :caption: Contents:
 
    simulating_errors
-   error_alignments
    api
