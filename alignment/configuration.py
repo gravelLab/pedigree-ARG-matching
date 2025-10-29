@@ -19,15 +19,22 @@ class AlignmentEdgeMode(Enum):
     ALL_EDGE_ALIGNMENTS = 2,
 
 
+class PosteriorProbabilitiesCalculationMode(Enum):
+    SKIP = 1,
+    VERTEX_ALIGNMENT_PROBABILITY = 2,
+    INDIVIDUAL_INCLUSION_PROBABILITY = 3
+
+
 default_proband_initial_assignments_mode = ProbandInitialAssignmentsMode.INDIVIDUAL
 default_alignment_vertex_mode = AlignmentVertexMode.ALL_ALIGNMENTS
 default_alignment_edge_mode = AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS
 
 # Alignment statistics section start
 calculate_distances_histogram = False
-default_calculate_posterior_probabilities = True
+default_calculate_posterior_probabilities = PosteriorProbabilitiesCalculationMode.SKIP
 calculate_similarity = False
-save_edge_alignments = False
+save_edge_alignments = True
+save_edge_to_path_map = True
 # Alignment statistics section end
 
 default_missing_parent_notation = "-1"

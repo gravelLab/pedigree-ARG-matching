@@ -62,6 +62,7 @@ class ParsedDriverFile:
     driver_file_path: str | Path
     vertex_alignment_mode: AlignmentVertexMode
     edge_alignment_mode: AlignmentEdgeMode
+    probability_calculation_mode: PosteriorProbabilitiesCalculationMode
 
     def _identify_path(self, path: str | Path):
         # Firstly, verify is the path is valid for the current working directory
@@ -157,6 +158,7 @@ class ParsedDriverFile:
                 initial_assignments_dictionary[coalescent_id] = pedigree_processed_ids
             vertex_alignment_mode = AlignmentVertexMode.ALL_ALIGNMENTS
             edge_alignment_mode = AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT
+            probability_calculation_mode = PosteriorProbabilitiesCalculationMode.SKIP
             if alignment_vertex_mode_key in data:
                 specified_alignment_mode = data[alignment_vertex_mode_key]
                 if specified_alignment_mode not in alignment_vertex_mode_dict:
@@ -167,13 +169,24 @@ class ParsedDriverFile:
                 if specified_alignment_mode not in alignment_edge_mode_dict:
                     raise YAMLValidationError(f"Invalid alignment mode specified: \"{specified_alignment_mode}\"")
                 edge_alignment_mode = alignment_edge_mode_dict[specified_alignment_mode]
+            if posterior_probability_calculation_mode_key in data:
+                specified_calculation_mode = data[posterior_probability_calculation_mode_key]
+                if specified_calculation_mode not in posterior_probability_calculation_mode_dict:
+                    raise YAMLValidationError(f"Invalid probability calculation mode"
+                                              f" specified: \"{specified_calculation_mode}\"")
+                probability_calculation_mode = posterior_probability_calculation_mode_dict[specified_calculation_mode]
+                if (probability_calculation_mode != PosteriorProbabilitiesCalculationMode.SKIP and
+                        edge_alignment_mode == AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT):
+                    raise YAMLValidationError(f"Probabilities cannot be calculated without calculating "
+                                              f"all the edge alignments")
             return ParsedDriverFile(pedigree_parsing_rules=pedigree_parsing_rules,
                                     coalescent_tree_parsing_rules=coalescent_tree_parsing_rules,
                                     initial_assignments=initial_assignments_dictionary,
                                     driver_file_path=filepath,
                                     output_path=output_path,
                                     vertex_alignment_mode=vertex_alignment_mode,
-                                    edge_alignment_mode=edge_alignment_mode
+                                    edge_alignment_mode=edge_alignment_mode,
+                                    probability_calculation_mode=probability_calculation_mode,
                                     )
         except yaml.YAMLError as e:
             raise YAMLValidationError(f"Error parsing YAML file: {e}")
@@ -187,6 +200,7 @@ class ProcessedDriverFile:
     initial_assignments: dict[int, [int]]
     alignment_vertex_mode: AlignmentVertexMode
     alignment_edge_mode: AlignmentEdgeMode
+    probability_calculation_mode: PosteriorProbabilitiesCalculationMode
 
     def preprocess_graphs_for_alignment(self):
         self.preprocess_pedigree()
@@ -268,7 +282,8 @@ class ProcessedDriverFile:
             initial_assignments=initial_assignments,
             output_path=parsed_driver_file.output_path,
             alignment_vertex_mode=parsed_driver_file.vertex_alignment_mode,
-            alignment_edge_mode=parsed_driver_file.edge_alignment_mode
+            alignment_edge_mode=parsed_driver_file.edge_alignment_mode,
+            probability_calculation_mode=parsed_driver_file.probability_calculation_mode
         )
 
     @staticmethod

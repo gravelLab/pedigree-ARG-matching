@@ -21,7 +21,8 @@ def run_driver_file(driver_filepath):
                                  logs_path=processed_driver_file.output_path,
                                  alignment_vertex_mode=processed_driver_file.alignment_vertex_mode,
                                  alignment_edge_mode=processed_driver_file.alignment_edge_mode,
-                                 result_callback_function=save_results_callback
+                                 result_callback_function=save_results_callback,
+                                 calculate_posterior_probabilities=processed_driver_file.probability_calculation_mode
                                  )
     run_alignments(graph_matcher=graph_matcher)
     save_alignment_result_to_files(

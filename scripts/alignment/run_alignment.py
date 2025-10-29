@@ -1,8 +1,8 @@
+from functools import partial
 from typing import cast
 
 from alignment.alignment_result import TreeAlignmentResults, SuccessCladeAlignmentResults, AlignmentResult, \
-    FailedClimbingCladeAlignmentResults, verify_global_vertex_inclusion_likelihoods_are_consistent, \
-    verify_vertex_inclusion_likelihoods_are_consistent_for_vertex_alignment
+    FailedClimbingCladeAlignmentResults
 from alignment.graph_matcher import *
 from alignment.potential_mrca_processed_graph import PotentialMrcaProcessedGraph
 from scripts.alignment_statistics.calculate_statistics import SuccessCladeAlignmentMetadata, \
@@ -76,9 +76,6 @@ def save_alignment_result_and_store_vertex_alignment(
         alignment_results_filename = f"alignment_{alignment_index}"
         result_filepath = result_dir_path / alignment_results_filename
         alignment_result.save_to_file(filepath=result_filepath, tree=coalescent_tree)
-        # The edge alignments can be heavy, so we can get rid of them after writing the results to the file
-        alignment_result.edge_alignments = None
-        alignment_result.example_edge_alignment = None
 
 
 def get_store_and_save_vertex_alignment_callback(coalescent_tree: CoalescentTree, directory_path: str | Path) \

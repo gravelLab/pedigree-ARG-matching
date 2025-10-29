@@ -206,6 +206,7 @@ class SuccessCladeAlignmentMetadata(CladeAlignmentMetadata):
             return
         probability_dictionary = self.clade_alignment_result.clade_alignment_posterior_probabilities.vertex_alignment_to_posterior_probability
         for index, alignment_likelihood in probability_dictionary.items():
+            assert alignment_likelihood >= 0.0
             rounded_alignment_likelihood = round_down(alignment_likelihood)
             alignment_filename = f"alignment_{index}"
             alignment_path = self.results_filepath / alignment_filename
@@ -224,8 +225,11 @@ class SuccessCladeAlignmentMetadata(CladeAlignmentMetadata):
             if not self.clade_alignment_statistics_metadata:
                 return
             if self.clade_alignment_result.clade_alignment_posterior_probabilities:
-                self._save_vertex_alignments_posterior_probabilities(statistics_file)
-                self._save_pedigree_vertex_inclusion_probabilities(statistics_file)
+                probabilities = self.clade_alignment_result.clade_alignment_posterior_probabilities
+                if probabilities.vertex_alignment_to_posterior_probability:
+                    self._save_vertex_alignments_posterior_probabilities(statistics_file)
+                if probabilities.vertex_posterior_probabilities:
+                    self._save_pedigree_vertex_inclusion_probabilities(statistics_file)
             else:
                 statistics_file.write("The posterior probabilities were not calculated\n")
             if self.clade_alignment_statistics_metadata.calculate_similarity:

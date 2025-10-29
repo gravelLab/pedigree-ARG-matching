@@ -1,18 +1,16 @@
 import os
 from pathlib import Path
 
-import pandas as pd
 import matplotlib.pyplot as plt
-from scripts.utility.basic_utility import get_filepath, get_non_existing_path, get_basename_without_extension
+import pandas as pd
+
+from scripts.utility.basic_utility import get_filepath, get_basename_without_extension
 
 
 def main():
     filepath = get_filepath("Specify the path to the data file:")
     os.chdir(Path(filepath).parent)
-    result_path = get_non_existing_path("Specify the resulting figure's filename (without extension):",
-                                        exit_on_empty=True)
-    if not result_path:
-        result_path = Path(filepath).parent / get_basename_without_extension(filepath)
+    result_path = Path(filepath).parent / get_basename_without_extension(filepath)
     # title = input("Specify the title of the figure:")
     df = pd.read_csv(filepath)
     # Define x-axis and values to plot

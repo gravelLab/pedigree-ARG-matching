@@ -7,6 +7,7 @@ import sys
 import traceback
 import warnings
 from abc import ABC, abstractmethod
+from concurrent.futures import Future
 from concurrent.futures import as_completed, ProcessPoolExecutor
 from functools import reduce
 from typing import cast
@@ -31,7 +32,7 @@ general_result_filename = "simulation_result.txt"
 detailed_result_filename = "detailed_simulation_result.txt"
 results_csv_filename = "results_by_clade.csv"
 percentile_csv_filename = "percentiles_by_clade.csv"
-phasing_accuracy_csv_filename = "phasing_accuracy_csv_filename.csv"
+phasing_accuracy_csv_filename = "phasing_accuracy.csv"
 partial_results_csv_filename = "partial_results.csv"
 classification_csv_header = ("proband_number,no_solutions,individual_and_spouses,individual_and_non_spouse,"
                              "no_individual_spouse,neither_individual_nor_spouse,"
@@ -329,11 +330,11 @@ class AbstractAlignmentTask(ABC):
                 else:
                     self.alignment_classification.individual_and_non_spouse_present_counter += 1
             else:
-                if simulation_root_vertex_individual_assignments.intersection(
+                if not simulation_root_vertex_individual_assignments.isdisjoint(
                         self.root_vertex_info.individual_and_spouses):
                     self.alignment_classification.individual_not_present_spouse_present_counter += 1
                 else:
-                    if simulation_root_vertex_individual_assignments.intersection(super_founders):
+                    if not simulation_root_vertex_individual_assignments.isdisjoint(super_founders):
                         self.alignment_classification.superfounder_present_individual_and_spouses_not_present += 1
                     else:
                         self.alignment_classification.neither_individual_nor_spouse_present_counter += 1
@@ -402,8 +403,6 @@ class AlignmentTask(AbstractAlignmentTask):
             save_alignment_result_to_files(alignment_result=alignment_general_results,
                                            graph_matcher=matcher,
                                            directory_path=self.simulation_subdirectory_path)
-        # result = alignment_general_results.clade_root_to_alignments
-        # clade_root = coalescent_tree.get_root_vertex()
         clade_alignment_results = alignment_general_results.get_unique_clade_results()
         if isinstance(clade_alignment_results, FailedClimbingCladeAlignmentResults):
             alignment_results = []
@@ -485,7 +484,7 @@ class MaximumAlignableSubcladeTask(AbstractAlignmentTask):
                                        alignment_vertex_mode=AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT,
                                        alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
                                        result_callback_function=callback_function,
-                                       calculate_posterior_probabilities=False)
+                                       calculate_posterior_probabilities=PosteriorProbabilitiesCalculationMode.SKIP)
                 matcher.find_alignments()
                 clade_results = alignment_general_results.get_unique_clade_results()
                 resulting_alignments = None
@@ -536,7 +535,7 @@ def run_initial_alignment(coalescent_tree: CoalescentTree, initial_pedigree: Pot
                                    alignment_vertex_mode=AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT,
                                    alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
                                    result_callback_function=callback_function,
-                                   calculate_posterior_probabilities=False)
+                                   calculate_posterior_probabilities=PosteriorProbabilitiesCalculationMode.SKIP)
     initial_matcher.find_alignments()
     if save_alignments_to_files:
         save_alignment_result_to_files(alignment_result=alignment_general_results,
@@ -709,7 +708,7 @@ class ErrorPedigreesAlignmentComparison(BaseErrorAlignmentComparison):
                 root_vertex_info=root_vertex_info,
                 alignment_vertex_mode=AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT,
                 alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
-                alignment_calculate_posterior_probabilities=False
+                alignment_calculate_posterior_probabilities=PosteriorProbabilitiesCalculationMode.SKIP
             )
             alignment_tasks.append(alignment_task)
         return alignment_tasks
@@ -756,7 +755,7 @@ class ErrorTreesAlignmentComparison(BaseErrorAlignmentComparison):
                 root_vertex_info=root_vertex_info,
                 alignment_vertex_mode=AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT,
                 alignment_edge_mode=AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
-                alignment_calculate_posterior_probabilities=False
+                alignment_calculate_posterior_probabilities=PosteriorProbabilitiesCalculationMode.SKIP
             )
             alignment_tasks.append(alignment_task)
         return alignment_tasks
@@ -1151,7 +1150,7 @@ def create_or_resolve_polytomy_script():
                 warnings.warn(f"Skipping {proband_number_directory}")
             initial_data_proband_dir_path = initial_data_parent_directory_path / proband_number_directory
             corresponding_proband_number_error_trees = proband_number_parent_directory_path / proband_number_directory
-            # If the file is not a directory, or it's empty, simply skip the file
+            # If the file is not a directory, or it's empty, skip the file
             if not os.path.isdir(corresponding_proband_number_error_trees) or not os.listdir(
                     corresponding_proband_number_error_trees):
                 continue
@@ -1180,7 +1179,7 @@ def accumulate_alignment_likelihoods_until_percentile_reached(normalized_likelih
     # Conduct the cumulative likelihood calculations
     sorted_likelihoods = sorted(normalized_likelihoods, reverse=True)
     likelihoods_length = len(normalized_likelihoods)
-    # Collect until threshold is reached
+    # Collect until the threshold is reached
     cumulative = 0.0
     selected = []
     for val in sorted_likelihoods:
@@ -1275,7 +1274,9 @@ def prepare_tree_pedigree_subdirectories_alignment_tasks(parent_directory: str |
                                            root_vertex_info=None,
                                            alignment_vertex_mode=AlignmentVertexMode.ALL_ALIGNMENTS,
                                            alignment_edge_mode=AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS,
-                                           alignment_calculate_posterior_probabilities=True)
+                                           alignment_calculate_posterior_probabilities=
+                                           PosteriorProbabilitiesCalculationMode.VERTEX_ALIGNMENT_PROBABILITY
+                                           )
             alignment_tasks.append(alignment_task)
             proband_alignment_tasks.append(alignment_task)
         if not proband_alignment_tasks:
@@ -1302,8 +1303,9 @@ def run_perfect_data_alignment_and_calculate_statistics(proband_simulation_path,
     alignments = [x.vertex_alignment for x in alignment_results]
     alignment_number = len(alignments)
     filepath = alignment_task.simulation_subdirectory_path
-    alignment_probability_dictionary = clade_results.clade_alignment_posterior_probabilities.vertex_alignment_to_posterior_probability
-    normalized_likelihoods = [float(alignment_probability_dictionary[k]) for k in range(alignment_number)]
+    clade_posterior_probabilities = clade_results.clade_alignment_posterior_probabilities
+    alignment_probability_dictionary = clade_posterior_probabilities.vertex_alignment_to_posterior_probability
+    normalized_likelihoods = [alignment_probability_dictionary[k] for k in range(alignment_number)]
     # normalized_likelihoods_estimated = get_vertex_alignments_normalized_probabilities(
     #     alignments=alignments, tree=tree, pedigree=pedigree
     # )
@@ -1331,7 +1333,29 @@ def run_perfect_data_alignment_and_calculate_statistics(proband_simulation_path,
             total_phasing_accuracy, total_weighted_phasing_accuracy)
 
 
-def run_tree_pedigree_subdirectories_results(proband_number_to_results: dict, simulation_directory_path: str | Path):
+# Dummy executor for profiling
+class DummyExecutor:
+    """Synchronous replacement for ProcessPoolExecutor (compatible with as_completed)."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def submit(self, fn, *args, **kwargs):
+        fut = Future()
+        try:
+            result = fn(*args, **kwargs)
+            fut.set_result(result)
+        except Exception as e:
+            fut.set_exception(e)
+        return fut
+
+
+def run_tree_pedigree_subdirectories_results(proband_number_to_results: dict,
+                                             simulation_directory_path: str | Path,
+                                             run_parallel=True):
     # Run the alignments and save the likelihoods
     alignment_classifications = []
     results_csv_filepath = simulation_directory_path / results_csv_filename
@@ -1344,8 +1368,12 @@ def run_tree_pedigree_subdirectories_results(proband_number_to_results: dict, si
         results_csv_file.write(classification_csv_header)
         percentile_csv_file.write(percentile_csv_header)
         phasing_accuracy_csv_file.write(phasing_accuracy_csv_header)
-
-        with ProcessPoolExecutor() as executor:
+        if run_parallel:
+            print("Running in parallel")
+        else:
+            print("Running sequentially")
+        Executor = ProcessPoolExecutor if run_parallel else DummyExecutor
+        with Executor() as executor:
             futures = []
             # Prepare the alignment tasks
             for proband_simulation_path, proband_alignment_tasks in proband_number_to_results.items():
@@ -1371,32 +1399,35 @@ def run_tree_pedigree_subdirectories_results(proband_number_to_results: dict, si
                 phasing_accuracy_csv_file.write(f"{proband_number},{total_phasing_accuracy},"
                                                 f"{total_weighted_phasing_accuracy}\n")
                 phasing_accuracy_csv_file.flush()
+                # The calculation is done in a different process, so we can't look up the results from the task list
                 proband_simulation_path_to_alignment_classifications[proband_simulation_path].append(
                     alignment_task.alignment_classification
                 )
-            # Process the alignment results. These results are accumulated before writing, so we're doing separately
-            for proband_simulation_path, alignment_classifications in proband_simulation_path_to_alignment_classifications.items():
-                initial_directory_name = proband_simulation_path.parent.name
-                proband_results_path = proband_simulation_path / total_results_filename
-                os.mkdir(proband_simulation_path)
-                # Calculating the accumulative result for this proband number
-                proband_classifications = [x.alignment_classification for x in proband_alignment_tasks]
-                proband_result = reduce(lambda x, y: x.add_results(y), proband_classifications)
-                save_alignment_results_to_file(proband_results_path, proband_result)
-                alignment_classifications.extend(proband_classifications)
-                # Log the results separately for every clade
-                save_multiple_alignment_classifications(
-                    results_csv_file=results_csv_file,
-                    alignment_classifications=proband_classifications,
-                    proband_number=initial_directory_name
-                )
-                results_csv_file.flush()
+        # Process the alignment results. These results are accumulated before writing
+        for proband_simulation_path, alignment_classifications in proband_simulation_path_to_alignment_classifications.items():
+            initial_directory_name = proband_simulation_path.parent.name
+            proband_results_path = proband_simulation_path / total_results_filename
+            os.mkdir(proband_simulation_path)
+            # Calculating the accumulative result for this proband number
+            proband_result = reduce(lambda x, y: x.add_results(y), alignment_classifications)
+            save_alignment_results_to_file(proband_results_path, proband_result)
+            # Log the results separately for every clade
+            save_multiple_alignment_classifications(
+                results_csv_file=results_csv_file,
+                alignment_classifications=[proband_result],
+                proband_number=initial_directory_name
+            )
+            results_csv_file.flush()
     return alignment_classifications
 
 
-def tree_pedigree_subdirectories():
-    parent_directory = Path(get_directory_path("Specify the path to the parent directory:"))
-    simulation_name = get_non_empty_string("Specify the simulation name:")
+def tree_pedigree_subdirectories(parent_directory: str = None, simulation_name: str = None,
+                                 run_parallel: bool = False):
+    if not parent_directory:
+        parent_directory = get_directory_path("Specify the path to the parent directory:")
+    if not simulation_name:
+        simulation_name = get_non_empty_string("Specify the simulation name:")
+    parent_directory = Path(parent_directory)
     results_directory_path = parent_directory / results_dir_name
     os.makedirs(results_directory_path, exist_ok=True)
     simulation_directory_path = results_directory_path / simulation_name
@@ -1408,7 +1439,8 @@ def tree_pedigree_subdirectories():
         simulation_directory_path=simulation_directory_path
     )
     alignment_classifications = run_tree_pedigree_subdirectories_results(proband_simulation_path_to_results,
-                                                                         simulation_directory_path)
+                                                                         simulation_directory_path,
+                                                                         run_parallel=run_parallel)
     return alignment_classifications
 
 
@@ -1548,17 +1580,17 @@ def validate_required_arguments(arguments, required_args):
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description=script_help_description)
-    parser.add_argument("--error-dir", type=str, required=True,
-                        help="Path to the parent directory of error-simulated pedigree directories.")
-    parser.add_argument("--mode", choices=["1", "2", "3"], required=True,
-                        help="Specify the mode of operation. Choose from 1, 2, or 3.")
+    parser.add_argument("--mode", choices=["1", "2", "3", "9"], required=True,
+                        help="Specify the mode of operation. Choose from 1, 2, 3 or 9.")
     parser.add_argument("--simulation-name", type=str, required=True,
                         help="Specify the simulation subpath.")
-
+    parser.add_argument("--error-dir", type=str,
+                        help="Path to the parent directory of error-simulated pedigree directories (Modes 1, 2, 3).")
+    parser.add_argument("--parallel", action='store_true',
+                        help="Enable parallel processing (Modes 3 and 9)")
     # Mode 1 specific arguments
     parser.add_argument("--tree-path", type=str, help="Path to the coalescent tree (Mode 1)")
     parser.add_argument("--pedigree-path", type=str, help="Path to the coalescent tree (Mode 1)")
-
     # Mode 2 specific arguments
     parser.add_argument("--initial-dirs", nargs='+', help="Path to multiple tree-pedigree "
                                                           "pair directories (Mode 2)")
@@ -1566,19 +1598,21 @@ def parse_arguments():
     # Mode 3 specific arguments
     parser.add_argument("--initial-parent-dir", type=str, help="Path to the parent directory containing "
                                                                "tree-pedigree pair directories (Mode 3)")
-    parser.add_argument("--parallel", action='store_true', help="Enable parallel processing (Mode 3)")
     parser.add_argument("--max-workers", type=int, help="Maximum number of workers for "
                                                         "parallel processing (Mode 3)")
+    # Mode 9 specific arguments
+    parser.add_argument("--parent-data-dir", type=str, help="Path to the parent data directory (Mode 9)")
 
-    # Parse the arguments
     arguments = parser.parse_args()
-    # Define required arguments for each mode
+    # Required arguments for each mode
     mode_args = {
-        "1": ["--tree-path", "--pedigree-path"],
-        "2": ["--initial-dirs"],
-        "3": ["--initial-parent-dir", "--parallel", "--max-workers"]
+        "1": ["--error-dir", "--tree-path", "--pedigree-path"],
+        "2": ["--error-dir", "--initial-dirs"],
+        "3": ["--error-dir", "--initial-parent-dir", "--parallel", "--max-workers"],
+        "9": ["--parent-data-dir", "--parallel"]
     }
-    shared_arguments = ["--error-dir", "--mode", "--simulation-name"]
+    # Arguments shared across all modes
+    shared_arguments = ["--mode", "--simulation-name"]
     # Get the required arguments for the specified mode
     mode_specific_args = mode_args[arguments.mode]
 
@@ -1593,20 +1627,20 @@ def parse_arguments():
             print(f"Mode {arguments.mode} does not accept the argument: {arg}")
             sys.exit(1)
 
-    # Check that the error directory exists and the simulation subpath is not taken (i.e. there is no folder with that
+    # Check that the error directory exists and the simulation subpath is not taken (i.e., there is no folder with that
     # name under the error directory)
-    error_directory_path = arguments.error_dir
+    data_directory = arguments.error_dir if arguments.error_dir else arguments.parent_data_dir
     simulation_name = arguments.simulation_name
-    if not verify_folder_path(error_directory_path):
-        print(f"The specified directory path {error_directory_path} either does not exist or is not a directory")
+    if not verify_folder_path(data_directory):
+        print(f"The specified directory path {data_directory} either does not exist or is not a directory")
         return
-    simulation_folder_path = Path(error_directory_path) / simulation_name
+    simulation_folder_path = Path(data_directory) / simulation_name
     if os.path.exists(simulation_folder_path):
         print(f"The specified simulation path {simulation_folder_path} already exists")
         return
     # Check the mode and print the corresponding information
     print(f"The specified mode is: {arguments.mode}")
-    print(f"Error directory is: {error_directory_path}")
+    print(f"Data directory is: {data_directory}")
     selected_mode = arguments.mode
     match selected_mode:
         case "1":
@@ -1620,7 +1654,7 @@ def parse_arguments():
                 print(f"Running mode 1 with tree_path: {tree_path} and pedigree_path: {pedigree_path}")
                 run_single_data_pedigree_error_directory_alignment(tree_path=tree_path,
                                                                    pedigree_no_errors_path=pedigree_path,
-                                                                   error_pedigrees_folder_path=error_directory_path,
+                                                                   error_pedigrees_folder_path=data_directory,
                                                                    input_simulation_subpath=simulation_name)
             else:
                 print("Mode 1 requires both --tree-path and --pedigree-path.")
@@ -1634,7 +1668,7 @@ def parse_arguments():
                         return
                 print(f"Running mode 2 selected with initial_dirs: {arguments.initial_dirs}")
                 run_specific_error_pedigree_directories(paths=pedigree_tree_directory_paths,
-                                                        error_pedigrees_folder_path=error_directory_path,
+                                                        error_pedigrees_folder_path=data_directory,
                                                         simulation_subpath=simulation_name)
             else:
                 print("Mode 2 requires --initial-dirs.")
@@ -1657,13 +1691,21 @@ def parse_arguments():
                         sys.exit(1)
                 print(f"Running mode 3 selected with initial_parent_dir: {parent_paths_directory}")
                 run_specific_error_pedigree_directories(paths=pedigree_tree_directory_paths,
-                                                        error_pedigrees_folder_path=error_directory_path,
+                                                        error_pedigrees_folder_path=data_directory,
                                                         simulation_subpath=simulation_name,
                                                         parallelize=parallel_processing,
                                                         max_workers=max_workers)
             else:
                 print("Mode 3 requires --initial-parent-dir.")
                 return
+        case "9":
+            parallel_processing = arguments.parallel
+            print(f"Running mode 9 with parent_data_dir: {data_directory}")
+            tree_pedigree_subdirectories(
+                parent_directory=data_directory,
+                simulation_name=simulation_name,
+                run_parallel=parallel_processing
+            )
 
 
 def main():

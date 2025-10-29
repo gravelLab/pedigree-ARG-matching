@@ -13,24 +13,24 @@ Problem definition
 Specifically, given the following inputs:
 
 1. **The Pedigree** :math:`P`;
-2. **The ARG** :math:`A`: An ARG with a set of leaf vertices :math:`L`, representing genetic transmissions within :math:`P`;
+2. **The coalescent tree** :math:`T`: An ARG with a set of leaf vertices :math:`L`, representing genetic transmissions within :math:`P`;
 3. **Initial Assignments**: A mapping :math:`f: L \to 2^{V(P)} \setminus \{\emptyset\}`, specifying initial relationships between ARG leaves and pedigree vertices,
 
-the algorithm computes all possible **vertex alignments** between :math:`A` and :math:`P`.
+the algorithm computes all possible **vertex alignments** between :math:`T` and :math:`P`.
 
-A **vertex alignment** is a function that assigns each vertex in :math:`A` to a vertex in :math:`P`.
+A **vertex alignment** is a function that assigns each vertex in :math:`T` to a vertex in :math:`P`.
 
 .. math::
 
-   h: V(A) \to V(P)
+   h: V(T) \to V(P)
 
 We say that a vertex alignment is **valid** if the corresponding vertices in :math:`P`
-represent a history of genetic transmissions that respect :math:`A`.
+represent a history of genetic transmissions that respect :math:`T`.
 
 
 In order to verify that a given vertex alignment is indeed valid,
 the algorithms finds at least one valid **edge alignment** (that is, an alignment that maps
-every edge in :math:`E(A)` to a path in :math:`P`) that corresponds to the given vertex alignment.
+every edge in :math:`E(T)` to a path in :math:`P`) that corresponds to the given vertex alignment.
 
 In other words, the goal is to find valid extensions of the initial assignments provided as input.
 
@@ -175,7 +175,9 @@ To parse this file, use the following YAML configuration:
 Alignment modes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 You can also optionally customize the **alignment mode** that the algorithm will use by using the ``alignment_vertex_mode``
-and the ``alignment_edge_mode`` options in the input file.
+and the ``alignment_edge_mode`` options in the input file. Additionally, you can specify the
+``posterior_probability_calculation_mode`` to calculate the probabilities of the found vertex alignments and
+the corresponding pedigree vertices.
 
 ------------------------------------
 Alignment vertex mode
@@ -206,6 +208,22 @@ Again, there are two possible modes that you can use:
 1. ``one`` — Finds a single edge alignment per vertex alignment to justify its correctness. This is the default mode.
 
 2. ``all`` — Finds all possible edge alignments for each vertex alignment.
+
+------------------------------------
+Probability calculation mode
+------------------------------------
+
+In case when all the edge alignments are calculated, we can also compute the posterior probabilities for vertex
+alignments and even vertex inclusion probabilities for all the pedigree vertices. Notice that the alignment will fail if
+the edge alignment mode is not "all".
+
+Possible modes:
+
+1. ``skip`` — Does not calculate any posterior probabilities. This is the default mode.
+
+2. ``vertex_alignment`` — Calculates the posterior probabilities for vertex alignments.
+
+3. ``vertex_inclusion`` — Calculates the posterior probabilities for vertex alignments and vertex inclusion probabilities.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Output

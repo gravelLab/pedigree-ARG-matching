@@ -1,11 +1,14 @@
 from enum import Enum
 
-from alignment.configuration import AlignmentVertexMode, AlignmentEdgeMode
+from alignment.configuration import AlignmentVertexMode, AlignmentEdgeMode, PosteriorProbabilitiesCalculationMode
 
 
 class PloidType(Enum):
     Paternal = "P"
     Maternal = "M"
+
+
+ploid_types = (PloidType.Paternal.value, PloidType.Maternal.value)
 
 
 # YAML keys used in the driver file
@@ -22,6 +25,7 @@ verify_graph_has_no_cycles_key = "check_for_cycles"
 output_path_key = "output_path"
 alignment_vertex_mode_key = "alignment_vertex_mode"
 alignment_edge_mode_key = "alignment_edge_mode"
+posterior_probability_calculation_mode_key = "posterior_probability_calculation_mode"
 
 alignment_vertex_mode_dict = {
     "all": AlignmentVertexMode.ALL_ALIGNMENTS,
@@ -31,4 +35,10 @@ alignment_vertex_mode_dict = {
 alignment_edge_mode_dict = {
     "one": AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT,
     "all": AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS
+}
+
+posterior_probability_calculation_mode_dict = {
+    "skip": PosteriorProbabilitiesCalculationMode.SKIP,
+    "vertex_alignment": PosteriorProbabilitiesCalculationMode.VERTEX_ALIGNMENT_PROBABILITY,
+    "vertex_inclusion": PosteriorProbabilitiesCalculationMode.INDIVIDUAL_INCLUSION_PROBABILITY
 }

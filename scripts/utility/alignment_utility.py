@@ -2,7 +2,8 @@ from pathlib import Path
 
 import yaml
 
-from alignment.alignment_constants import PloidType, coalescent_id_key, initial_assignments_key, pedigree_ids_key
+from alignment.alignment_constants import PloidType, coalescent_id_key, initial_assignments_key, pedigree_ids_key, \
+    ploid_types
 
 
 def dict_has_duplicate_values(dictionary: dict):
@@ -38,7 +39,7 @@ def parse_dictionary_from_file(file_path: str):
 
 def convert_ploid_id_to_individual(ploid_id: int):
     individual_id = ploid_id // 2
-    ploid_type = PloidType.Paternal.value if ploid_id % 2 == 0 else PloidType.Maternal.value
+    ploid_type = ploid_types[ploid_id % 2]
     return f"{individual_id}{ploid_type}"
 
 
