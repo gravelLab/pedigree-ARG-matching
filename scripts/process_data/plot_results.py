@@ -2,6 +2,7 @@ import csv
 from pathlib import Path
 
 from matplotlib import pyplot as plt
+import matplotlib.ticker as mticker
 
 from scripts.utility.basic_utility import get_filepath, get_number_input_with_lower_bound, get_number_input_in_bounds, \
     get_basename_without_extension
@@ -47,7 +48,7 @@ def main():
     plt.figure(figsize=(14, 10))  # larger canvas
 
     # Create scatter plot
-    plt.scatter(x_vals, y_vals, s=70)  # you can increase `s` for larger points
+    plt.scatter(x_vals, y_vals, s=70, alpha=0.6)
 
     # Log scale options
     if x_axis_option == 2:
