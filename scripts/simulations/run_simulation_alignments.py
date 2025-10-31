@@ -920,8 +920,6 @@ def run_specific_error_pedigree_directories_parallel(paths: list[str], error_ped
     error_pedigrees_folder_path = Path(error_pedigrees_folder_path)
     error_pedigree_parent_directory = error_pedigrees_folder_path.parent
     simulation_directory_path = error_pedigree_parent_directory / results_dir_name / simulation_subpath
-    os.makedirs(name=simulation_directory_path, exist_ok=True)
-
     tree_alignment_comparisons: [ErrorPedigreesAlignmentComparison] = []
     # Separating all the pedigree-tree directories into separate comparison objects
     for path in paths:
@@ -1008,49 +1006,68 @@ def get_absolute_paths_to_subfolders(directory_path: str | Path) -> list[str]:
     ]
 
 
-def children_tree_directories_error_pedigree_directory_mode():
-    current_working_directory = Path.cwd()
-    error_pedigrees_directory_path = get_directory_path("Specify the absolute path to the error pedigrees directory:")
-    tree_pedigree_parent_directory_path = get_directory_path("Specify the absolute path to a parent directory "
-                                                             "containing tree-pedigree subdirectories:")
-    os.chdir(error_pedigrees_directory_path)
-    input_simulation_name = get_non_existing_path("Specify the simulation subpath:")
+def children_tree_directories_error_pedigree_directory_mode(error_pedigrees_directory_path: str = None,
+                                                            tree_pedigree_parent_directory_path: str = None,
+                                                            simulation_name: str = None,
+                                                            parallel_processing: bool = None,
+                                                            max_workers: int = None):
+    if error_pedigrees_directory_path is None:
+        error_pedigrees_directory_path = get_directory_path("Specify the absolute path to"
+                                                            " the error pedigrees directory:")
+    if tree_pedigree_parent_directory_path is None:
+        tree_pedigree_parent_directory_path = get_directory_path("Specify the absolute path to a parent directory "
+                                                                 "containing tree-pedigree subdirectories:")
+    if simulation_name is None:
+        current_working_directory = Path.cwd()
+        os.chdir(error_pedigrees_directory_path)
+        simulation_name = get_non_existing_path("Specify the simulation subpath:")
+        os.chdir(current_working_directory)
     tree_pedigree_paths = get_absolute_paths_to_subfolders(tree_pedigree_parent_directory_path)
-    os.chdir(current_working_directory)
-    parallel_processing = get_yes_or_no("Do you want to parallelize the alignments?")
-    max_workers = 0
-    if parallel_processing:
+    if parallel_processing is None:
+        parallel_processing = get_yes_or_no("Do you want to parallelize the alignments?")
+    if parallel_processing and max_workers is None:
         max_workers = get_natural_number_with_lower_bound(input_request="Specify the number of worker"
                                                                         " processed to be used (at least 2): ",
                                                           lower_bound=2
                                                           )
     run_specific_error_pedigree_directories(paths=tree_pedigree_paths,
                                             error_pedigrees_folder_path=error_pedigrees_directory_path,
-                                            simulation_subpath=input_simulation_name,
+                                            simulation_subpath=simulation_name,
                                             parallelize=parallel_processing,
                                             max_workers=max_workers)
 
 
-def tree_directories_grouped_by_proband_number_and_error_pedigree_directory():
+def tree_directories_grouped_by_proband_number_and_error_pedigree_directory(
+        error_pedigrees_directory_path: str = None,
+        tree_super_directory_path: str = None,
+        simulation_name: str = None,
+        parallel_processing: bool = None,
+        max_workers: int = None
+):
     current_working_directory = Path.cwd()
-    error_pedigrees_directory_path = get_directory_path("Specify the absolute path to the error pedigrees directory:")
-    tree_super_directory_path = get_directory_path("Specify the absolute path to a parent directory with subdirectories"
-                                                   "grouped by proband number:")
-    os.chdir(error_pedigrees_directory_path)
-    input_simulation_name = get_non_existing_path("Specify the simulation subpath:")
-    input_simulation_name = Path(input_simulation_name)
-    os.chdir(current_working_directory)
-    parallel_processing = get_yes_or_no("Do you want to parallelize the alignments?")
-    max_workers = 0
-    if parallel_processing:
+    if error_pedigrees_directory_path is None:
+        error_pedigrees_directory_path = get_directory_path("Specify the absolute path "
+                                                            "to the error pedigrees directory:")
+    if tree_super_directory_path is None:
+        tree_super_directory_path = get_directory_path("Specify the absolute path to a "
+                                                       "parent directory with subdirectories"
+                                                       " grouped by proband number:")
+    if simulation_name is None:
+        os.chdir(error_pedigrees_directory_path)
+        simulation_name = get_non_existing_path("Specify the simulation subpath:")
+        os.chdir(current_working_directory)
+    simulation_name = Path(simulation_name)
+    if parallel_processing is None:
+        parallel_processing = get_yes_or_no("Do you want to parallelize the alignments?")
+    if parallel_processing and max_workers is None:
         max_workers = get_natural_number_with_lower_bound(input_request="Specify the number of worker"
                                                                         " processed to be used (at least 2): ",
                                                           lower_bound=2
                                                           )
     error_pedigrees_directory_path_parent = Path(error_pedigrees_directory_path).parent
-    result_directory_path = error_pedigrees_directory_path_parent / input_simulation_name
+    result_directory_path = error_pedigrees_directory_path_parent / simulation_name
     os.makedirs(result_directory_path, exist_ok=True)
-    results_csv_filepath = error_pedigrees_directory_path_parent / input_simulation_name / results_csv_filename
+    results_csv_filepath = result_directory_path / results_csv_filename
     with open(results_csv_filepath, "a") as results_file:
         results_file.write(classification_csv_header)
         for proband_tree_directory in os.listdir(tree_super_directory_path):
@@ -1061,7 +1078,7 @@ def tree_directories_grouped_by_proband_number_and_error_pedigree_directory():
                 continue
             proband_tree_directory_path = Path(tree_super_directory_path) / proband_tree_directory
             tree_pedigree_paths = get_absolute_paths_to_subfolders(proband_tree_directory_path)
-            proband_directory_simulation_name = Path(input_simulation_name) / proband_tree_directory
+            proband_directory_simulation_name = Path(simulation_name) / proband_tree_directory
             results = run_specific_error_pedigree_directories(paths=tree_pedigree_paths,
                                                               error_pedigrees_folder_path=error_pedigrees_directory_path,
                                                               simulation_subpath=proband_directory_simulation_name,
@@ -1580,8 +1597,8 @@ def validate_required_arguments(arguments, required_args):
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description=script_help_description)
-    parser.add_argument("--mode", choices=["1", "2", "3", "9"], required=True,
-                        help="Specify the mode of operation. Choose from 1, 2, 3 or 9.")
+    parser.add_argument("--mode", choices=["1", "2", "3", "4", "9"], required=True,
+                        help="Specify the mode of operation. Choose from 1, 2, 3, 4 or 9.")
     parser.add_argument("--simulation-name", type=str, required=True,
                         help="Specify the simulation subpath.")
     parser.add_argument("--error-dir", type=str,
@@ -1609,6 +1626,7 @@ def parse_arguments():
         "1": ["--error-dir", "--tree-path", "--pedigree-path"],
         "2": ["--error-dir", "--initial-dirs"],
         "3": ["--error-dir", "--initial-parent-dir", "--parallel", "--max-workers"],
+        "4": ["--error-dir", "--parent-data-dir", "--parallel", "--max-workers"],
         "9": ["--parent-data-dir", "--parallel"]
     }
     # Arguments shared across all modes
@@ -1627,20 +1645,16 @@ def parse_arguments():
             print(f"Mode {arguments.mode} does not accept the argument: {arg}")
             sys.exit(1)
 
-    # Check that the error directory exists and the simulation subpath is not taken (i.e., there is no folder with that
-    # name under the error directory)
-    data_directory = arguments.error_dir if arguments.error_dir else arguments.parent_data_dir
     simulation_name = arguments.simulation_name
-    if not verify_folder_path(data_directory):
-        print(f"The specified directory path {data_directory} either does not exist or is not a directory")
-        return
-    simulation_folder_path = Path(data_directory) / simulation_name
-    if os.path.exists(simulation_folder_path):
-        print(f"The specified simulation path {simulation_folder_path} already exists")
-        return
+    error_dir_path = arguments.error_dir
+    parent_data_dir_path = arguments.parent_data_dir
     # Check the mode and print the corresponding information
     print(f"The specified mode is: {arguments.mode}")
-    print(f"Data directory is: {data_directory}")
+    print(f"The simulation name is: {simulation_name}")
+    if parent_data_dir_path:
+        print(f"Parent data directory is: {parent_data_dir_path}")
+    if error_dir_path:
+        print(f"Error directory is: {error_dir_path}")
     selected_mode = arguments.mode
     match selected_mode:
         case "1":
@@ -1654,7 +1668,7 @@ def parse_arguments():
                 print(f"Running mode 1 with tree_path: {tree_path} and pedigree_path: {pedigree_path}")
                 run_single_data_pedigree_error_directory_alignment(tree_path=tree_path,
                                                                    pedigree_no_errors_path=pedigree_path,
-                                                                   error_pedigrees_folder_path=data_directory,
+                                                                   error_pedigrees_folder_path=error_dir_path,
                                                                    input_simulation_subpath=simulation_name)
             else:
                 print("Mode 1 requires both --tree-path and --pedigree-path.")
@@ -1668,7 +1682,7 @@ def parse_arguments():
                         return
                 print(f"Running mode 2 selected with initial_dirs: {arguments.initial_dirs}")
                 run_specific_error_pedigree_directories(paths=pedigree_tree_directory_paths,
-                                                        error_pedigrees_folder_path=data_directory,
+                                                        error_pedigrees_folder_path=error_dir_path,
                                                         simulation_subpath=simulation_name)
             else:
                 print("Mode 2 requires --initial-dirs.")
@@ -1691,18 +1705,31 @@ def parse_arguments():
                         sys.exit(1)
                 print(f"Running mode 3 selected with initial_parent_dir: {parent_paths_directory}")
                 run_specific_error_pedigree_directories(paths=pedigree_tree_directory_paths,
-                                                        error_pedigrees_folder_path=data_directory,
+                                                        error_pedigrees_folder_path=error_dir_path,
                                                         simulation_subpath=simulation_name,
                                                         parallelize=parallel_processing,
                                                         max_workers=max_workers)
             else:
                 print("Mode 3 requires --initial-parent-dir.")
                 return
+        case "4":
+            parallel_processing = arguments.parallel
+            max_workers = arguments.max_workers
+            if parallel_processing:
+                if max_workers is None or max_workers <= 1:
+                    print("When --parallel is set, you must provide --max-workers with a value greater than 1.")
+                    sys.exit(1)
+            tree_directories_grouped_by_proband_number_and_error_pedigree_directory(
+                max_workers=max_workers,
+                parallel_processing=parallel_processing,
+                simulation_name=simulation_name,
+                tree_super_directory_path=parent_data_dir_path,
+                error_pedigrees_directory_path=error_dir_path
+            )
         case "9":
             parallel_processing = arguments.parallel
-            print(f"Running mode 9 with parent_data_dir: {data_directory}")
             tree_pedigree_subdirectories(
-                parent_directory=data_directory,
+                parent_directory=parent_data_dir_path,
                 simulation_name=simulation_name,
                 run_parallel=parallel_processing
             )
