@@ -16,7 +16,7 @@ log_axis_options = 2
 def main():
     input_csv_filepath = get_filepath("Specify the input csv file path:")
     input_filename_no_ext = get_basename_without_extension(input_csv_filepath)
-    output_filename = f"{input_filename_no_ext}.png"
+    output_filename = f"{input_filename_no_ext}.svg"
     output_filepath = Path(input_csv_filepath).parent / output_filename
 
     x_axis_column_index = get_number_input_with_lower_bound(

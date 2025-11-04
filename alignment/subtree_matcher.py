@@ -36,20 +36,16 @@ class SubtreeMatcher:
         """
         Builds all the distinct valid alignment for the coalescent vertex subclade.
         """
-        if self.subtree_alignments is not None:
-            return self.subtree_alignments
-        results = []
         root_assignment_dict = {self.root_coalescent_tree: self.root_pedigree}
-        # If the given vertex has no children, the resulting alignment is a dictionary with one key-value pair
+
         if self.children_assignments is None:
-            return [root_assignment_dict]
-        # If there are children assignments, loop over all the corresponding children alignments
+            yield root_assignment_dict
+            return
+
         for children_assignment in self.children_assignments:
             children_alignments = [x.get_all_subtree_alignments() for x in children_assignment.values()]
-            for children_dictionaries in product(*children_alignments):
+            for children_dicts in product(*children_alignments):
                 new_result = dict(root_assignment_dict)
-                for dictionary in children_dictionaries:
-                    new_result.update(dictionary)
-                results.append(new_result)
-        self.subtree_alignments = results
-        return results
+                for d in children_dicts:
+                    new_result.update(d)
+                yield new_result

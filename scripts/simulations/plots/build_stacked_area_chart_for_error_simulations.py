@@ -47,8 +47,8 @@ def main():
                                     label=col, alpha=0.7)
         handles.append(fill)
 
-    plt.xlabel("Proband Number", fontsize=40)
-    plt.ylabel("Percentage (%)", fontsize=40)
+    #plt.xlabel("Proband Number", fontsize=40)
+    #plt.ylabel("Percentage (%)", fontsize=40)
 
     #plt.title(title, fontsize=30, pad=30)
 
@@ -84,7 +84,7 @@ def main():
     plt.tick_params(axis="x", pad=40)
     plt.tick_params(axis="y", pad=40)
 
-    plt.xlim(2, max(x))
+    plt.xlim(3, max(x))
     # Use tight_layout for better adjustment
     # plt.tight_layout()
 
