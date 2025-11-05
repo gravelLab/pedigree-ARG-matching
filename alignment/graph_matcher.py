@@ -405,11 +405,9 @@ class GraphMatcher:
 
     def _get_verified_alignments_brute_force(self, matcher: SubtreeMatcher):
         alignments = matcher.get_all_subtree_alignments()
-        self.log(f"There are {len(alignments)} alignments for the matcher, filtering the results")
         valid_alignments = 0
-        total_alignments = len(alignments)
         for index, alignment in enumerate(alignments):
-            self.log(f"Processing alignment {index}/{total_alignments}")
+            self.log(f"Processing alignment {index}")
             alignment_verification_result = self._verify_valid_alignment(potential_alignment=alignment)
             if alignment_verification_result:
                 self.result_callback_function(alignment_verification_result)
@@ -420,7 +418,6 @@ class GraphMatcher:
         self.log(f"Finding an example alignment for the assignment "
                  f"{root_matcher.root_coalescent_tree}: {root_matcher.root_pedigree}")
         alignments = root_matcher.get_all_subtree_alignments()
-        self.log(f"There are {len(alignments)} potential alignments")
         for alignment in alignments:
             alignment_verification = self._verify_valid_alignment(potential_alignment=alignment)
             if alignment_verification:
@@ -689,8 +686,8 @@ class GraphMatcher:
                     potential_alignment=potential_alignment,
                     igraph_id_to_original_id=igraph_id_to_original_id,
                     # search_function=self._edge_alignment_search_simple_product
-                    # search_function=self._edge_alignment_search_sort_by_value_space
-                    search_function=self._find_edge_alignments_csp
+                    search_function=self._edge_alignment_search_sort_by_value_space
+                    # search_function=self._find_edge_alignments_csp
                 )
             case AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS:
                 maximum_flow_value = network_graph.maxflow_value(source=source_vertex_label,
@@ -704,8 +701,8 @@ class GraphMatcher:
                     potential_alignment=potential_alignment,
                     igraph_id_to_original_id=igraph_id_to_original_id,
                     # search_function=self._edge_alignment_search_simple_product
-                    # search_function=self._edge_alignment_search_sort_by_value_space
-                    search_function=self._find_edge_alignments_csp
+                    search_function=self._edge_alignment_search_sort_by_value_space
+                    # search_function=self._find_edge_alignments_csp
                 )
 
     def _verify_valid_alignment(self, potential_alignment: dict[int, int]) -> FullAlignmentResult:
