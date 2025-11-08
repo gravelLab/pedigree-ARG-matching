@@ -7,7 +7,6 @@ from itertools import chain
 from pathlib import Path
 
 import numpy
-import numpy as np
 from lineagekit.core.CoalescentTree import CoalescentTree
 from lineagekit.core.PloidPedigree import PloidPedigree
 
@@ -51,10 +50,6 @@ def get_vertex_alignment_phasing_accuracy(vertex_alignment: dict[int, int], prob
             cumulative_phasing_accuracy += 1
     resulting_accuracy = cumulative_phasing_accuracy / proband_number
     return resulting_accuracy
-
-
-def get_edge_alignment_length(edge_alignment: dict[(int, int), [int]]) -> int:
-    return sum(len(pedigree_path) - 1 for pedigree_path in edge_alignment.values())
 
 
 @dataclass
@@ -150,9 +145,9 @@ class FullAlignmentResult(AlignmentResult):
         if calculation_mode == PosteriorProbabilitiesCalculationMode.SKIP:
             return
         assert self.edge_alignments
-        all_lengths = np.array([ea.length for ea in self.edge_alignments], dtype=np.int32)
-        min_length = all_lengths.min()
-        scaled_sum = np.sum(2.0 ** (min_length - all_lengths))
+        all_lengths = [ea.length for ea in self.edge_alignments]
+        min_length = min(all_lengths)
+        scaled_sum = sum(2.0 ** (min_length - length) for length in all_lengths)
         log_scaled_sum = math.log2(scaled_sum) - min_length
         sum_edge_alignment_probabilities = 2 ** log_scaled_sum
         vertex_to_probability = None
@@ -166,7 +161,7 @@ class FullAlignmentResult(AlignmentResult):
                         vertex_to_alignment_lengths[pedigree_vertex].append(edge_alignment_length)
             for vertex, alignment_lengths in vertex_to_alignment_lengths.items():
                 min_v_length = min(alignment_lengths)
-                scaled_vertex_sum = sum(2 ** (-L + min_v_length) for L in alignment_lengths)
+                scaled_vertex_sum = sum(2.0 ** (min_v_length - L) for L in alignment_lengths)
                 log_v_sum = math.log2(scaled_vertex_sum) - min_v_length
                 vertex_to_probability[vertex] = 2 ** (log_v_sum - log_scaled_sum)
             # The pedigree candidates for coalescent vertices appear in all edge alignments
