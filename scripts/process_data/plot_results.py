@@ -2,7 +2,6 @@ import csv
 from pathlib import Path
 
 from matplotlib import pyplot as plt
-import matplotlib.ticker as mticker
 
 from scripts.utility.basic_utility import get_filepath, get_number_input_with_lower_bound, get_number_input_in_bounds, \
     get_basename_without_extension

@@ -79,7 +79,7 @@ def save_alignment_result_and_store_vertex_alignment(
 
 
 def get_store_and_save_vertex_alignment_callback(coalescent_tree: CoalescentTree, directory_path: str | Path) \
-        -> TreeAlignmentResults:
+        -> (TreeAlignmentResults, partial):
     root_vertices = coalescent_tree.get_founders()
     clade_root_to_clade_results = {
         x: SuccessCladeAlignmentResults(

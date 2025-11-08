@@ -7,6 +7,7 @@ from itertools import chain
 from pathlib import Path
 
 import numpy
+import numpy as np
 from lineagekit.core.CoalescentTree import CoalescentTree
 from lineagekit.core.PloidPedigree import PloidPedigree
 
@@ -52,7 +53,7 @@ def get_vertex_alignment_phasing_accuracy(vertex_alignment: dict[int, int], prob
     return resulting_accuracy
 
 
-def get_edge_alignment_length(edge_alignment: dict[int, int]) -> int:
+def get_edge_alignment_length(edge_alignment: dict[(int, int), [int]]) -> int:
     return sum(len(pedigree_path) - 1 for pedigree_path in edge_alignment.values())
 
 
@@ -149,9 +150,9 @@ class FullAlignmentResult(AlignmentResult):
         if calculation_mode == PosteriorProbabilitiesCalculationMode.SKIP:
             return
         assert self.edge_alignments
-        edge_alignments_length = [get_edge_alignment_length(edge_alignment) for edge_alignment in self.edge_alignments]
-        min_length = min(edge_alignments_length)
-        scaled_sum = sum(2 ** (-length + min_length) for length in edge_alignments_length)
+        all_lengths = np.array([ea.length for ea in self.edge_alignments], dtype=np.int32)
+        min_length = all_lengths.min()
+        scaled_sum = np.sum(2.0 ** (min_length - all_lengths))
         log_scaled_sum = math.log2(scaled_sum) - min_length
         sum_edge_alignment_probabilities = 2 ** log_scaled_sum
         vertex_to_probability = None
@@ -159,7 +160,7 @@ class FullAlignmentResult(AlignmentResult):
             vertex_to_probability = dict()
             vertex_to_alignment_lengths = defaultdict(list)
             for index, edge_alignment in enumerate(self.edge_alignments):
-                edge_alignment_length = edge_alignments_length[index]
+                edge_alignment_length = all_lengths[index]
                 for pedigree_path in edge_alignment.values():
                     for pedigree_vertex in pedigree_path[1:-1]:
                         vertex_to_alignment_lengths[pedigree_vertex].append(edge_alignment_length)
@@ -257,16 +258,15 @@ class FullAlignmentResult(AlignmentResult):
                 text_lines.append(f"{edge}: {path}\n")
         elif self.edge_alignments is not None:
             text_lines.append(section_separator)
-            edge_alignments = [x for x in self.edge_alignments if x]
-            count = len(edge_alignments)
-            if not count:
+            edge_alignments = self.edge_alignments
+            if not edge_alignments:
                 text_lines.append("There are no edges in the clade. Therefore, there are 0 edge alignments\n")
                 full_text = "".join(text_lines)
                 return full_text
             # Save the edge to path map
             self._save_edge_to_path_map(text_lines=text_lines,
                                         edge_alignments=edge_alignments)
-            # Save the edge alignments
+            # Save edge alignments
             self._save_edge_alignments(text_lines=text_lines, alignment=alignment,
                                        edge_alignments=edge_alignments, tree=tree)
         full_text = "".join(text_lines)
@@ -392,7 +392,7 @@ class FailedClimbingCladeAlignmentResults(CladeAlignmentResults):
 class CladeAlignmentPosteriorProbabilities:
     # Dictionary mapping the vertex alignment index to the posterior probability
     vertex_alignment_to_posterior_probability: dict[int, float]
-    vertex_posterior_probabilities: dict[int, float]
+    vertex_posterior_probabilities: dict[int, float] | None
 
 
 class SuccessCladeAlignmentResults(CladeAlignmentResults):

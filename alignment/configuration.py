@@ -33,8 +33,8 @@ default_alignment_edge_mode = AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS
 calculate_distances_histogram = False
 default_calculate_posterior_probabilities = PosteriorProbabilitiesCalculationMode.SKIP
 calculate_similarity = False
-save_edge_alignments = False
-save_edge_to_path_map = False
+save_edge_alignments = True
+save_edge_to_path_map = True
 # Alignment statistics section end
 
 default_missing_parent_notation = "-1"

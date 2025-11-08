@@ -192,7 +192,7 @@ def get_filenames_with_given_extension(directory_path: str, extension: str):
     return [file for file in os.listdir(directory_path) if file.endswith(extension)]
 
 
-def get_unique_filename_with_specified_extension(directory_path: str, extension: str):
+def get_unique_filename_with_specified_extension(directory_path: str | Path, extension: str):
     files = get_filenames_with_given_extension(directory_path=directory_path, extension=extension)
     if len(files) == 0:
         raise ValueError(f"There are no {extension} files in the directory")

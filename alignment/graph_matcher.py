@@ -11,7 +11,6 @@ from typing import Iterable
 
 import igraph
 import igraph as ig
-from constraint import Problem
 from igraph import Flow
 from lineagekit.core.CoalescentTree import CoalescentTree
 
@@ -67,6 +66,17 @@ def get_pedigree_simulation_probands_for_alignment_mode(vertices: Iterable[int],
 
 source_vertex_label = "s"
 target_vertex_label = "t"
+
+
+class EdgeAlignment(dict):
+    __slots__ = ("length",)
+
+    def __init__(self, mapping=None, *, length: int = 0):
+        super().__init__(mapping or {})
+        self.length = length
+
+    def copy(self):
+        return EdgeAlignment(dict(self), length=self.length)
 
 
 class GraphMatcher:
@@ -305,29 +315,36 @@ class GraphMatcher:
 
     def _get_symmetric_alignment_result(self, alignment_result: FullAlignmentResult):
         # Using the results obtained for the other ploid
+
+        # All the edge-related information is heavy and should not be copied
+        # One could consider rewriting the logic, so that the callback function must copy whatever it needs,
+        # and we could avoid copying within the aligner class. However, this is an acceptable solution for now
         edge_alignments = alignment_result.edge_alignments
         example_edge_alignment = alignment_result.example_edge_alignment
+        edge_to_path_map = alignment_result.edge_to_pedigree_paths_map
         alignment_result.edge_alignments = None
         alignment_result.example_edge_alignment = None
+        alignment_result.edge_to_pedigree_paths_map = None
         symmetric_result = copy.deepcopy(alignment_result)
         symmetric_result.edge_alignments = edge_alignments
         symmetric_result.example_edge_alignment = example_edge_alignment
+        symmetric_result.edge_to_pedigree_paths_map = edge_to_path_map
+        # Update the alignment result using the symmetry
         clade_root = symmetric_result.clade_root
         old_ploid = symmetric_result[clade_root]
         new_ploid = self.pedigree.get_other_ploid(old_ploid)
-        # Update the vertex alignment
         symmetric_result.vertex_alignment[clade_root] = new_ploid
         edge_alignments_to_update = []
         if symmetric_result.example_edge_alignment:
             edge_alignments_to_update.append(symmetric_result.example_edge_alignment)
         elif symmetric_result.edge_alignments:
             edge_alignments_to_update = symmetric_result.edge_alignments
-        if alignment_result.edge_to_pedigree_paths_map:
+        if edge_to_path_map:
             self._update_edge_alignments_for_symmetric_ploid_using_edge_path_map(
                 root_id=clade_root,
                 new_ploid=new_ploid,
                 coalescent_tree=self.coalescent_tree,
-                edge_to_path_map=alignment_result.edge_to_pedigree_paths_map
+                edge_to_path_map=edge_to_path_map
             )
         else:
             self._update_independent_edge_alignment_for_symmetric_ploid(edge_alignments=edge_alignments_to_update,
@@ -441,22 +458,6 @@ class GraphMatcher:
             parent = edge[1]
             path.append(get_vertex(parent))
 
-    def _edge_alignment_search_simple_product(self, edge_to_all_pedigree_paths: dict):
-        edge_to_path_tuples = [
-            [(edge, path) for path in paths]
-            for edge, paths in edge_to_all_pedigree_paths.items()
-        ]
-        # This is a generator (lazy evaluation)
-        possible_edge_alignments = product(*edge_to_path_tuples)
-        valid_edge_alignments = []
-        for possible_edge_alignment in possible_edge_alignments:
-            paths = [path for _, path in possible_edge_alignment]
-            if self._are_paths_disjoint(paths):
-                valid_edge_alignments.append(possible_edge_alignment)
-                if self.alignment_vertex_mode == AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT:
-                    break
-        return valid_edge_alignments
-
     @staticmethod
     def _get_edge_to_path_indexed_list(edge_to_all_pedigree_paths: dict):
         sorted_edges = sorted(
@@ -468,55 +469,41 @@ class GraphMatcher:
             sorted_edges[i] = (edge, [(path, frozenset(path)) for path in paths])
         return sorted_edges
 
-    def _edge_alignment_search_sort_by_value_space(self, edge_to_all_pedigree_paths: list):
+    def _edge_alignment_search_sort_by_value_space(self, edge_to_all_pedigree_paths: dict):
         edge_to_path_indexed_list = self._get_edge_to_path_indexed_list(edge_to_all_pedigree_paths)
         edge_number = len(edge_to_path_indexed_list)
         valid_edge_alignments = []
         early_return = self.alignment_vertex_mode == AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT
 
-        def backtrack_search(edge_index: int, current_edge_alignment: list, used_vertices: set):
+        def backtrack_search(edge_index: int, current_edge_alignment: EdgeAlignment,
+                             used_vertices: set):
             if edge_index == edge_number:
                 valid_edge_alignments.append(current_edge_alignment.copy())
                 return
+
             edge, paths = edge_to_path_indexed_list[edge_index]
             for path, path_set in paths:
                 if used_vertices.isdisjoint(path_set):
-                    current_edge_alignment.append((edge, path))
+                    current_edge_alignment[edge] = path
                     used_vertices.update(path_set)
+                    current_edge_alignment.length += path.cached_length + 1
                     backtrack_search(edge_index + 1, current_edge_alignment, used_vertices)
                     used_vertices.difference_update(path_set)
-                    current_edge_alignment.pop()
+                    del current_edge_alignment[edge]
+                    current_edge_alignment.length -= path.cached_length + 1
                     if early_return and len(valid_edge_alignments) > 1:
                         return
 
-        backtrack_search(0, [], set())
+        backtrack_search(0, EdgeAlignment(), set())
         self.log(f"Found {len(valid_edge_alignments)} edges alignments")
         return valid_edge_alignments
 
-    def _find_edge_alignments_csp(self, edge_to_all_pedigree_paths: dict):
-        problem = Problem()
-        edges = list(edge_to_all_pedigree_paths.keys())
-        # Add variables as (original_path, frozen_path) pairs
-        for edge in edges:
-            paths = edge_to_all_pedigree_paths[edge]
-            domain = [(path, frozenset(path)) for path in paths]
-            problem.addVariable(edge, domain)
-        for i in range(len(edges)):
-            for j in range(i + 1, len(edges)):
-                e1, e2 = edges[i], edges[j]
-                problem.addConstraint(lambda p1, p2: p1[1].isdisjoint(p2[1]), (e1, e2))
-        if self.alignment_vertex_mode == AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT:
-            solution = problem.getSolution()
-            if solution is None:
-                return []
-            solutions = [solution]
-        else:
-            solutions = problem.getSolutions()
-        formatted_solutions = [
-            [(edge, solution[edge][0]) for edge in edges]
-            for solution in solutions
-        ]
-        return formatted_solutions
+    class PathCachedLength(list):
+        __slots__ = ('cached_length',)
+
+        def __init__(self, iterable):
+            super().__init__(iterable)
+            self.cached_length = len(self) - 1
 
     def _build_edge_to_path_map(self, alignment: dict, network_graph: igraph.Graph,
                                 igraph_id_to_original_id: dict[int, int]):
@@ -535,7 +522,7 @@ class GraphMatcher:
                                                                                to=parent_pedigree_access_vertex_id,
                                                                                mode=igraph.OUT)
             remapped_paths = [
-                [id_map(v) for v in path[::2]]
+                GraphMatcher.PathCachedLength([id_map(path[i]) for i in range(0, len(path), 2)])
                 for path in simple_paths
             ]
             edge_to_all_pedigree_paths[(child, parent)] = remapped_paths
@@ -549,14 +536,14 @@ class GraphMatcher:
         edge_to_all_pedigree_paths = self._build_edge_to_path_map(alignment=alignment,
                                                                   network_graph=network_graph,
                                                                   igraph_id_to_original_id=igraph_id_to_original_id)
-        valid_edge_alignments = search_function(edge_to_all_pedigree_paths)
+        valid_edge_alignments: [EdgeAlignment] = search_function(edge_to_all_pedigree_paths)
         get_vertex = alignment.__getitem__
         # Update the paths
         for edge, paths in edge_to_all_pedigree_paths.items():
             parent = edge[1]
             for path in paths:
                 path.append(get_vertex(parent))
-        valid_edge_alignments = [dict(edge_alignment) for edge_alignment in valid_edge_alignments]
+                path.cached_length += 1
         if len(valid_edge_alignments) > 0:
             potential_alignment.edge_alignments = valid_edge_alignments
             potential_alignment.is_valid = True
@@ -567,7 +554,7 @@ class GraphMatcher:
     def _verify_example_edge_alignment_from_flow(self, alignment: dict[int, int],
                                                  alignment_flow: Flow,
                                                  igraph_id_to_original_id: dict[int, int]) \
-            -> dict[(int, int), [int]]:
+            -> dict[(int, int), [int]] | None:
         """
         Creates an example edge alignment from the obtained flow
 
@@ -685,9 +672,7 @@ class GraphMatcher:
                     network_graph=network_graph,
                     potential_alignment=potential_alignment,
                     igraph_id_to_original_id=igraph_id_to_original_id,
-                    # search_function=self._edge_alignment_search_simple_product
                     search_function=self._edge_alignment_search_sort_by_value_space
-                    # search_function=self._find_edge_alignments_csp
                 )
             case AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS:
                 maximum_flow_value = network_graph.maxflow_value(source=source_vertex_label,
@@ -700,9 +685,7 @@ class GraphMatcher:
                     network_graph=network_graph,
                     potential_alignment=potential_alignment,
                     igraph_id_to_original_id=igraph_id_to_original_id,
-                    # search_function=self._edge_alignment_search_simple_product
                     search_function=self._edge_alignment_search_sort_by_value_space
-                    # search_function=self._find_edge_alignments_csp
                 )
 
     def _verify_valid_alignment(self, potential_alignment: dict[int, int]) -> FullAlignmentResult:
@@ -755,10 +738,10 @@ class GraphMatcher:
             # The number of children present in the alignment
             children_number = len(children_pedigree)
             vertices, edges = self._add_edges_to_mrca_from_descendants(
-                                                    mrca=tree_vertex_pedigree,
-                                                    mrca_str=tree_vertex_pedigree_str,
-                                                    mrca_access_label=tree_vertex_access_pedigree_str,
-                                                    descendant_vertices=children_pedigree
+                mrca=tree_vertex_pedigree,
+                mrca_str=tree_vertex_pedigree_str,
+                mrca_access_label=tree_vertex_access_pedigree_str,
+                descendant_vertices=children_pedigree
             )
             vertices_to_add.update(vertices)
             edges_to_add.update(edges)
@@ -1060,7 +1043,7 @@ class GraphMatcher:
         Args:
             vertices_coalescent_ids ([int]): The ids for the coalescent vertices.
             coalescent_vertex_to_candidates (dict[int, [int]]): A dictionary mapping an id of a coalescent vertex to the
-             list of ids of pedigree vertices that can be assigned to this coalescent vertex.
+             list of pedigree vertices ids that can be assigned to this coalescent vertex.
 
         Returns:
              All the valid pmracs for the given vertices.
@@ -1090,7 +1073,7 @@ class GraphMatcher:
         Args:
             vertices_coalescent_ids (list[int]): The ids for the coalescent vertices.
             coalescent_vertex_to_candidates (dict[int, [int]]): A dictionary mapping an id of a coalescent vertex to
-             the list of ids of pedigree vertices that can be assigned to this coalescent vertex.
+             the list of pedigree vertices ids that can be assigned to this coalescent vertex.
 
         Returns:
             All the valid pmracs for the given vertices.

@@ -186,7 +186,7 @@ def save_multiple_alignment_classifications(results_csv_file,
 
 def save_alignment_results_sorted_by_proband_number(
         results_csv_filepath: str | Path,
-        proband_number_to_result: dict[int, AlignmentClassification]) -> AlignmentClassification:
+        proband_number_to_result: dict[int, list[AlignmentClassification]]) -> AlignmentClassification:
     global_alignment_classification = AlignmentClassification()
     with open(results_csv_filepath, "a") as results_csv_file:
         results_csv_file.write(classification_csv_header)
@@ -348,14 +348,15 @@ class AbstractAlignmentTask(ABC):
 
 
 class AlignmentTask(AbstractAlignmentTask):
-    def __init__(self, pedigree_path: Path, coalescent_tree_path: Path,
+    def __init__(self, pedigree_path: str | Path, coalescent_tree_path: str | Path,
                  file_access: AlignmentResultsFileAccess,
                  simulation_subdirectory_path: str | Path,
                  root_vertex_info: RootVertexSpouses = None,
                  alignment_classification: AlignmentClassification = None,
                  alignment_vertex_mode: AlignmentVertexMode = default_alignment_vertex_mode,
                  alignment_edge_mode: AlignmentEdgeMode = default_alignment_edge_mode,
-                 alignment_calculate_posterior_probabilities: bool = default_calculate_posterior_probabilities
+                 alignment_calculate_posterior_probabilities: PosteriorProbabilitiesCalculationMode
+                 = default_calculate_posterior_probabilities
                  ):
         super().__init__(file_access=file_access, alignment_classification=alignment_classification,
                          root_vertex_info=root_vertex_info)
@@ -516,7 +517,7 @@ class MaximumAlignableSubcladeTask(AbstractAlignmentTask):
 
 
 def run_initial_alignment(coalescent_tree: CoalescentTree, initial_pedigree: PotentialMrcaProcessedGraph,
-                          result_filepath: str, save_alignments_to_files: bool):
+                          result_filepath: str | Path, save_alignments_to_files: bool):
     result_filepath = Path(result_filepath)
     os.mkdir(result_filepath)
     if save_alignments_to_files:
@@ -773,8 +774,9 @@ def run_single_data_pedigree_error_directory_alignment(tree_path: str, pedigree_
     return error_pedigree_alignment_comparison.run_alignments()
 
 
-def run_single_data_tree_error_directory_alignment(tree_path: str, pedigree_path: str,
-                                                   error_trees_folder_path: str, simulation_subpath: str) \
+def run_single_data_tree_error_directory_alignment(tree_path: str | Path, pedigree_path: str | Path,
+                                                   error_trees_folder_path: str | Path,
+                                                   simulation_subpath: str | Path) \
         -> AlignmentClassification:
     os.chdir(error_trees_folder_path)
     os.chdir("..")
@@ -817,7 +819,7 @@ def single_initial_data_directory_tree_error_directory_alignment_mode():
     )
 
 
-def get_unique_folder(base_name: str, directory: Path = Path.cwd()) -> Path:
+def get_unique_folder(base_name: str, directory: Path = Path.cwd()) -> str:
     # Initial attempt with the base name
     unique_name = base_name
     count = 1
@@ -831,7 +833,7 @@ def get_unique_folder(base_name: str, directory: Path = Path.cwd()) -> Path:
 
 def process_path(path_to_process: str | Path, simulation_folder_path: str | Path,
                  error_pedigrees_folder_path: str | Path, simulation_subpath: str) \
-        -> ErrorPedigreesAlignmentComparison:
+        -> ErrorPedigreesAlignmentComparison | None:
     absolute_path_to_process = simulation_folder_path / path_to_process
     paths = get_paths_from_tree_pedigree_directory(absolute_path_to_process)
     if not paths:
@@ -961,7 +963,7 @@ def run_specific_error_pedigree_directories_parallel(paths: list[str], error_ped
 
 
 def run_specific_error_pedigree_directories(paths: list[str], error_pedigrees_folder_path: str,
-                                            simulation_subpath: str, parallelize: bool = True,
+                                            simulation_subpath: str | Path, parallelize: bool = True,
                                             max_workers: int = 0):
     if parallelize:
         results = run_specific_error_pedigree_directories_parallel(
@@ -1079,11 +1081,13 @@ def tree_directories_grouped_by_proband_number_and_error_pedigree_directory(
             proband_tree_directory_path = Path(tree_super_directory_path) / proband_tree_directory
             tree_pedigree_paths = get_absolute_paths_to_subfolders(proband_tree_directory_path)
             proband_directory_simulation_name = Path(simulation_name) / proband_tree_directory
-            results = run_specific_error_pedigree_directories(paths=tree_pedigree_paths,
-                                                              error_pedigrees_folder_path=error_pedigrees_directory_path,
-                                                              simulation_subpath=proband_directory_simulation_name,
-                                                              parallelize=parallel_processing,
-                                                              max_workers=max_workers)
+            results = run_specific_error_pedigree_directories(
+                        paths=tree_pedigree_paths,
+                        error_pedigrees_folder_path=error_pedigrees_directory_path,
+                        simulation_subpath=proband_directory_simulation_name,
+                        parallelize=parallel_processing,
+                        max_workers=max_workers
+            )
             for parent_dir_name, tree_results in results:
                 results_file.write(tree_results.csv_row(proband_number=parent_dir_name))
 
@@ -1108,7 +1112,7 @@ def process_multiple_tree_pedigree_directories_and_corresponding_tree_error_dire
         corresponding_error_trees_directory_path = error_trees_parent_directory_path / tree_pedigree_directory
         if not os.path.isdir(corresponding_error_trees_directory_path):
             warnings.warn(f"The directory with modified trees {corresponding_error_trees_directory_path} which is"
-                          f"supposed to correspond to the {tree_pedigree_directory_path} tree-pedigree directory"
+                          f" supposed to correspond to the {tree_pedigree_directory_path} tree-pedigree directory"
                           f" was not found. Skipping this simulation")
             continue
         tree_pedigree_simulation_subpath = input_simulation_subpath / tree_pedigree_directory
@@ -1141,7 +1145,10 @@ def multiple_tree_pedigree_directories_and_corresponding_tree_error_directories(
             input_simulation_subpath=input_simulation_subpath
         ))
     total_results_filepath = simulation_path / total_results_filename
-    save_alignment_results_to_file(total_results_filepath, total_error_comparison_results)
+    if total_error_comparison_results:
+        accumulative_result = reduce(lambda x, y: x.add_results(y), total_error_comparison_results)
+        print(f"Saving at {total_results_filepath}")
+        save_alignment_results_to_file(total_results_filepath, accumulative_result)
     return total_error_comparison_results
 
 
@@ -1282,18 +1289,19 @@ def prepare_tree_pedigree_subdirectories_alignment_tasks(parent_directory: str |
             results_path = tree_pedigree_subdirectory_path / results_dir_name
             os.makedirs(results_path, exist_ok=True)
             simulation_subpath = results_path / simulation_name
-            alignment_task = AlignmentTask(pedigree_path=pedigree_path,
-                                           coalescent_tree_path=tree_path,
-                                           file_access=file_access,
-                                           alignment_classification=proband_alignment_classification,
-                                           simulation_subdirectory_path=simulation_subpath,
-                                           # Deduct root vertex information automatically, as it stays the same
-                                           root_vertex_info=None,
-                                           alignment_vertex_mode=AlignmentVertexMode.ALL_ALIGNMENTS,
-                                           alignment_edge_mode=AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS,
-                                           alignment_calculate_posterior_probabilities=
-                                           PosteriorProbabilitiesCalculationMode.VERTEX_ALIGNMENT_PROBABILITY
-                                           )
+            alignment_task = AlignmentTask(
+                pedigree_path=pedigree_path,
+                coalescent_tree_path=tree_path,
+                file_access=file_access,
+                alignment_classification=proband_alignment_classification,
+                simulation_subdirectory_path=simulation_subpath,
+                # Deduct root vertex information automatically, as it stays the same
+                root_vertex_info=None,
+                alignment_vertex_mode=AlignmentVertexMode.ALL_ALIGNMENTS,
+                alignment_edge_mode=AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS,
+                alignment_calculate_posterior_probabilities=PosteriorProbabilitiesCalculationMode.
+                VERTEX_ALIGNMENT_PROBABILITY
+            )
             alignment_tasks.append(alignment_task)
             proband_alignment_tasks.append(alignment_task)
         if not proband_alignment_tasks:
@@ -1411,7 +1419,8 @@ def run_tree_pedigree_subdirectories_results(proband_number_to_results: dict,
                  total_phasing_accuracy,
                  total_weighted_phasing_accuracy) = result
                 percentile_csv_file.write(f"{proband_number},{identity_percentile},"
-                                          f"{alignment_number},{selected_alignments_length},{ceiling_selected_length}\n")
+                                          f"{alignment_number},{selected_alignments_length},"
+                                          f"{ceiling_selected_length}\n")
                 percentile_csv_file.flush()
                 phasing_accuracy_csv_file.write(f"{proband_number},{total_phasing_accuracy},"
                                                 f"{total_weighted_phasing_accuracy}\n")

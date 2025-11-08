@@ -38,7 +38,7 @@ def process_pedigree_directory(parent_pedigrees_directory_path: Path, result_dir
     try:
         pedigree_filename = get_unique_filename_with_specified_extension(pedigree_directory_path, pedigree_extension)
     except ValueError as ex:
-        warnings.warn(ex)
+        warnings.warn(str(ex))
         return
     pedigree_filepath = pedigree_directory_path / pedigree_filename
     print(f"Processing {pedigree_filepath}")

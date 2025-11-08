@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
@@ -176,9 +177,15 @@ class ParsedDriverFile:
                                               f" specified: \"{specified_calculation_mode}\"")
                 probability_calculation_mode = posterior_probability_calculation_mode_dict[specified_calculation_mode]
                 if (probability_calculation_mode != PosteriorProbabilitiesCalculationMode.SKIP and
-                        edge_alignment_mode == AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT):
-                    raise YAMLValidationError(f"Probabilities cannot be calculated without calculating "
-                                              f"all the edge alignments")
+                        (edge_alignment_mode != AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS or
+                         vertex_alignment_mode != AlignmentVertexMode.ALL_ALIGNMENTS)):
+                    raise YAMLValidationError(f"Probabilities can be calculated only when all the vertex and edge "
+                                              f"alignments are calculated.")
+            if (vertex_alignment_mode == AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT and
+                    edge_alignment_mode == AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS):
+                warnings.warn("It is unusual to calculate only example vertex alignments, but with the list"
+                              " of all the edge alignments. Consider double-checking your driver file. The"
+                              " inference will continue with the specified options")
             return ParsedDriverFile(pedigree_parsing_rules=pedigree_parsing_rules,
                                     coalescent_tree_parsing_rules=coalescent_tree_parsing_rules,
                                     initial_assignments=initial_assignments_dictionary,

@@ -68,8 +68,8 @@ class CladeAlignmentMetadata:
     results_filepath: Path
     coalescent_tree: CoalescentTree
     clade_root: int
-    probands: list[int]
-    clade: list[int]
+    probands: list[int] | None
+    clade: list[int] | None
 
     def __init__(self, results_filepath, coalescent_tree, clade_root):
         self.results_filepath = results_filepath
@@ -280,21 +280,3 @@ class SuccessCladeAlignmentMetadata(CladeAlignmentMetadata):
             alignment_result.save_vertex_inclusion_probabilities(
                 global_vertex_inclusion_probability=probability_dictionary
             )
-
-
-def save_statistics_to_file(clade_alignment_result: SuccessCladeAlignmentResults,
-                            clade_statistics_alignments_metadata: CladeAlignmentStatisticsMetadata,
-                            coalescent_tree: CoalescentTree,
-                            pedigree: PotentialMrcaProcessedGraph,
-                            results_filepath: str):
-    # Process the clade
-    clade_metadata = SuccessCladeAlignmentMetadata(
-        coalescent_tree=coalescent_tree,
-        clade_root=clade_alignment_result.clade_root,
-        pedigree=pedigree,
-        clade_alignments_metadata=clade_statistics_alignments_metadata,
-        results_filepath=results_filepath,
-        clade_alignment_result=clade_alignment_result,
-    )
-    # Printing the results to the file
-    clade_metadata.save_tree_metadata(results_filepath)

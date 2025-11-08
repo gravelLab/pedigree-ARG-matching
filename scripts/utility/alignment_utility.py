@@ -19,7 +19,7 @@ def dict_is_identity(dictionary: dict) -> bool:
     return all(k == v for k, v in dictionary.items())
 
 
-def save_dictionary_to_file(dictionary_filepath: str, dictionary: dict):
+def save_dictionary_to_file(dictionary_filepath: str | Path, dictionary: dict):
     dictionary_file = open(dictionary_filepath, 'w')
     for key, value in dictionary.items():
         dictionary_file.write(f"{key}: {value}\n")

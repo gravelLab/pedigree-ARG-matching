@@ -111,7 +111,7 @@ def dict_list_equal_ignore_order(list1, list2):
     return Counter(frozenset(d.items()) for d in list1) == Counter(frozenset(d.items()) for d in list2)
 
 
-def find_paths_for_one_vertex(graph: PotentialMrcaProcessedGraph, descendant: int):
+def find_paths_for_one_vertex(graph: GenGraph, descendant: int):
     """
     Find all paths from the given descendant to its ancestors.
     """
