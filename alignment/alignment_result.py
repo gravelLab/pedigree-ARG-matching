@@ -115,6 +115,22 @@ class FullAlignmentResult(AlignmentResult):
         return ", ".join(path_to_format)
 
     @staticmethod
+    def _save_edge_alignment(text_lines: list[str], vertex_alignment, edge_alignment, tree: CoalescentTree,
+                             padding=4 * ' '):
+        tree_levels = tree.get_levels()[1:]
+        for level in tree_levels:
+            for vertex in level:
+                # Skip the vertices from other clades
+                if vertex not in vertex_alignment:
+                    continue
+                vertex_children = tree.get_children(vertex)
+                text_lines.append(f"{vertex}:\n")
+                for vertex_child in vertex_children:
+                    edge_mapping = edge_alignment[(vertex_child, vertex)]
+                    formatted_path = FullAlignmentResult.format_path(edge_mapping)
+                    text_lines.append(f"{padding}({vertex_child}, {vertex}): [{formatted_path}]\n")
+
+    @staticmethod
     def _save_edge_alignments(text_lines: list[str], alignment, edge_alignments, tree: CoalescentTree):
         if not save_edge_alignments:
             return
@@ -123,22 +139,11 @@ class FullAlignmentResult(AlignmentResult):
         verb = "is" if count == 1 else "are"
         noun = "alignment" if count == 1 else "alignments"
         text_lines.append(f"There {verb} {count} edge {noun}\n")
-        tree_levels = tree.get_levels()[1:]
-        padding = 4 * ' '
         text_lines.append(subsection_separator)
         # Print the edge alignments
         for edge_alignment in edge_alignments:
-            for level in tree_levels:
-                for vertex in level:
-                    # Skip the vertices from other clades
-                    if vertex not in alignment:
-                        continue
-                    vertex_children = tree.get_children(vertex)
-                    text_lines.append(f"{vertex}:\n")
-                    for vertex_child in vertex_children:
-                        edge_mapping = edge_alignment[(vertex_child, vertex)]
-                        formatted_path = FullAlignmentResult.format_path(edge_mapping)
-                        text_lines.append(f"{padding}({vertex_child}, {vertex}): [{formatted_path}]\n")
+            FullAlignmentResult._save_edge_alignment(text_lines=text_lines, vertex_alignment=alignment,
+                                                     edge_alignment=edge_alignment, tree=tree)
             text_lines.append(subsection_separator)
 
     def calculate_alignment_probabilities(self, calculation_mode: PosteriorProbabilitiesCalculationMode):
@@ -249,8 +254,9 @@ class FullAlignmentResult(AlignmentResult):
         if self.example_edge_alignment is not None:
             text_lines.append(section_separator)
             text_lines.append(f"Example edge alignment:\n")
-            for edge, path in self.example_edge_alignment.items():
-                text_lines.append(f"{edge}: {path}\n")
+            FullAlignmentResult._save_edge_alignment(text_lines=text_lines, vertex_alignment=alignment,
+                                                     edge_alignment=self.example_edge_alignment,
+                                                     tree=tree)
         elif self.edge_alignments is not None:
             text_lines.append(section_separator)
             edge_alignments = self.edge_alignments

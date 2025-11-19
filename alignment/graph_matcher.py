@@ -473,7 +473,7 @@ class GraphMatcher:
         edge_to_path_indexed_list = self._get_edge_to_path_indexed_list(edge_to_all_pedigree_paths)
         edge_number = len(edge_to_path_indexed_list)
         valid_edge_alignments = []
-        early_return = self.alignment_vertex_mode == AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT
+        early_return = self.alignment_edge_mode == AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT
 
         def backtrack_search(edge_index: int, current_edge_alignment: EdgeAlignment,
                              used_vertices: set):
@@ -488,14 +488,17 @@ class GraphMatcher:
                     used_vertices.update(path_set)
                     current_edge_alignment.length += path.cached_length + 1
                     backtrack_search(edge_index + 1, current_edge_alignment, used_vertices)
+                    if early_return and len(valid_edge_alignments) > 0:
+                        return
                     used_vertices.difference_update(path_set)
                     del current_edge_alignment[edge]
                     current_edge_alignment.length -= path.cached_length + 1
-                    if early_return and len(valid_edge_alignments) > 1:
-                        return
 
         backtrack_search(0, EdgeAlignment(), set())
-        self.log(f"Found {len(valid_edge_alignments)} edges alignments")
+        if not early_return:
+            self.log(f"Found {len(valid_edge_alignments)} edges alignments")
+        else:
+            assert len(valid_edge_alignments) <= 1
         return valid_edge_alignments
 
     class PathCachedLength(list):
@@ -545,9 +548,14 @@ class GraphMatcher:
                 path.append(get_vertex(parent))
                 path.cached_length += 1
         if len(valid_edge_alignments) > 0:
-            potential_alignment.edge_alignments = valid_edge_alignments
+            if self.alignment_edge_mode == AlignmentEdgeMode.EXAMPLE_EDGE_ALIGNMENT:
+                assert len(valid_edge_alignments) == 1
+                example_edge_alignment = valid_edge_alignments[0]
+                potential_alignment.example_edge_alignment = example_edge_alignment
+            else:
+                potential_alignment.edge_alignments = valid_edge_alignments
+                potential_alignment.edge_to_pedigree_paths_map = edge_to_all_pedigree_paths
             potential_alignment.is_valid = True
-            potential_alignment.edge_to_pedigree_paths_map = edge_to_all_pedigree_paths
             potential_alignment.calculate_alignment_probabilities(self.calculate_posterior_likelihoods)
         return potential_alignment
 

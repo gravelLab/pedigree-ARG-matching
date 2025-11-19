@@ -183,7 +183,7 @@ class ParsedDriverFile:
                                               f"alignments are calculated.")
             if (vertex_alignment_mode == AlignmentVertexMode.EXAMPLE_PER_ROOT_ASSIGNMENT and
                     edge_alignment_mode == AlignmentEdgeMode.ALL_EDGE_ALIGNMENTS):
-                warnings.warn("It is unusual to calculate only example vertex alignments, but with the list"
+                warnings.warn("It is unusual to calculate only example vertex alignment, but with the list"
                               " of all the edge alignments. Consider double-checking your driver file. The"
                               " inference will continue with the specified options")
             return ParsedDriverFile(pedigree_parsing_rules=pedigree_parsing_rules,
